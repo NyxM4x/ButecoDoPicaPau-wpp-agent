@@ -1,0 +1,577 @@
+import { orderReviewKeptText, orderReviewText } from './messages';
+import { localAddressText, ORDERS_PAUSED_TEXT, pickupUnavailableText } from './messages';
+import { CASH_WAIT_TEXT, PROOF_WAIT_TEXT, deliveryRelayText } from './messages';
+import { proofReminderText } from './messages';
+import { CASH_POLICY_TEXT, cashPolicyText } from './messages';
+import { QR_TRANSFER_NOW_LABEL } from './outbound-classify';
+import { describe, it, expect } from 'vitest';
+import {
+  buildImagePayload,
+  buildLocationRequestPayload,
+  buildMenuCtaPayload,
+  buildTextPayload,
+  buildWebLocationRequestBodyText,
+  LOCATION_HOW_TO_TEXT,
+  LOCATION_REQUEST_BODY_TEXT,
+  MENU_CTA_BODY_TEXT,
+  menuCtaBodyText,
+  PAYMENT_QR_URL,
+} from './messages';
+import { businessHoursClock } from '@/lib/agent/business/facts';
+
+const WEB_LOCATION_REQUEST_BODY_TEXT = buildWebLocationRequestBodyText('ORD-000042');
+
+describe('buildTextPayload', () => {
+  it('construye un payload de texto válido para WhatsApp Cloud', () => {
+    const payload = buildTextPayload('59170000001', 'Hola 👋');
+    expect(payload).toEqual({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: '59170000001',
+      type: 'text',
+      text: { body: 'Hola 👋' },
+    });
+  });
+
+  it('no incluye preview_url', () => {
+    const payload = buildTextPayload('59170000001', 'Sin preview');
+    expect('preview_url' in payload.text).toBe(false);
+    expect(Object.keys(payload.text)).toEqual(['body']);
+  });
+
+  it('conserva el texto verbatim, incluidos saltos de línea', () => {
+    const multiline = '📦 ¡Recibí tu pedido ORD-000001!\nResumen:\n• 2x La Fija — Bs. 80\nTotal: Bs. 80';
+    const payload = buildTextPayload('59170000001', multiline);
+    expect(payload.text.body).toBe(multiline);
+  });
+
+  it('rechaza texto vacío', () => {
+    expect(() => buildTextPayload('59170000001', '')).toThrow();
+  });
+
+  it('rechaza texto compuesto solo por espacios', () => {
+    expect(() => buildTextPayload('59170000001', '   \n\t ')).toThrow();
+  });
+});
+
+describe('buildLocationRequestPayload', () => {
+  it('sin bodyText usa el copy del WhatsApp Flow más las instrucciones', () => {
+    const payload = buildLocationRequestPayload('59170000001');
+    expect(payload).toEqual({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: '59170000001',
+      type: 'text',
+      text: { body: `${LOCATION_REQUEST_BODY_TEXT}
+
+${LOCATION_HOW_TO_TEXT}` },
+    });
+    // Blindaje del copy por defecto: no debe cambiar.
+    expect(LOCATION_REQUEST_BODY_TEXT).toBe(
+      'Por favor comparte tu ubicación actual para coordinar el delivery.',
+    );
+  });
+
+  it('ya NO manda el botón interactivo', () => {
+    // El botón `send_location` daba problemas en el último paso del flujo. Se
+    // puede quitar porque el pin sin contexto ya lo recoge `attachLooseLocation`
+    // y lo adjunta al pedido que estaba esperando ubicación.
+    const serializado = JSON.stringify(buildLocationRequestPayload('59170000001'));
+    expect(serializado).not.toContain('interactive');
+    expect(serializado).not.toContain('location_request_message');
+    expect(serializado).not.toContain('send_location');
+  });
+
+  it('con el copy web cambia solo el texto de delante', () => {
+    const payload = buildLocationRequestPayload('59170000001', WEB_LOCATION_REQUEST_BODY_TEXT);
+    expect(payload.text.body).toBe(`${WEB_LOCATION_REQUEST_BODY_TEXT}
+
+${LOCATION_HOW_TO_TEXT}`);
+  });
+
+  it('las instrucciones van en LOS DOS caminos, no solo en el web', () => {
+    // Se añaden en el builder y no en cada copy justamente para esto: un camino
+    // nuevo no puede nacer sin ellas.
+    for (const payload of [
+      buildLocationRequestPayload('59170000001'),
+      buildLocationRequestPayload('59170000001', WEB_LOCATION_REQUEST_BODY_TEXT),
+    ]) {
+      expect(payload.type).toBe('text');
+      expect(payload.text.body).toContain('ENVIAR UBICACIÓN ACTUAL');
+    }
+  });
+
+  it('rechaza bodyText explícito vacío o de solo espacios', () => {
+    expect(() => buildLocationRequestPayload('59170000001', '')).toThrow();
+    expect(() => buildLocationRequestPayload('59170000001', '   \n\t ')).toThrow();
+  });
+});
+
+describe('buildWebLocationRequestBodyText', () => {
+  it('es UN SOLO mensaje: saluda el pedido y pide la ubicación (0039)', () => {
+    // Antes salían dos globos seguidos y el segundo repetía al primero.
+    expect(buildWebLocationRequestBodyText('ORD-260919-042')).toBe(
+      [
+        '📦 Recibimos tu pedido #42.',
+        '',
+        '📍 Ahora envíanos tu *UBICACIÓN ACTUAL* por GPS para calcular el costo del envío 😊',
+        'Pedido ORD-260919-042',
+      ].join('\n'),
+    );
+  });
+
+  it('el número corto encabeza y el largo queda al final, como referencia', () => {
+    const texto = buildWebLocationRequestBodyText('ORD-260919-042');
+    const lineas = texto.split('\n');
+    // El corto es el que la gente dice en voz alta; el largo es el token con
+    // el que se reconcilia un envío ambiguo, y por eso no se puede quitar.
+    expect(lineas[0]).toContain('#42');
+    expect(lineas[0]).not.toContain('ORD-260919-042');
+    expect(lineas[lineas.length - 1]).toBe('Pedido ORD-260919-042');
+  });
+
+  it('incluye exactamente el order_number recibido, sin fijarlo', () => {
+    expect(buildWebLocationRequestBodyText('ORD-000123')).toContain('ORD-000123');
+    expect(buildWebLocationRequestBodyText('ORD-000123')).not.toContain('ORD-000006');
+  });
+
+  it('no incluye order_id, teléfono ni otros datos', () => {
+    const text = buildWebLocationRequestBodyText('ORD-000042');
+    for (const forbidden of [
+      '22222222-2222-4222-8222-222222222222',
+      '59170000000',
+      'pnid',
+      'token',
+    ]) {
+      expect(text).not.toContain(forbidden);
+    }
+  });
+
+  it('no altera el copy del WhatsApp Flow', () => {
+    // El flujo del Flow no pasa bodyText: conserva su texto original, con las
+    // instrucciones detrás y sin nada del pedido.
+    const flow = buildLocationRequestPayload('59170000001');
+    expect(flow.text.body).toContain(LOCATION_REQUEST_BODY_TEXT);
+    expect(flow.text.body).not.toContain('Pedido');
+    expect(flow.text.body).not.toContain('ORD-');
+  });
+});
+
+describe('buildImagePayload (6D.1)', () => {
+  it('construye un payload de imagen por enlace con caption', () => {
+    const payload = buildImagePayload('59170000001', PAYMENT_QR_URL, 'Pedido ORD-000042: paga con QR');
+    expect(payload).toEqual({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: '59170000001',
+      type: 'image',
+      image: { link: PAYMENT_QR_URL, caption: 'Pedido ORD-000042: paga con QR' },
+    });
+  });
+
+  it('lanza si la URL o el caption están vacíos', () => {
+    expect(() => buildImagePayload('59170000001', '', 'x')).toThrow();
+    expect(() => buildImagePayload('59170000001', PAYMENT_QR_URL, '  ')).toThrow();
+  });
+
+  it('PAYMENT_QR_URL es la URL pública https del QR fijo', () => {
+    expect(PAYMENT_QR_URL).toBe('https://sarco-restaurant.vercel.app/payment/qr-2026.jpeg');
+  });
+});
+
+describe('el cuerpo del botón según POR QUÉ se manda el menú', () => {
+  /**
+   * Un `send_menu` confirmado cierra el turno en silencio, así que este mensaje
+   * es la ÚNICA ocasión de explicarle el cambio al cliente. Por eso el copy vive
+   * aquí y no en el prompt: llega siempre igual de bien escrito, el modelo no
+   * puede estropearlo y no cuesta un token.
+   */
+  const MOTIVOS = ['explicit_request', 'explicit_resend', 'agent_suggestion', 'qa_trigger'] as const;
+
+  it('cada motivo tiene su texto, y ninguno viene vacío', () => {
+    for (const motivo of MOTIVOS) {
+      expect(menuCtaBodyText(motivo).trim(), motivo).not.toBe('');
+    }
+  });
+
+  it('quien PIDE el menú recibe el saludo con el horario', () => {
+    // Escribir "menu" en frío es el primer contacto típico: es cuando el horario
+    // vale de algo.
+    const texto = menuCtaBodyText('explicit_request');
+    expect(texto).toBe(MENU_CTA_BODY_TEXT);
+    expect(texto).toContain(businessHoursClock());
+  });
+
+  it('a quien NO lo pidió no se le repite el horario', () => {
+    // Ya está en conversación: repetirlo gasta líneas de un mensaje que se lee
+    // de un vistazo.
+    for (const motivo of ['agent_suggestion', 'explicit_resend'] as const) {
+      expect(menuCtaBodyText(motivo), motivo).not.toContain(businessHoursClock());
+    }
+  });
+
+  it('el reenvío no vuelve a explicar cómo se pide', () => {
+    // "No me llegó" es un problema técnico, no de comprensión. Explicárselo otra
+    // vez sería tratarlo de torpe.
+    expect(menuCtaBodyText('explicit_resend')).toContain('de nuevo');
+  });
+
+  it('la prueba interna usa el texto de siempre', () => {
+    expect(menuCtaBodyText('qa_trigger')).toBe(MENU_CTA_BODY_TEXT);
+  });
+
+  it('todos caben de sobra en el límite de WhatsApp', () => {
+    // El body de un interactivo admite 1024 caracteres.
+    for (const motivo of MOTIVOS) {
+      expect(menuCtaBodyText(motivo).length, motivo).toBeLessThanOrEqual(1024);
+    }
+  });
+
+  it('ninguno usa markdown ni amontona emojis', () => {
+    // WhatsApp no renderiza markdown, y el exceso de emoji abarata el mensaje.
+    for (const motivo of MOTIVOS) {
+      const texto = menuCtaBodyText(motivo);
+      expect(texto, motivo).not.toMatch(/[*_`#]/);
+      expect([...texto].filter((c) => /\p{Extended_Pictographic}/u.test(c)).length, motivo)
+        .toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('a "¿puedo pagar en efectivo?" se le dice que sí, como siempre', () => {
+    expect(menuCtaBodyText('agent_suggestion', 'cash')).toMatch(/^¡Sí!/);
+    expect(menuCtaBodyText('agent_suggestion', 'cash', { cashAllowed: true })).toMatch(/^¡Sí!/);
+  });
+
+  it('en noche de promoción se le dice que NO, primero, y cómo sí puede pagar', () => {
+    // Un "¡Sí!" lo haría armar el pedido para encontrarse el efectivo
+    // deshabilitado en el último paso (14-09-2026).
+    const texto = menuCtaBodyText('agent_suggestion', 'cash', {
+      cashAllowed: false,
+      promoActive: true,
+    });
+    expect(texto).toMatch(/^Hoy no/);
+    expect(texto).toContain('QR');
+    expect(texto).not.toMatch(/elegí EFECTIVO/i);
+    expect([...texto].filter((c) => /\p{Extended_Pictographic}/u.test(c)).length).toBeLessThanOrEqual(1);
+  });
+
+  it('sin efectivo y SIN promoción también es NO, sin nombrar la promoción (21-09-2026)', () => {
+    // El efectivo se apaga aparte (`orders/cash-enabled`): "por la promoción"
+    // sería mentira, y le haría creer que mañana vuelve.
+    for (const texto of [
+      menuCtaBodyText('agent_suggestion', 'cash', { cashAllowed: false }),
+      menuCtaBodyText('agent_suggestion', 'cash', { cashAllowed: false, promoActive: false }),
+    ]) {
+      // Y desde el 27-09-2026 dice POR QUÉ, con el párrafo compartido.
+      expect(texto.startsWith(CASH_POLICY_TEXT)).toBe(true);
+      expect(texto).toContain('solo por QR');
+      // El envío no entra en el QR: quien pregunta por el efectivo tiene que
+      // saber que eso no cambió.
+      expect(texto).toMatch(/envío se lo seguís pagando al repartidor/);
+      expect(texto).not.toMatch(/promoci/i);
+      expect(texto).not.toMatch(/elegí EFECTIVO/i);
+      expect([...texto].filter((c) => /\p{Extended_Pictographic}/u.test(c)).length).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('sin efectivo, las preguntas que no son de efectivo no cambian', () => {
+    expect(menuCtaBodyText('agent_suggestion', 'price', { cashAllowed: false })).toBe(
+      menuCtaBodyText('agent_suggestion', 'price'),
+    );
+    expect(menuCtaBodyText('explicit_request', null, { cashAllowed: false })).toBe(MENU_CTA_BODY_TEXT);
+  });
+
+  it('el payload lleva el cuerpo que se le pase, no la constante', () => {
+    const payload = buildMenuCtaPayload('59170000001', undefined, undefined, 'texto elegido');
+    expect(payload.interactive.body.text).toBe('texto elegido');
+    // Y sin él, el de siempre: un llamador antiguo se comporta igual que antes.
+    expect(buildMenuCtaPayload('59170000001').interactive.body.text).toBe(MENU_CTA_BODY_TEXT);
+  });
+});
+
+/**
+ * "TU PEDIDO QUEDÓ ASÍ" (05-09-2026).
+ *
+ * El desglose es el dato que el cliente no tenía: sabía su total, no qué lo
+ * compone, y desde el chat no hay forma de mirarlo porque el menú ya se cerró.
+ */
+describe('la pregunta con el pedido delante', () => {
+  const LINEAS = [
+    { name: 'Trancapecho', quantity: 1, subtotal: 18 },
+    { name: 'Gaseosa 2 L', quantity: 2, subtotal: 20 },
+  ];
+
+  it('enseña cada línea con su cantidad y su importe', () => {
+    const text = orderReviewText({
+      orderNumber: 'ORD-260904-026',
+      lines: LINEAS,
+      deliveryAmount: 10,
+      totalAmount: 48,
+      isCash: true,
+    });
+    expect(text).toContain('1x Trancapecho');
+    expect(text).toContain('2x Gaseosa 2 L');
+    expect(text).toContain('Bs. 18');
+  });
+
+  it('lleva el envío y el total, y cómo se paga', () => {
+    const text = orderReviewText({
+      orderNumber: 'ORD-260904-026',
+      lines: LINEAS,
+      deliveryAmount: 10,
+      totalAmount: 48,
+      isCash: true,
+    });
+    expect(text).toContain('Envío: Bs. 10');
+    expect(text).toContain('Total: Bs. 48');
+    expect(text).toContain('efectivo al recibir');
+  });
+
+  it('sin envío cotizado no escribe "Envío: Bs. 0"', () => {
+    // En `awaiting_location` todavía no existe, y un cero se lee como gratis.
+    const text = orderReviewText({
+      orderNumber: 'ORD-260904-026',
+      lines: LINEAS,
+      deliveryAmount: 0,
+      totalAmount: 38,
+      isCash: false,
+    });
+    expect(text).not.toContain('Envío');
+  });
+
+  it('pregunta en el sentido que hace legible un "no"', () => {
+    // "¿Querés agregar algo más?" y no "¿está bien tu pedido?": es lo que hace
+    // que un "no" suelto signifique una sola cosa. Ver `order-review-reply`.
+    const text = orderReviewText({
+      orderNumber: 'ORD-260904-026',
+      lines: LINEAS,
+      deliveryAmount: 10,
+      totalAmount: 48,
+      isCash: true,
+    });
+    expect(text).toContain('¿Querés agregar algo más?');
+    expect(text).toContain('1');
+    expect(text).toContain('2');
+  });
+
+  it('el cliente ve su número corto, no el interno', () => {
+    const text = orderReviewText({
+      orderNumber: 'ORD-260904-026',
+      lines: LINEAS,
+      deliveryAmount: 10,
+      totalAmount: 48,
+      isCash: true,
+    });
+    expect(text).toContain('#26');
+    expect(text).not.toContain('260904');
+  });
+});
+
+describe('el cierre: "queda así"', () => {
+  it('en efectivo le recuerda lo que va a pagar en la puerta', () => {
+    const text = orderReviewKeptText('ORD-260904-026', 48, true);
+    expect(text).toContain('#26');
+    expect(text).toContain('Bs. 48');
+    expect(text).toContain('efectivo');
+  });
+
+  it('por QR le recuerda el comprobante, que es lo que falta', () => {
+    const text = orderReviewKeptText('ORD-260904-026', 48, false);
+    expect(text).toContain('comprobante');
+    expect(text).not.toContain('efectivo');
+  });
+
+  it('no vuelve a preguntar nada: el cliente ya contestó', () => {
+    const text = orderReviewKeptText('ORD-260904-026', 48, true);
+    expect(text).not.toContain('¿Querés agregar');
+    expect(text).not.toContain('Respondé');
+  });
+});
+
+/**
+ * LOS TEXTOS DE LA ESPERA (06-09-2026).
+ *
+ * Los tres salen cuando el pedido ya no depende del cliente. El de QR es del
+ * dueño palabra por palabra —minúsculas y tildes ausentes incluidas— y se
+ * compara por igualdad literal a propósito: un "arreglo de estilo" tiene que
+ * reventar aquí y no descubrirse en el chat de un cliente.
+ */
+describe('los avisos de espera', () => {
+  it('el del comprobante es EXACTAMENTE el texto del dueño', () => {
+    expect(PROOF_WAIT_TEXT).toBe(
+      'perfecto danos tiempo para revisar el comprobante y te diremos nuestra ' +
+        'respuesta, no es necesario que envies tu comprobante de nuevo, ni mas ' +
+        'mensajes, solo te pido un poco de paciencia.',
+    );
+  });
+
+  it('ninguno lleva las marcas canónicas de una confirmación', () => {
+    // `outbound-classify` reconoce una confirmación por estas marcas. Un aviso
+    // que las llevara se emparejaría con la confirmación de OTRO pedido al
+    // reconciliar. Ver `proofReminderText`, que carga la misma restricción.
+    const marcas = ['📦 Pedido ', '📦 Recibimos tu pedido ', 'Comida:', 'Delivery:', 'Total:'];
+    const textos = [
+      PROOF_WAIT_TEXT,
+      CASH_WAIT_TEXT,
+      deliveryRelayText('delivery'),
+      deliveryRelayText('pickup'),
+      deliveryRelayText(null),
+    ];
+    for (const texto of textos) {
+      for (const marca of marcas) {
+        expect(texto, `${marca} en "${texto.slice(0, 30)}…"`).not.toContain(marca);
+      }
+    }
+  });
+
+  it('los dos acuses piden que no escriba más: después viene el silencio', () => {
+    // Sin esa mitad, el silencio que viene detrás se lee como que se cortó la
+    // conversación.
+    expect(PROOF_WAIT_TEXT).toContain('mensajes');
+    expect(CASH_WAIT_TEXT).toContain('mensajes');
+  });
+
+  it('el del efectivo NO promete avisarle cuando salga', () => {
+    // No existe ningún saliente automático que lo haga: `notifyDeliveryGroup`
+    // va a Telegram, no al cliente. Prometerlo lo devolvería a escribir.
+    expect(CASH_WAIT_TEXT).not.toContain('te avisamos');
+    expect(CASH_WAIT_TEXT).not.toContain('te avisaremos');
+  });
+
+  it('a quien pasa a recoger no se le habla de un delivery', () => {
+    expect(deliveryRelayText('pickup')).not.toContain('delivery');
+    expect(deliveryRelayText('pickup')).toContain('recogerlo');
+    // Y sin dato se asume delivery, que es lo que es casi todo el volumen.
+    expect(deliveryRelayText(null)).toContain('delivery');
+    expect(deliveryRelayText('delivery')).toContain('delivery');
+  });
+});
+
+/**
+ * Sin recojo (15-09-2026, `orders/pickup-enabled`): la dirección sale igual
+ * —sigue siendo el único local— pero no puede leerse como un "sí, pasá a
+ * recoger", y el "paso a recogerlo" recibe un no que deja claro que su pedido
+ * sigue en pie.
+ */
+describe('sin recojo', () => {
+  it('con recojo, la dirección es exactamente la de siempre', () => {
+    expect(localAddressText({ pickupAllowed: true })).toBe(localAddressText());
+    expect(localAddressText()).not.toMatch(/recojo/);
+  });
+
+  it('sin recojo, la dirección lo aclara sin quitar nada de lo demás', () => {
+    const texto = localAddressText({ pickupAllowed: false });
+    expect(texto.startsWith(localAddressText())).toBe(true);
+    expect(texto).toMatch(/no hacemos recojo/);
+  });
+
+  it('a "paso a recogerlo" se le dice que no, y que su pedido sale igual', () => {
+    const texto = pickupUnavailableText('ORD-260914-012');
+    expect(texto).toMatch(/^No hacemos recojo/);
+    expect(texto).toMatch(/sigue igual/);
+    // Ya no dice "hoy, por la promoción": ese motivo prometía entre líneas que
+    // mañana vuelve, y el recojo no se apagó por una noche.
+    expect(texto).not.toMatch(/promoción|hoy/i);
+    // No lo manda a hablar con nadie ni le promete una excepción.
+    expect(texto).not.toMatch(/compañero|equipo|operador|excepción/i);
+  });
+});
+
+describe('pedidos pausados por saturación (0038)', () => {
+  it('dice que hoy no se atiende y tranquiliza a quien ya pidió, sin derivar', () => {
+    expect(ORDERS_PAUSED_TEXT).toMatch(/El día de hoy NO ESTAMOS ATENDIENDO, MIL DISCULPAS/);
+    expect(ORDERS_PAUSED_TEXT).not.toMatch(/Escribinos de nuevo|unos minutos/);
+    expect(ORDERS_PAUSED_TEXT).toMatch(/Si ya hiciste tu pedido, sigue en curso/);
+    expect(ORDERS_PAUSED_TEXT).not.toMatch(/compañero|equipo|operador|persona/i);
+  });
+});
+
+/**
+ * El recordatorio del comprobante pide la cifra del QR (17-09-2026).
+ *
+ * El caso que lo abrió, pedido #6 del 16-09: comida Bs. 54, envío Bs. 17. El
+ * recordatorio decía "está guardado por Bs. 71" y el cliente transfirió 71.
+ */
+describe('proofReminderText — la cifra del QR, no el total', () => {
+  it('con envío pide solo la comida y dice a quién se le paga el envío', () => {
+    expect(proofReminderText('ORD-260916-006', 54, 71)).toBe(
+      'Tu pedido #6 está guardado 🙌 Falta que transfieras *Bs. 54* (solo la comida; ' +
+        'el envío se lo pagas al repartidor) y nos mandes la foto del comprobante por acá. ' +
+        'Con eso lo pasamos a la cocina al toque.',
+    );
+  });
+
+  it('la suma de comida y envío no aparece en ninguna parte', () => {
+    // Es el número que no queremos que nadie teclee. Ver `buildQrPaymentCaption`.
+    expect(proofReminderText('ORD-260916-006', 54, 71)).not.toContain('71');
+  });
+
+  it('sin envío no lo nombra: no hay nada que pagarle a nadie en la puerta', () => {
+    const texto = proofReminderText('ORD-260916-006', 54, 54);
+    expect(texto).toContain('*Bs. 54*');
+    expect(texto).not.toMatch(/envío|repartidor/);
+  });
+
+  it('no lleva las marcas canónicas de una confirmación', () => {
+    const marcas = [
+      '📦 Pedido ',
+      '📦 Recibimos tu pedido ',
+      'Comida:',
+      'Delivery:',
+      'Total:',
+      QR_TRANSFER_NOW_LABEL,
+    ];
+    const textos = [
+      proofReminderText('ORD-260916-006', 54, 71),
+      proofReminderText('ORD-260916-006', 54, 54),
+    ];
+    for (const texto of textos) {
+      for (const marca of marcas) expect(texto).not.toContain(marca);
+    }
+  });
+});
+
+describe('el pago es solo por QR (27-09-2026)', () => {
+  it('el motivo habla de los pagos, no de los clientes', () => {
+    expect(CASH_POLICY_TEXT).toMatch(/^Desde ahora los pedidos se pagan solo por QR/);
+    expect(CASH_POLICY_TEXT).toMatch(/problemas con los pagos en efectivo/);
+    expect(CASH_POLICY_TEXT).not.toMatch(/clientes/i);
+  });
+
+  it('con el pedido cotizado: la cifra del QR, y el envío aparte', () => {
+    const texto = cashPolicyText({
+      orderNumber: 'ORD-260927-012',
+      foodAmount: 60,
+      totalAmount: 71,
+      awaitingLocation: false,
+    });
+    expect(texto.startsWith(CASH_POLICY_TEXT)).toBe(true);
+    expect(texto).toContain('#12');
+    expect(texto).toContain('*Bs. 60*');
+    expect(texto).not.toContain('71');
+    expect(texto).toMatch(/envío se lo pagás al repartidor/);
+    // Nada de las marcas canónicas de la confirmación: ver `proofReminderText`.
+    expect(texto).not.toMatch(/📦 Pedido |Comida:|Total:/);
+  });
+
+  it('sin envío no lo nombra', () => {
+    const texto = cashPolicyText({
+      orderNumber: 'ORD-260927-012',
+      foodAmount: 60,
+      totalAmount: 60,
+      awaitingLocation: false,
+    });
+    expect(texto).not.toMatch(/envío/);
+  });
+
+  it('sin cotizar no le pide un QR que todavía no existe', () => {
+    const texto = cashPolicyText({
+      orderNumber: 'ORD-260927-012',
+      foodAmount: 60,
+      totalAmount: 60,
+      awaitingLocation: true,
+    });
+    expect(texto).toMatch(/te mandamos el QR/);
+    expect(texto).not.toMatch(/comprobante|transferí|Bs/);
+  });
+});

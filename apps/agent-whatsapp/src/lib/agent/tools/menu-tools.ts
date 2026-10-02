@@ -1,0 +1,350 @@
+import {
+  NO_ARGUMENTS,
+  type AgentTool,
+  type AgentToolContext,
+  type AgentToolOutcome,
+} from './registry';
+import { isExplicitMenuRequest } from '@/lib/agent/business/menu-request';
+import type { DispatchMenuResult, MenuSendReason } from '@/lib/menu/dispatch';
+import { classifyMenuCtaContext, type MenuCtaContext } from '@/lib/menu/cta-context';
+// El MISMO botón y el MISMO copy que manda la vía determinística: si el enlace
+// hace lo mismo, no puede leerse distinto según por dónde salió.
+import { MENU_CHANGE_BUTTON_TEXT, orderChangeCtaText } from '@/lib/kapso/messages';
+import { evaluatePromotion, isPurchasable, type Promotion } from '@/lib/promotions/promotion';
+import { composeSummary, expiryLabel } from '@/lib/promotions/promotion-display';
+
+/**
+ * Las dos primeras herramientas de negocio — módulo PURO (Fase 6D.2F.5B).
+ *
+ * Ninguna recibe argumentos. No es una simplificación temporal: es la forma de
+ * que el modelo no pueda pedir lo que no le corresponde. Sin parámetros no hay
+ * `force`, no hay `reason`, no hay filtros inventados y no hay nada
+ * que validar más allá de "vino vacío".
+ */
+
+// ── get_menu_items ──────────────────────────────────────────────────────────
+
+/**
+ * Lo que el modelo llega a ver de un producto.
+ *
+ * Deliberadamente MÁS POBRE que la fila de `menu_items`: sin `id`, sin `code`,
+ * sin `is_active` (si llega aquí, está activo), sin `sort_order`, sin
+ * timestamps. Nada de eso ayuda a contestarle a un cliente, y todo lo que se
+ * entrega es superficie que el modelo puede repetir por WhatsApp.
+ */
+export interface MenuItemForModel {
+  name: string;
+  price: number;
+  category: string;
+  /** Copy de vitrina, la MISMA que el cliente ve en /menu. Puede faltar. */
+  description?: string;
+}
+
+/**
+ * Una promoción que se puede comprar AHORA, tal como la ve el modelo (14-09-2026).
+ *
+ * Igual de pobre que `MenuItemForModel`: sin id, sin revisión, sin estado —si
+ * llega aquí, se puede comprar— y sin fechas en crudo. El vencimiento viaja ya
+ * redactado en hora de Bolivia, porque el modelo no tiene reloj y convertir un
+ * ISO en UTC es justo la cuenta que no queremos que haga.
+ */
+export interface PromotionForModel {
+  name: string;
+  /** Lo que cuesta el combo. */
+  price: number;
+  /** Lo que costaría suelto: la cifra que el menú tacha. */
+  normalPrice: number;
+  /** "2× Trancapecho". Sale de los componentes, nunca de un texto a mano. */
+  includes: string;
+  /** "Termina hoy 00:00". Ausente si no tiene fin. */
+  until?: string;
+}
+
+export interface MenuCatalogPort {
+  /** Productos ACTIVOS, en el orden en que se muestran. */
+  listForModel(): Promise<MenuItemForModel[]>;
+  /**
+   * Promociones vendibles ahora. Opcional: sin él la tool se comporta como
+   * antes y no dice nada de promociones. `null` = no se pudieron leer, y la
+   * tool también calla en vez de afirmar que no hay ninguna.
+   */
+  listPromotionsForModel?(): Promise<PromotionForModel[] | null>;
+}
+
+/**
+ * Las promociones vendibles en `now`, proyectadas para el modelo.
+ *
+ * Con `evaluatePromotion`, la MISMA regla que decide qué tarjeta ve el cliente
+ * en el menú: el agente no puede anunciar un combo que el menú no deja comprar.
+ */
+export function promotionsForModel(
+  promotions: ReadonlyArray<Promotion>,
+  now: number,
+): PromotionForModel[] {
+  return promotions.flatMap((promotion) => {
+    const pricing = evaluatePromotion(promotion, now);
+    if (!isPurchasable(pricing)) return [];
+    const until = expiryLabel(promotion.endsAt, now);
+    return [
+      {
+        name: promotion.name,
+        price: pricing.promoPrice,
+        normalPrice: pricing.normalPrice,
+        includes: composeSummary(promotion.components),
+        ...(until === null ? {} : { until }),
+      },
+    ];
+  });
+}
+
+export const GET_MENU_ITEMS = 'get_menu_items';
+
+/**
+ * `currency` viaja explícito para que el modelo no tenga que deducirlo del
+ * contexto ni inventarse un símbolo.
+ *
+ * El campo `note` es la parte importante: `menu_items` NO tiene ingredientes ni
+ * atributos dietéticos, así que sin decirlo el modelo intentaría deducirlos del
+ * nombre —"Veggie" ⇒ sin carne— que es justo lo que el prompt prohíbe. Que la
+ * ausencia de dato sea EXPLÍCITA es más seguro que dejarla implícita.
+ */
+export function createGetMenuItemsTool(catalog: MenuCatalogPort): AgentTool {
+  return {
+    definition: {
+      name: GET_MENU_ITEMS,
+      description:
+        'Consulta el menú real de Don Zarco: nombre, precio y categoría de cada ' +
+        'producto disponible. Úsala SOLO para una pregunta PUNTUAL sobre uno o ' +
+        'dos productos concretos QUE EL CLIENTE HAYA NOMBRADO: cuánto cuesta ' +
+        'algo, si existe tal producto. Los productos los acota el cliente, no ' +
+        'tú: no conviertas una pregunta amplia en puntual eligiendo un par por ' +
+        'tu cuenta. ' +
+        'NO la uses para responder qué hay, qué opciones existen ni qué ' +
+        'contiene una categoría entera (hamburguesas, bebidas, extras): eso se ' +
+        'responde con send_menu. Nunca respondas de memoria. ' +
+        'Trae también las promociones que se pueden comprar ahora: úsala si el ' +
+        'cliente pregunta si hay promoción o cuánto sale una.',
+      parameters: NO_ARGUMENTS,
+    },
+    async execute() {
+      const [items, promotions] = await Promise.all([
+        catalog.listForModel(),
+        catalog.listPromotionsForModel ? catalog.listPromotionsForModel() : null,
+      ]);
+      // Sin `userVisibleEffectConfirmed`: leer una tabla no le enseña nada al
+      // cliente. Si el modelo consulta el menú y luego se queda callado, el
+      // cliente se queda sin respuesta — y eso sigue siendo un fallo.
+      return {
+        result: {
+          currency: 'Bs',
+          items,
+          ...(promotions === null
+            ? {}
+            : {
+                promotions,
+                // Lo vacío también es un dato: sin decirlo, una lista vacía se
+                // lee como "no lo sé" y el modelo rellena. Y el suelto que falta
+                // de `items` hay que explicarlo, o contestaría que no existe.
+                promotionsNote:
+                  'Son las ÚNICAS promociones que hay ahora. Si la lista está ' +
+                  'vacía, no hay ninguna. Un producto que aparece en una ' +
+                  'promoción y no en items hoy solo se vende dentro de esa ' +
+                  'promoción. Da el precio tal cual: no calcules descuentos ni ' +
+                  'juntes promociones.',
+              }),
+          note:
+            'No hay datos de ingredientes, alérgenos ni atributos dietéticos. ' +
+            'No deduzcas de qué está hecho un producto por su nombre ni por su ' +
+            'descripción. La descripción es copy de vitrina, el mismo texto que ' +
+            'el cliente ya ve en la web: puedes repetirlo tal cual, pero de él ' +
+            'no se concluye que algo sea vegetariano, vegano, sin carne, sin ' +
+            'gluten, libre de alérgenos ni seguro para una alergia.',
+        },
+      };
+    },
+  };
+}
+
+// ── send_menu ───────────────────────────────────────────────────────────────
+
+export const SEND_MENU = 'send_menu';
+
+export interface MenuDispatchPort {
+  dispatch(input: {
+    customerPhone: string;
+    sourceMessageId: string;
+    phoneNumberId: string | null;
+    reason: MenuSendReason;
+    /** De qué venía hablando el cliente; solo elige el copy del botón. */
+    ctaContext?: MenuCtaContext | null;
+    /** Pedido al que el enlace viene a sustituir (0035). Ver `OpenOrderPort`. */
+    replacesOrderId?: string | null;
+    /** Etiqueta del botón. Ausente = "Ver menú". */
+    buttonText?: string;
+    /** Cuerpo ya redactado, cuando el enlace no es el menú de siempre. */
+    bodyText?: string;
+  }): Promise<DispatchMenuResult>;
+}
+
+/**
+ * El pedido vivo del cliente, para no mandarle a armar OTRO (05-09-2026).
+ *
+ * ── El pedido #27 ───────────────────────────────────────────────────────────
+ *
+ * Esta tool mandaba el menú sin mirar nada. La madrugada del 05-09 un cliente
+ * con un pedido ya cotizado escribió "un vaso de limonada también": el enlace
+ * que recibió abría un pedido NUEVO, y acabó con dos comandas, dos avisos al
+ * grupo de reparto y el envío cobrado dos veces. Reclamó, y entró una persona
+ * al chat a deshacerlo.
+ *
+ * Con este puerto, a quien ya tiene un pedido que todavía se puede rearmar se
+ * le manda el enlace que lo REABRE —con lo que eligió dentro— en vez de uno en
+ * blanco. El pedido viejo no se toca hasta que confirme el corregido.
+ *
+ * Opcional: sin él la tool se comporta como antes. Quien decide si un pedido es
+ * rearmable NO es este archivo, es `isReplaceableOrder` en `default-reply`, la
+ * misma regla que aplica la vía determinística.
+ */
+export interface OpenOrderPort {
+  findReplaceable(customerPhone: string): Promise<{
+    orderId: string;
+    orderNumber: string;
+    totalAmount: number;
+    /** Sin QR que mandar: el copy no puede prometerle uno que no existe. */
+    isCash: boolean;
+  } | null>;
+}
+
+/** Lo que el modelo recibe tras pedir el envío. Sin URL, sin token, sin WAMID. */
+export interface SendMenuToolResult {
+  sent: boolean;
+  status: DispatchMenuResult['result'];
+}
+
+/**
+ * Envía el menú delegando en el Shared Menu Dispatch de 5A.
+ *
+ * No duplica NADA: ni sesión, ni token, ni CTA, ni idempotencia, ni ledger,
+ * ni memoria del automatismo. Esta función solo traduce una intención del
+ * modelo a una llamada del backend.
+ *
+ * ── Quién decide el motivo ──────────────────────────────────────────────────
+ *
+ * El modelo NO. La tool no tiene argumentos, así que no hay `force`, ni
+ * `reason`: aunque los mandara, la llamada se rechaza antes de ejecutarse. Lo
+ * único que el modelo hace es pedir el envío.
+ *
+ * El motivo lo pone aquí el backend leyendo el entrante REAL del turno:
+ *
+ *   el cliente nombró el menú  →  `explicit_request`
+ *   no lo nombró               →  `agent_suggestion`
+ *
+ * Desde que se quitó el cooldown, esa etiqueta ya no abre ni cierra ninguna
+ * puerta: es OBSERVABILIDAD y los dos envían igual. Y significa solo lo que
+ * dice — `agent_suggestion` es "el entrante no nombró el menú", no "al agente
+ * se le ocurrió a él": "¿qué hamburguesas tienen?" cae ahí y es una petición
+ * de ver productos como una casa.
+ *
+ * La única protección contra duplicados es la idempotencia técnica: el mismo
+ * WAMID nunca produce dos CTAs. La garantiza el UNIQUE de 0015, no esta
+ * función.
+ */
+export function createSendMenuTool(
+  dispatcher: MenuDispatchPort,
+  /** Ausente = la tool manda siempre el menú en blanco, como antes del 05-09. */
+  openOrders?: OpenOrderPort,
+): AgentTool {
+  return {
+    definition: {
+      name: SEND_MENU,
+      description:
+        'Envía al cliente el menú interactivo de Don Zarco por WhatsApp. Úsala ' +
+        'SIEMPRE que la respuesta tendría que enumerar VARIOS productos, una ' +
+        'CATEGORÍA entera o lo que hay disponible: "qué tienen?", "qué ' +
+        'hamburguesas hay?", "qué bebidas tienen?", "qué extras hay?", "qué ' +
+        'opciones hay?". También cuando el cliente quiera elegir para pedir. ' +
+        'Mandar el menú es mejor que reescribir el catálogo en el chat.',
+      parameters: NO_ARGUMENTS,
+    },
+    // Manda un mensaje al WhatsApp del cliente: el core tiene que comprobar la
+    // pausa ANTES de ejecutarla. Es lo único que separa "el agente sugiere el
+    // menú" de "el agente interrumpe a la persona que está atendiendo".
+    producesUserVisibleEffect: true,
+    // El CTA que sale ya lleva imagen, copy y botón "Ver menú": es la respuesta
+    // entera. Pedirle además una frase al modelo es lo que produjo el fallo del
+    // 16-08-2026 — una frase que anunciaba un menú que nunca se mandó. Si el
+    // envío se confirma, el turno cierra aquí y no hay frase que pueda mentir;
+    // si no se confirma, esto no se activa y el modelo redacta con el fallo
+    // delante, que es justo cuando SÍ hace falta que hable.
+    effectCompletesTurn: true,
+    async execute(context: AgentToolContext): Promise<AgentToolOutcome> {
+      const reason: MenuSendReason = isExplicitMenuRequest(context.inboundText)
+        ? 'explicit_request'
+        : 'agent_suggestion';
+
+      /**
+       * ¿Ya tiene un pedido que se puede rearmar? Entonces el enlace es OTRO.
+       *
+       * Nunca lanza: si la consulta falla, se manda el menú de siempre. Quedarse
+       * sin contestar por no poder mirar un pedido sería peor que el problema
+       * que esto viene a evitar.
+       */
+      const rearmable = await (async () => {
+        if (!openOrders) return null;
+        try {
+          return await openOrders.findReplaceable(context.customerPhone);
+        } catch {
+          return null;
+        }
+      })();
+
+      const result = await dispatcher.dispatch({
+        customerPhone: context.customerPhone,
+        sourceMessageId: context.sourceMessageId,
+        phoneNumberId: context.phoneNumberId,
+        // Quien ya tiene un pedido y pide más NO está pidiendo la carta: está
+        // corrigiendo lo suyo. Eso es explícito aunque no nombre el menú.
+        reason: rearmable === null ? reason : 'explicit_request',
+        // El botón es el ÚNICO mensaje que sale cuando el menú se manda —el
+        // turno cierra en silencio—, así que su texto es la única oportunidad
+        // de contestar lo que el cliente acababa de preguntar.
+        ctaContext: rearmable === null ? classifyMenuCtaContext(context.inboundText) : null,
+        ...(rearmable === null
+          ? {}
+          : {
+              replacesOrderId: rearmable.orderId,
+              buttonText: MENU_CHANGE_BUTTON_TEXT,
+              // El copy lo construye el canal con datos del backend —su número
+              // y su total—, nunca el modelo. Es el MISMO que manda la vía
+              // determinística.
+              bodyText: orderChangeCtaText(
+                rearmable.orderNumber,
+                rearmable.totalAmount,
+                rearmable.isCash,
+              ),
+            }),
+      });
+
+      // `duplicate` significa que ESTE mismo mensaje del cliente ya provocó un
+      // envío: para el cliente el menú está, así que cuenta como enviado.
+      //
+      // `failed` y `send_unknown` NO cuentan. El segundo es el que más importa:
+      // ahí el proveedor no nos dio certeza, y cerrar el turno como éxito
+      // silencioso dejaría al cliente sin nada y sin rastro de que faltó algo.
+      // La incertidumbre la sigue custodiando el ledger del menú.
+      // `echo` (20-09-2026) cuenta igual que `duplicate`, y por el mismo
+      // motivo: el botón está en la pantalla del cliente —salió hace
+      // segundos—, así que el efecto que el modelo quería provocar existe.
+      // Contarlo como fallo le haría buscar otra forma de mandar lo que ya
+      // mandó.
+      const sent =
+        result.result === 'sent' || result.result === 'duplicate' || result.result === 'echo';
+
+      const toolResult: SendMenuToolResult = { sent, status: result.result };
+
+      // La MISMA verdad para el modelo y para el core, calculada una sola vez a
+      // partir del resultado real del despacho. Nada de esto pasa por OpenAI.
+      return { result: toolResult, userVisibleEffectConfirmed: sent };
+    },
+  };
+}

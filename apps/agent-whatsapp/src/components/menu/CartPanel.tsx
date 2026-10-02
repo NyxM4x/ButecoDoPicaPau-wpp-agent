@@ -1,0 +1,321 @@
+'use client';
+
+import { useEffect, useMemo } from 'react';
+import type { MenuItem } from '@/types';
+import type { CartSummary } from '@/lib/cart/cart';
+// Formatter monetario de presentación compartido (puro): `Bs 45,00`.
+import { formatMoney } from '@/lib/dashboard/format';
+import { unifiedTotals, type PromoCartSummary } from '@/lib/cart/promo-cart';
+import { expiryLabel, resolvePromotionImage } from '@/lib/promotions/promotion-display';
+import { ProductImage } from './ProductImage';
+import { QuantityControl } from './QuantityControl';
+
+/**
+ * Panel del carrito (sin librería de modales). Se cierra con el botón, con
+ * Escape o tocando fuera; siempre se puede volver al catálogo sin perder la
+ * selección.
+ *
+ * Responsive: en móvil (< lg) es una hoja inferior (bottom-sheet). Desde `lg:`
+ * pasa a un drawer lateral derecho de altura completa y ancho acotado, para no
+ * ocupar toda la pantalla en monitor. El estado, las acciones, las cantidades,
+ * los cálculos y el checkout NO cambian: solo la disposición.
+ */
+export function CartPanel({
+  open,
+  summary,
+  promoSummary,
+  items,
+  now,
+  onClose,
+  onAdd,
+  onRemove,
+  onAddPromo,
+  onRemovePromo,
+  onContinue,
+  canCheckout,
+  checkoutNotice,
+}: {
+  open: boolean;
+  summary: CartSummary;
+  /** Los combos del carrito, ya cruzados con su estado real. */
+  promoSummary: PromoCartSummary;
+  items: MenuItem[];
+  /** Reloj del servidor, para la etiqueta de vencimiento. */
+  now: number;
+  onClose: () => void;
+  onAdd: (code: string) => void;
+  onRemove: (code: string) => void;
+  onAddPromo: (promotionId: string) => void;
+  onRemovePromo: (promotionId: string) => void;
+  onContinue: () => void;
+  /** `false` sin sesión válida o con la sesión ya consumida. */
+  canCheckout: boolean;
+  checkoutNotice: string | null;
+}) {
+  const itemsByCode = useMemo(
+    () => new Map(items.map((item) => [item.code, item])),
+    [items],
+  );
+
+  const totales = useMemo(() => unifiedTotals(summary, promoSummary), [summary, promoSummary]);
+
+  /**
+   * Lo que traía guardado y se agotó mientras tanto (07-09-2026).
+   *
+   * El carrito vive en el navegador entre visitas, así que el producto que se
+   * agotó anoche sigue dentro esta mañana. Se descuenta del total —cobrar lo que
+   * no hay es lo único inaceptable— pero descontarlo en silencio deja al cliente
+   * creyendo que pidió algo que no va a llegarle, y enterándose en la puerta.
+   *
+   * Se nombra desde `items`, que trae TAMBIÉN los agotados desde que la vitrina
+   * los enseña: por eso aquí hay un nombre que enseñar y no un código. Lo que no
+   * se puede nombrar —un código viejo de un producto ya borrado— no se menciona:
+   * "se agotó producto_x" es peor que no decir nada.
+   *
+   * Cuando NO sobrevive nada del carrito, este panel no llega a abrirse: sin
+   * unidades no se pinta el botón que lo abre. Ese caso lo explica la vitrina,
+   * donde el producto sigue estando, en gris y con su etiqueta.
+   */
+  const agotados = useMemo(
+    () =>
+      summary.unavailableCodes
+        .map((code) => itemsByCode.get(code)?.name)
+        .filter((name): name is string => name !== undefined),
+    [summary.unavailableCodes, itemsByCode],
+  );
+
+  /**
+   * Lo que el cliente se ahorra por los combos que lleva.
+   *
+   * Solo se muestra si es positivo. Un "Ahorras Bs 0" en un carrito sin
+   * promociones es ruido, y con promociones sería la señal de que algo se
+   * calculó mal.
+   */
+  const ahorro = useMemo(
+    () =>
+      promoSummary.lines.reduce(
+        (sum, l) => sum + (l.normalPrice - l.unitPrice) * l.quantity,
+        0,
+      ),
+    [promoSummary.lines],
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-40 flex flex-col justify-end lg:flex-row lg:justify-end">
+      <button
+        type="button"
+        aria-label="Cerrar carrito"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/50"
+      />
+
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label="Tu carrito"
+        // EXPERIMENTAL (rediseno-menu-fastfood): mismo lenguaje que la tarjeta
+        // del menú —fondo oscuro cálido, títulos en la display, dorado para lo
+        // que es plata—. La DISPOSICIÓN no cambia: hoja inferior en móvil,
+        // drawer lateral desde `lg:`.
+        className="relative flex max-h-[85vh] flex-col rounded-t-3xl bg-gradient-to-b from-red-950 to-donzarco-ink shadow-xl lg:h-full lg:max-h-none lg:w-[520px] lg:max-w-[92vw] lg:rounded-none lg:rounded-l-3xl"
+      >
+        <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
+          <h2 className="font-display text-2xl tracking-wide text-donzarco-gold uppercase">
+            Tu pedido
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Volver al menú"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-lg leading-none text-white ring-1 ring-white/20 backdrop-blur-sm"
+          >
+            ✕
+          </button>
+        </div>
+
+        <ul className="flex-1 divide-y divide-white/10 overflow-y-auto px-4">
+          {/* Los combos van primero, como en el menú: es el orden en el que el
+              cliente los vio, y el que explica por qué el total es más bajo de
+              lo que suman los productos. */}
+          {promoSummary.lines.map((line) => {
+            const imagen = resolvePromotionImage(
+              line.promotion.imageUrl,
+              line.promotion.components,
+            );
+            const vence = expiryLabel(line.promotion.endsAt, now);
+            // MISMA resolución de imagen que la tarjeta del menú: un
+            // placeholder aquí, para algo que allí sí tenía foto, parece un
+            // error de carga.
+            const item =
+              imagen.kind === 'component'
+                ? { code: imagen.code, category: imagen.category, name: line.name }
+                : { code: '', category: 'plato' as const, name: line.name };
+
+            return (
+              <li key={line.promotionId} className="flex items-center gap-3 py-3">
+                <div className="relative shrink-0">
+                  <ProductImage
+                    item={item}
+                    src={imagen.kind === 'url' ? imagen.url : undefined}
+                    alt={line.name}
+                    className="h-14 w-14 rounded-lg"
+                    sizes="56px"
+                  />
+                  <span className="absolute left-0.5 top-0.5 rounded-full bg-donzarco-gold px-1 py-px text-[8px] font-bold uppercase text-donzarco-ink">
+                    Promo
+                  </span>
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-white">{line.name}</p>
+                  <p className="text-xs text-white/60 tabular-nums">
+                    {line.quantity} × {formatMoney(line.unitPrice)}
+                  </p>
+                  {vence !== null && (
+                    <p className="text-[11px] font-medium text-donzarco-gold">{vence}</p>
+                  )}
+                </div>
+
+                <div className="flex flex-col items-end gap-1.5">
+                  <span className="text-sm font-bold text-white tabular-nums">
+                    {formatMoney(line.subtotal)}
+                  </span>
+                  <QuantityControl
+                    name={line.name}
+                    quantity={line.quantity}
+                    onAdd={() => onAddPromo(line.promotionId)}
+                    onRemove={() => onRemovePromo(line.promotionId)}
+                    size="sm"
+                    tone="inverse"
+                  />
+                </div>
+              </li>
+            );
+          })}
+
+          {summary.lines.map((line) => {
+            const item = itemsByCode.get(line.product_code);
+            return (
+              <li key={line.product_code} className="flex items-center gap-3 py-3">
+                {item ? (
+                  <ProductImage
+                    item={item}
+                    className="h-14 w-14 shrink-0 rounded-lg"
+                    sizes="56px"
+                  />
+                ) : null}
+
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-white">
+                    {line.product_name_snapshot}
+                  </p>
+                  <p className="text-xs text-white/60 tabular-nums">
+                    {line.quantity} × {formatMoney(line.unit_price_snapshot)}
+                  </p>
+                </div>
+
+                <div className="flex flex-col items-end gap-1.5">
+                  <span className="text-sm font-bold text-white tabular-nums">
+                    {formatMoney(line.subtotal)}
+                  </span>
+                  <QuantityControl
+                    name={line.product_name_snapshot}
+                    quantity={line.quantity}
+                    onAdd={() => onAdd(line.product_code)}
+                    onRemove={() => onRemove(line.product_code)}
+                    size="sm"
+                    tone="inverse"
+                  />
+                </div>
+              </li>
+            );
+          })}
+
+          {agotados.length > 0 && (
+            <li className="py-3">
+              <p
+                role="status"
+                className="rounded-xl bg-amber-400/15 px-3 py-2 text-sm leading-relaxed text-amber-200 ring-1 ring-amber-300/30"
+              >
+                Se {agotados.length === 1 ? 'agotó' : 'agotaron'}{' '}
+                <span className="font-semibold">{listaDe(agotados)}</span>.{' '}
+                {agotados.length === 1 ? 'Lo quitamos' : 'Los quitamos'} de tu pedido y el total ya
+                no {agotados.length === 1 ? 'lo incluye' : 'los incluye'}.
+              </p>
+            </li>
+          )}
+        </ul>
+
+        <div className="border-t border-white/10 px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          {/* Las dos listas suman juntas. Pintar aquí solo `summary` dejaría un
+              carrito con un combo mostrando "Bs 0,00". */}
+          <div className="flex items-center justify-between text-sm text-white/60">
+            <span>Subtotal</span>
+            <span className="tabular-nums">{formatMoney(totales.subtotal)}</span>
+          </div>
+          {ahorro > 0 && (
+            <div className="mt-0.5 flex items-center justify-between text-sm font-semibold text-emerald-300">
+              <span>Ahorras</span>
+              <span className="tabular-nums">{formatMoney(ahorro)}</span>
+            </div>
+          )}
+          <div className="mt-1 flex items-center justify-between text-white">
+            <span className="text-lg font-bold">Total</span>
+            {/* La plata no va en la display: en Bangers el 7 parece un 1, y un
+                total de Bs 71 leído como Bs 11 es una discusión en la puerta.
+                Ver `ProductCard`. */}
+            <span className="font-price text-2xl tracking-wide text-yellow-400 tabular-nums">
+              {formatMoney(totales.total)}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-white/50">
+            El costo de envío se define al finalizar el pedido.
+          </p>
+
+          <button
+            type="button"
+            onClick={onContinue}
+            disabled={!canCheckout}
+            aria-describedby={checkoutNotice ? 'cart-checkout-notice' : undefined}
+            className="mt-4 w-full rounded-full bg-donzarco-gold px-5 py-4 text-base font-bold text-donzarco-ink shadow-lg shadow-black/30 transition-transform active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
+          >
+            Continuar pedido
+          </button>
+
+          {checkoutNotice ? (
+            <p
+              id="cart-checkout-notice"
+              role="status"
+              className="mt-3 rounded-xl bg-amber-400/15 px-3 py-2 text-center text-sm leading-relaxed text-amber-200 ring-1 ring-amber-300/30"
+            >
+              {checkoutNotice}
+            </p>
+          ) : null}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/**
+ * "Trancapecho", "Trancapecho y Papas", "Trancapecho, Papas y Coca".
+ *
+ * A mano y no con `Intl.ListFormat`: son tres nombres como mucho y el separador
+ * del castellano no cambia, así que traer un formateador de locale para esto
+ * añadiría una dependencia del entorno del navegador a cambio de nada.
+ */
+function listaDe(nombres: string[]): string {
+  if (nombres.length <= 1) return nombres[0] ?? '';
+  return `${nombres.slice(0, -1).join(', ')} y ${nombres[nombres.length - 1]}`;
+}

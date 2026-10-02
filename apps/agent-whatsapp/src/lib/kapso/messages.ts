@@ -1,0 +1,1084 @@
+import { z } from 'zod';
+import {
+  businessHoursClock,
+  BUSINESS_ADDRESS,
+  BUSINESS_MAPS_URL,
+} from '@/lib/agent/business/facts';
+import { formatBs } from '@/lib/orders/calculate';
+import { shortOrderNumber } from '@/lib/orders/order-number';
+import type { MenuSendReason } from '@/lib/menu/dispatch';
+import type { MenuCtaContext } from '@/lib/menu/cta-context';
+import { LOCATION_HOW_TO_TEXT, ORDER_RECEIVED_PREFIX } from './outbound-classify';
+
+/**
+ * Construcción de mensajes salientes de Kapso — módulo puro.
+ *
+ * El payload de `location_request_message` es EXACTAMENTE el confirmado por
+ * Kapso Support (no cambiar la forma sin reconfirmar).
+ */
+
+export const LOCATION_REQUEST_BODY_TEXT =
+  'Por favor comparte tu ubicación actual para coordinar el delivery.';
+
+/**
+ * Cuerpo del mensaje de INGRESO del pedido web: el único que sale cuando el
+ * cliente confirma un delivery (0039, 20-09-2026).
+ *
+ * ── Antes eran dos globos seguidos ──────────────────────────────────────────
+ *
+ *   1) 📦 Recibimos tu pedido #42.
+ *      Ahora necesitamos tu ubicación para calcular el costo de delivery.
+ *   2) 📍 Pedido ORD-260919-042: envíame tu ubicación GPS, por favor…
+ *
+ * El segundo repetía lo que acababa de decir el primero y empezaba por un
+ * número largo que el cliente no usa para nada. Ahora es uno: saluda el pedido
+ * con el número corto —el que la gente dice en voz alta— y pide la ubicación.
+ *
+ * ── Por qué el número largo sigue aquí, al final ────────────────────────────
+ *
+ * Porque no es decoración: es el ÚNICO token con el que se empareja un saliente
+ * con su notificación cuando el envío queda ambiguo (`reconciliation.ts` exige
+ * el número exacto). Sin él, ese mensaje no se reconcilia, el worker lo
+ * reintenta y el cliente lo recibe dos veces — justo lo que este cambio viene a
+ * evitar. Va en su propia línea y al final, como una referencia, para que no
+ * estorbe la lectura de lo que sí hay que hacer.
+ *
+ * Las instrucciones de cómo mandar la ubicación NO se escriben aquí: las añade
+ * `buildLocationRequestPayload`, para que ningún camino pueda quedarse sin ellas.
+ */
+export function buildWebLocationRequestBodyText(orderNumber: string): string {
+  return [
+    `${ORDER_RECEIVED_PREFIX}${shortOrderNumber(orderNumber)}.`,
+    '',
+    '📍 Ahora envíanos tu *UBICACIÓN ACTUAL* por GPS para calcular el costo del envío 😊',
+    `Pedido ${orderNumber}`,
+  ].join('\n');
+}
+
+/**
+ * Cómo se manda la ubicación, dicho paso a paso.
+ *
+ * Nombra la opción con las palabras EXACTAS que WhatsApp pinta en pantalla
+ * —"Enviar ubicación actual"— porque una instrucción que hay que traducir a lo
+ * que se ve es una instrucción que no se sigue.
+ *
+ * El texto NO se escribe aquí: se importa del clasificador, donde viven las
+ * marcas canónicas del copy. Desde que la petición dejó de ser un botón, esta
+ * línea es lo único que la distingue de cualquier otro texto, y dos copias
+ * podrían separarse sin que nada avisara.
+ */
+export { LOCATION_HOW_TO_TEXT };
+
+/**
+ * Petición de ubicación, como MENSAJE DE TEXTO.
+ *
+ * ── Por qué ya no lleva el botón ─────────────────────────────────────
+ *
+ * Era un `interactive.location_request_message` con su botón `send_location`, y
+ * el botón daba problemas en el último paso del flujo (03-09-2026): el cliente
+ * se quedaba ahí y el pedido nunca llegaba a cotizarse. Ahora es texto plano con
+ * las instrucciones dentro.
+ *
+ * Quitarlo NO rompe la correlación, y esa es la razón de que se pueda quitar.
+ * El camino bueno sigue siendo `context.id` —el wamid de ESTE mensaje— cuando el
+ * cliente responde citándolo; y cuando manda el pin con el clip, sin citar nada,
+ * lo recoge `attachLooseLocation`, que busca un pedido en `awaiting_location` de
+ * ese teléfono y le adjunta las coordenadas. Ese camino existe desde 0028
+ * justamente porque mucha gente ya ignoraba el botón.
+ *
+ * `bodyText` mantiene su significado: omitido, el copy del WhatsApp Flow;
+ * pasado, el del checkout web. Las instrucciones se añaden AQUÍ y no en cada
+ * copy, para que ningún camino pueda quedarse sin ellas.
+ */
+export function buildLocationRequestPayload(
+  toDigits: string,
+  bodyText: string = LOCATION_REQUEST_BODY_TEXT,
+) {
+  if (bodyText.trim() === '') {
+    throw new Error('buildLocationRequestPayload: bodyText must not be empty');
+  }
+  return buildTextPayload(toDigits, bodyText + '\n\n' + LOCATION_HOW_TO_TEXT);
+}
+
+/**
+ * Payload de un mensaje de texto simple (formato Kapso/WhatsApp Cloud).
+ *
+ * No incluye `preview_url`: el formato actual de Kapso no lo exige y su omisión
+ * deja el comportamiento por defecto de WhatsApp (sin previsualización de enlaces).
+ *
+ * `toDigits` se espera ya normalizado (lo hace el transporte). `text` se envía
+ * verbatim —incluidos saltos de línea— y no puede estar vacío ni ser solo
+ * espacios (invariante del emisor, no una condición de runtime).
+ */
+export function buildTextPayload(toDigits: string, text: string) {
+  if (text.trim() === '') {
+    throw new Error('buildTextPayload: text must not be empty');
+  }
+  return {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: toDigits,
+    type: 'text',
+    text: {
+      body: text,
+    },
+  } as const;
+}
+
+// ── Imagen (Fase 6D.1: QR de pago) ────────────────────────────────────────
+
+/**
+ * URL pública del QR de pago fijo del restaurante. Es una constante (igual que
+ * `MENU_URL`) y NO se deriva de `APP_BASE_URL` a propósito: WhatsApp exige una
+ * URL pública https para la imagen, y en local `APP_BASE_URL` valdría
+ * `http://localhost:3000`, inaccesible desde el teléfono. Fuente única: si
+ * cambia el dominio del deployment, cambiar aquí.
+ *
+ * ── El nombre del archivo lleva el año, y no es decorativo ──────────────────
+ *
+ * Al cambiar de cuenta (02-09-2026) el fichero se renombró en vez de
+ * sobrescribirse. Reemplazar los píxeles dejando la misma URL habría dejado dos
+ * cachés capaces de servir el QR ANTERIOR durante horas —la CDN del deployment
+ * y la de medios de WhatsApp, que guarda por enlace—, y ese QR apunta a una
+ * cuenta que ya no es la del negocio: el cliente transferiría el dinero a otro
+ * sitio y el análisis lo marcaría como sospechoso teniendo razón.
+ *
+ * Una URL que nunca ha existido no puede estar cacheada. Al renombrar el QR,
+ * renombrar también aquí.
+ */
+export const PAYMENT_QR_URL = 'https://sarco-restaurant.vercel.app/payment/qr-2026.jpeg';
+
+/**
+ * Texto para el cliente cuando su ubicación queda FUERA de la zona de delivery
+ * (> 18 km de ruta real, Fase 6D.2C). Copy corto y neutro; sin kilómetros, sin
+ * tarifa, sin detalles de Mapbox. Se envía como texto directo best-effort (NO
+ * crea fila en order_notifications) y una sola vez, únicamente cuando
+ * `mark_delivery_quote_result` confirma la transición real a out_of_coverage.
+ */
+export const OUT_OF_COVERAGE_TEXT =
+  'Lo sentimos 😔 tu ubicación está fuera de nuestra zona de delivery. ' +
+  'Escríbenos y coordinamos una alternativa para tu pedido.';
+
+/**
+ * Payload de un mensaje de imagen por enlace (formato Kapso/WhatsApp Cloud).
+ *
+ * `imageUrl` debe ser una URL pública https. `caption` viaja verbatim como pie
+ * de la imagen (WhatsApp lo admite hasta ~1024 caracteres) y NO puede estar
+ * vacío ni ser solo espacios. `toDigits` se espera ya normalizado (lo hace el
+ * transporte).
+ */
+export function buildImagePayload(toDigits: string, imageUrl: string, caption: string) {
+  if (imageUrl.trim() === '') {
+    throw new Error('buildImagePayload: imageUrl must not be empty');
+  }
+  if (caption.trim() === '') {
+    throw new Error('buildImagePayload: caption must not be empty');
+  }
+  return {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: toDigits,
+    type: 'image',
+    image: {
+      link: imageUrl,
+      caption,
+    },
+  } as const;
+}
+
+// ── CTA URL "Ver menú" (Fase 5.2A) ───────────────────────────────────────
+
+/**
+ * Texto del cuerpo del mensaje interactivo con el botón del menú.
+ *
+ * Va SIEMPRE acompañado del botón "Ver menú" en el mismo mensaje: por eso aquí
+ * sí se puede pedir que lo toquen. En un mensaje de texto suelto esa frase
+ * sería una promesa falsa (no habría ningún botón que tocar).
+ *
+ * El horario aparece aquí porque este suele ser el primer mensaje que recibe un
+ * cliente nuevo. Ya NO se escribe a mano: sale de `businessHoursClock()`, la
+ * misma fuente que usa el agente.
+ *
+ * La copia a mano duró hasta el primer cambio de horario, tal como avisaba el
+ * comentario que estaba aquí: el local pasó a abrir a las 18:00 y este mensaje
+ * siguió diciendo 21:00 a cada cliente nuevo. Un dato duplicado "con cuidado" es
+ * un dato que se va a desincronizar; lo único que lo evita es que haya uno solo.
+ */
+export const MENU_CTA_BODY_TEXT =
+  `Hola, soy Don Zarco 👋 Atendemos todos los días de ${businessHoursClock()}. ` +
+  'Toca el botón para ver el menú, elegir lo que quieras y mandar tu pedido desde ahí mismo.';
+
+/**
+ * El cuerpo del CTA, según POR QUÉ se manda el menú.
+ *
+ * ── Por qué el copy vive aquí y no en el prompt ─────────────────────────────
+ *
+ * Un `send_menu` confirmado cierra el turno EN SILENCIO: el modelo no escribe
+ * ni una frase después de mandar el botón. Así que todo lo que hay que decirle
+ * al cliente para que entienda el cambio tiene que caber en este mensaje — no
+ * hay ningún otro momento en el que decirlo.
+ *
+ * Y está bien que sea así. Escrito aquí, el texto llega siempre igual de bien
+ * redactado, el modelo no puede estropearlo ni inventarse una variante, no
+ * cuesta un solo token, y lo ve TAMBIÉN quien llega por la ruta determinística
+ * —que ni pasa por el agente—.
+ *
+ * ── Qué distingue a cada variante ───────────────────────────────────────────
+ *
+ * El motivo lo decide el backend leyendo el mensaje real del cliente, nunca el
+ * modelo. Y el criterio de redacción es el mismo en todas: la ventaja es del
+ * CLIENTE. "Hemos actualizado nuestro sistema" habla del negocio y a nadie le
+ * importa; "así entra completo y no se pierde nada" habla de su pedido.
+ *
+ * El horario aparece SOLO en la variante de saludo: quien escribe "menu" en
+ * frío suele ser un primer contacto. Repetirlo en las demás gasta líneas de un
+ * mensaje que se lee de un vistazo.
+ */
+export function menuCtaBodyText(
+  reason: MenuSendReason,
+  context: MenuCtaContext | null = null,
+  /**
+   * ¿Se acepta efectivo ahora? En noche de promoción no (14-09-2026), ver
+   * `promotions/promo-mode`. Ausente = sí, como siempre.
+   *
+   * `promoActive` dice si el motivo es la promoción (21-09-2026): el efectivo
+   * también se apaga aparte, en `orders/cash-enabled`. Ausente = no.
+   */
+  options: { cashAllowed?: boolean; promoActive?: boolean } = {},
+): string {
+  // El CONTEXTO manda sobre el motivo cuando consta, porque es más específico:
+  // el motivo dice con qué autoridad se manda el menú, y el contexto qué
+  // acababa de preguntar el cliente. Contestar a lo segundo es lo que convierte
+  // este mensaje en una respuesta y no solo en un botón.
+  //
+  // El reenvío es la excepción y va antes: a quien dice "no me llegó" el
+  // problema no fue de comprensión, y explicarle otra vez cómo se pide sería
+  // tratarlo de torpe por muy bien clasificada que esté su frase anterior.
+  if (context !== null && reason !== 'explicit_resend') {
+    switch (context) {
+      // Preguntó si puede pagar en efectivo, y todavía no entró al menú
+      // (05-09-2026). Se le contesta que SÍ antes que nada: es lo que le está
+      // impidiendo tocar el botón. Y se le dice dónde se elige, porque la
+      // respuesta completa es "sí, y se hace ahí dentro".
+      //
+      // En noche de promoción la respuesta es NO, y se dice igual de primero:
+      // un "¡Sí!" aquí lo haría armar el pedido para descubrir en el último paso
+      // que la opción está deshabilitada. Lo que sigue es cómo sí puede pagar.
+      //
+      // Sin efectivo y SIN promoción (`orders/cash-enabled`, 21-09-2026) también
+      // es NO, pero sin "por la promoción": no es por eso, y el que vuelva
+      // mañana tampoco lo va a encontrar. Desde el 27-09-2026 se le dice además
+      // POR QUÉ, con el mismo párrafo que recibe quien ya tiene pedido: ver
+      // `CASH_POLICY_TEXT`.
+      case 'cash':
+        if (options.cashAllowed === false && options.promoActive !== true) {
+          return (
+            `${CASH_POLICY_TEXT}\n\n` +
+            'Armá tu pedido en el botón 👇 y pagalo con el QR que te mandamos por ' +
+            'acá. El envío se lo seguís pagando al repartidor cuando llega.'
+          );
+        }
+        if (options.cashAllowed === false) {
+          return (
+            'Hoy no: por la promoción, el pago es solo por QR. Armá tu pedido ' +
+            'en el botón 👇 y pagalo con el QR que te mandamos por acá.'
+          );
+        }
+        return (
+          '¡Sí! 👇 Armá tu pedido en el botón y al confirmarlo elegí EFECTIVO ' +
+          'como método de pago: le pagás al delivery cuando llegue con tu pedido.'
+        );
+      // Preguntó un precio. El menú los tiene todos, y esa es la respuesta.
+      case 'price':
+        return (
+          'Los precios están todos ahí dentro 👇 Tocá el botón, mirá lo que ' +
+          'quieras y armá tu pedido con el total a la vista.'
+        );
+      // Preguntó por el envío. No se le da un monto —depende de su ubicación—
+      // pero sí dónde y cuándo lo va a ver, que es lo que quería saber.
+      case 'delivery':
+        return (
+          'Armá tu pedido acá 👇 Al confirmarlo compartís tu ubicación y te ' +
+          'sale el costo del envío sumado al total, antes de pagar.'
+        );
+      // Dictó su pedido. Se le reconoce lo que quiere y se le explica la
+      // ventaja, nunca la regla: "no puedo" suena a muro y no ayuda a nadie.
+      case 'dictated':
+        return (
+          'Armálo vos mismo acá 👇 Elegís lo tuyo, ves el total al momento y ' +
+          'el pedido entra completo, sin que se pierda nada por el camino.'
+        );
+      // Solo saludó. Es casi siempre el primer contacto, y lo que necesita es
+      // el horario y una puerta — no una pregunta de vuelta. Reutiliza el
+      // saludo completo en lugar de escribir una variante: es el mismo mensaje,
+      // y tener dos que digan lo mismo es tener dos que se desincronicen.
+      case 'greeting':
+        return MENU_CTA_BODY_TEXT;
+    }
+  }
+
+  switch (reason) {
+    // "No me llegó", "mandámelo de nuevo": el problema fue técnico, no de
+    // comprensión. Explicarle otra vez cómo se pide sería tratarlo de torpe.
+    case 'explicit_resend':
+      return (
+        'Te lo mando de nuevo 👇 Tocá el botón y ahí elegís lo que quieras, ' +
+        'ves el total y confirmás tu pedido.'
+      );
+    // Nadie pidió el menú: lo mandamos porque preguntó qué hay o qué venden.
+    case 'agent_suggestion':
+      return (
+        'Todo lo que tenemos está acá 👇 Tocá el botón, mirá los precios y armá ' +
+        'tu pedido en un minuto.'
+      );
+    // Pidió el menú por su nombre, o es la prueba interna: el saludo completo.
+    default:
+      return MENU_CTA_BODY_TEXT;
+  }
+}
+
+/** Etiqueta del botón (WhatsApp la limita a 20 caracteres). */
+export const MENU_CTA_BUTTON_TEXT = 'Ver menú';
+
+/**
+ * Etiqueta del botón cuando el enlace viene a CAMBIAR un pedido (0035).
+ *
+ * "Ver menú" sería mentir por omisión: lo que hay detrás no es la carta para
+ * pedir otra cosa, es el mismo pedido para corregirlo. Quien lo toque tiene que
+ * saber qué va a pasar antes de tocarlo.
+ *
+ * En MAYÚSCULAS desde el 04-09-2026, por decisión del negocio: el botón llega a
+ * un cliente que acaba de pedir un cambio y tiene que distinguirse de un vistazo
+ * del "Ver menú" de siempre. WhatsApp no admite formato dentro de un botón, así
+ * que las mayúsculas son lo único que queda para diferenciarlos.
+ *
+ * Diecinueve caracteres, dentro del tope de veinte que impone WhatsApp: no cabe
+ * ni una letra más.
+ */
+export const MENU_CHANGE_BUTTON_TEXT = 'MODIFICAR MI PEDIDO';
+
+/**
+ * Cuerpo del CTA que abre el pedido para corregirlo.
+ *
+ * ── Las tres cosas que tiene que decir ──────────────────────────────────────
+ *
+ *   1. de QUÉ pedido hablamos —su número y su total, para que no dude—;
+ *   2. que TODAVÍA se puede, que es lo que le quita la urgencia de escribir;
+ *   3. que al confirmar recibe el total nuevo, para que no pague el viejo.
+ *
+ * El punto 3 es el que evita el peor desenlace: que pague el QR anterior por un
+ * pedido que acaba de cambiar. Por eso no se recorta aunque alargue el mensaje.
+ */
+export function orderChangeCtaText(
+  orderNumber: string,
+  totalAmount: number,
+  /** `true` si el pedido se paga en efectivo: entonces no hay QR que mandar. */
+  isCash = false,
+): string {
+  const cierre = isCash
+    ? 'te mandamos el total actualizado'
+    : 'te mandamos el total actualizado con el QR';
+  return (
+    `Tu pedido ${shortOrderNumber(orderNumber)} todavía no está pagado, así que ` +
+    `podés cambiarlo 👇 Armálo de nuevo como lo querés y ${cierre}. ` +
+    `Ahora mismo suma ${formatBs(totalAmount)}.`
+  );
+}
+
+/** Una línea del pedido, tal como se le enseña al cliente. */
+export interface OrderReviewLine {
+  name: string;
+  quantity: number;
+  subtotal: number;
+}
+
+/**
+ * "Tu pedido quedó así: ¿te falta algo?" (05-09-2026).
+ *
+ * ── Por qué se le ENSEÑA el pedido antes de ofrecerle cambiarlo ─────────────
+ *
+ * Porque el desglose es el dato que no tenía. El cliente conoce su total —se lo
+ * dijimos— pero no lo que lo compone, y desde el chat no hay forma de mirarlo:
+ * el menú ya se cerró. Pedirle que decida si le falta algo sin enseñarle lo que
+ * lleva es pedirle que lo recuerde.
+ *
+ * ── Y por qué se le pregunta en vez de mandarle el botón directo ────────────
+ *
+ * Es una decisión del negocio, tomada con su coste sobre la mesa: cuesta un
+ * turno más. A cambio, el cliente ve su pedido y elige, en vez de recibir un
+ * botón que no pidió.
+ *
+ * ── La forma de la pregunta no es libre ─────────────────────────────────────
+ *
+ * "¿Querés agregar algo más?" y no "¿está bien tu pedido?": es lo que hace que
+ * un "no" suelto signifique una sola cosa. Ver `order-review-reply.ts`, que la
+ * lee. Cambiar esta frase sin cambiar aquel módulo rompe las respuestas.
+ *
+ * Los números son la parte fea y la que no se puede quitar: el sistema no lee
+ * las respuestas de botón de WhatsApp, así que la única respuesta que no hay que
+ * adivinar es un dígito. Los sinónimos los cubre el detector, porque casi nadie
+ * va a contestar con el número.
+ */
+export function orderReviewText(input: {
+  orderNumber: string;
+  lines: readonly OrderReviewLine[];
+  deliveryAmount: number;
+  totalAmount: number;
+  isCash: boolean;
+}): string {
+  const lineas = input.lines.map(
+    (l) => `• ${l.quantity}x ${l.name} — ${formatBs(l.subtotal)}`,
+  );
+
+  // El envío solo si está cotizado: en `awaiting_location` todavía no existe, y
+  // escribir "Envío: Bs. 0" diría que es gratis.
+  const envio = input.deliveryAmount > 0 ? [`Envío: ${formatBs(input.deliveryAmount)}`] : [];
+
+  // Cómo paga, en la misma línea del total: es lo que cierra la cuenta. Sin
+  // total cotizado no se afirma ninguno.
+  const comoPaga = input.isCash ? ' (pagás en efectivo al recibir)' : '';
+  const total =
+    input.totalAmount > 0 ? [`Total: ${formatBs(input.totalAmount)}${comoPaga}`] : [];
+
+  return [
+    `Tu pedido ${shortOrderNumber(input.orderNumber)} quedó así 👇`,
+    '',
+    ...lineas,
+    ...envio,
+    ...total,
+    '',
+    '¿Querés agregar algo más?',
+    '  Respondé *1* para agregar algo',
+    '  Respondé *2* si está bien así',
+  ].join('\n');
+}
+
+/**
+ * "Listo, queda así." La respuesta a quien contestó que no le falta nada.
+ *
+ * Cierra el turno y no propone nada más: quien acaba de decir que su pedido
+ * está bien no necesita otra pregunta. Lo único que se le recuerda es lo que
+ * todavía tiene que hacer —mandar el comprobante—, y solo cuando es cierto: en
+ * efectivo no hay nada que mandar, se paga en la puerta.
+ */
+export function orderReviewKeptText(
+  orderNumber: string,
+  totalAmount: number,
+  isCash = false,
+): string {
+  const cierre = isCash
+    ? `Pagás ${formatBs(totalAmount)} en efectivo al recibirlo.`
+    : 'Cuando puedas, mandanos la foto del comprobante por acá y lo pasamos a la cocina.';
+
+  return `Listo, tu pedido ${shortOrderNumber(orderNumber)} queda así 🙌 ${cierre}`;
+}
+
+/**
+ * Imagen de portada del CTA del menú (Fase 6D.2E). Asset local versionado y
+ * público (mismo patrón que `PAYMENT_QR_URL`). DEBE ser JPEG/PNG: WhatsApp Cloud
+ * NO admite WebP en mensajes tipo imagen (solo stickers). Fuente única: si cambia
+ * el dominio del deployment, cambiar aquí.
+ */
+export const MENU_COVER_URL = 'https://sarco-restaurant.vercel.app/menu/menu-cover.jpeg';
+
+/**
+ * URL de la tienda. Es una constante y NO se deriva de `APP_BASE_URL` a
+ * propósito: WhatsApp exige una URL pública https, y en local `APP_BASE_URL`
+ * vale `http://localhost:3000`, que abriría un enlace roto en el teléfono.
+ * Si cambia el dominio del deployment, cambiar aquí.
+ */
+export const MENU_URL = 'https://sarco-restaurant.vercel.app/menu';
+
+/**
+ * Payload del mensaje interactivo CTA URL con el botón "Ver menú".
+ *
+ * Fase 5.2B: `url` puede ser dinámico (con sesión) o el valor constante.
+ * Fase 6D.2E (Opción A): incluye un `header` de imagen (portada del menú) en el
+ * MISMO mensaje interactivo — un solo envío, atómico. `coverImageUrl` es
+ * inyectable (default `MENU_COVER_URL`); el `session_token` viaja SOLO en `url`,
+ * nunca en el body ni en el header.
+ */
+export function buildMenuCtaPayload(
+  toDigits: string,
+  url: string = MENU_URL,
+  coverImageUrl: string = MENU_COVER_URL,
+  /**
+   * Cuerpo del mensaje. Por defecto el de saludo, para que un llamador que aún
+   * no distinga el motivo se comporte exactamente como antes.
+   */
+  bodyText: string = MENU_CTA_BODY_TEXT,
+  /**
+   * Etiqueta del botón. Por defecto "Ver menú": la única razón para cambiarla
+   * es que el enlace haga otra cosa, como el de 0035, que abre el pedido para
+   * corregirlo.
+   */
+  buttonText: string = MENU_CTA_BUTTON_TEXT,
+) {
+  return {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: toDigits,
+    type: 'interactive',
+    interactive: {
+      type: 'cta_url',
+      header: {
+        type: 'image',
+        image: {
+          link: coverImageUrl,
+        },
+      },
+      body: {
+        text: bodyText,
+      },
+      action: {
+        name: 'cta_url',
+        parameters: {
+          display_text: buttonText,
+          url,
+        },
+      },
+    },
+  } as const;
+}
+
+// ── Recordatorio del comprobante (03-09-2026) ────────────────────────────────
+
+/**
+ * Lo que recibe quien ya tiene su pedido cotizado y todavía no mandó el pago.
+ *
+ * ── Por qué existe ──────────────────────────────────────────────────────────
+ *
+ * Desde que el botón del menú es la respuesta por defecto (`default-reply.ts`),
+ * hay un cliente al que mandárselo sería contestarle a otra persona: el que ya
+ * armó su pedido, recibió su total y su QR, y escribe mientras busca la foto del
+ * comprobante. A ese no le falta el menú — le falta un paso, y es el único que
+ * queda entre su pedido y la plancha.
+ *
+ * ── Lo que este texto NO puede parecer ──────────────────────────────────────
+ *
+ * No lleva el prefijo `📦 Pedido ` ni las etiquetas `Comida:` / `Delivery:` /
+ * `Total:`. Esas son las MARCAS CANÓNICAS con las que `outbound-classify`
+ * reconoce una confirmación, y un recordatorio que las llevara se emparejaría
+ * con la notificación de otro mensaje al reconciliar. El número va en su forma
+ * corta (`#7`), que además es la que el cliente reconoce.
+ *
+ * ── La cifra es la del QR, no el total (17-09-2026) ─────────────────────────
+ *
+ * Decía "está guardado por Bs. 71" —comida más envío— justo cuando el pie del
+ * QR ya había dejado de enseñar esa suma (ver `buildQrPaymentCaption`). La
+ * noche del 16-09 el cliente del #6 no recibió el QR, le llegó este texto, y
+ * transfirió Bs. 71: el envío que se paga al repartidor, cobrado por QR.
+ *
+ * Así que dice lo que se transfiere, `foodAmount`, que sale de la misma columna
+ * que el pie del QR (`subtotal_amount`). El envío se nombra sin cifra y con a
+ * quién se le paga; si no hay envío —el recojo— no se menciona.
+ */
+export function proofReminderText(
+  orderNumber: string,
+  foodAmount: number,
+  totalAmount: number,
+): string {
+  const envio =
+    totalAmount > foodAmount ? ' (solo la comida; el envío se lo pagas al repartidor)' : '';
+  return (
+    `Tu pedido ${shortOrderNumber(orderNumber)} está guardado 🙌 ` +
+    `Falta que transfieras *${formatBs(foodAmount)}*${envio} y nos mandes la foto ` +
+    'del comprobante por acá. Con eso lo pasamos a la cocina al toque.'
+  );
+}
+
+// ── El pago es solo por QR (27-09-2026) ──────────────────────────────────────
+
+/**
+ * Por qué ya no hay efectivo, dicho una sola vez y en un solo sitio.
+ *
+ * Lo leen los dos que preguntan: el que todavía no pidió —va dentro del cuerpo
+ * del botón del menú, ver `menuCtaBodyText`— y el que ya tiene un pedido por QR
+ * sin pagar, ver `cashPolicyText`. Escrito dos veces acabaría diciendo dos
+ * cosas distintas.
+ *
+ * El motivo habla de los PAGOS en efectivo y no de los clientes: quien lo lee
+ * es un cliente, y nadie sigue pidiendo después de leer que el problema es él.
+ */
+export const CASH_POLICY_TEXT =
+  'Desde ahora los pedidos se pagan solo por QR. Tuvimos muchos problemas con ' +
+  'los pagos en efectivo, y así nos aseguramos de que cada pedido llegue bien.';
+
+/**
+ * "¿Puedo pagar en efectivo?" / "No tengo QR", con un pedido por QR sin pagar.
+ *
+ * El aviso de la política y, debajo, lo que le falta a SU pedido — que es la
+ * pregunta que de verdad hace: cómo lo paga.
+ *
+ * Sin pedido cotizado no hay QR todavía, así que no se le pide uno: se le dice
+ * que le llega. Con él, la cifra es la del QR —`foodAmount`— y el envío se
+ * nombra aparte, igual que en `proofReminderText` y por lo mismo: a quien
+ * pregunta por el efectivo es a quien más fácil se le ocurre transferir el
+ * total entero.
+ */
+export function cashPolicyText(input: {
+  orderNumber: string;
+  foodAmount: number;
+  totalAmount: number;
+  /** ¿El pedido todavía espera la ubicación, y con ella el QR? */
+  awaitingLocation: boolean;
+}): string {
+  const pedido = shortOrderNumber(input.orderNumber);
+
+  if (input.awaitingLocation) {
+    return (
+      `${CASH_POLICY_TEXT}\n\n` +
+      `Tu pedido ${pedido} sigue guardado: en cuanto tengamos tu ubicación y el ` +
+      'envío calculado, te mandamos el QR por acá para pagarlo.'
+    );
+  }
+
+  const envio =
+    input.totalAmount > input.foodAmount
+      ? ' El envío se lo pagás al repartidor cuando llega.'
+      : '';
+  return (
+    `${CASH_POLICY_TEXT}\n\n` +
+    `Tu pedido ${pedido} sigue guardado: transferí *${formatBs(input.foodAmount)}* ` +
+    'con el QR que te mandamos y mandanos la foto del comprobante por acá.' +
+    envio
+  );
+}
+
+/**
+ * SU PEDIDO ESTÁ PARADO Y FALTA EL PIN (07-09-2026).
+ *
+ * ── El agujero de los catorce pedidos ───────────────────────────────────────
+ *
+ * Un pedido en `awaiting_location` no está cotizado: no tiene envío calculado ni
+ * QR que enseñar. Y aun así, cualquier cosa que escribiera su dueño recibía
+ * `proofReminderText` —"falta que nos mandes la foto del comprobante"— porque
+ * `payment` vale `no_proof`, que es literalmente cierto y completamente inútil:
+ * le pedíamos el comprobante de un pago que nunca se le pidió.
+ *
+ * El 07-09 había catorce pedidos parados ahí, y cinco con comprobante: gente que
+ * hizo caso y pagó a ciegas, con el QR de un pedido anterior, por una comanda
+ * que nunca llegó a cocina. Uno de Bs 108. El del #50 mandó tres en media hora.
+ *
+ * Este texto dice lo ÚNICO que hace avanzar ese pedido, y repite las
+ * instrucciones porque la petición original puede estar veinte mensajes atrás.
+ *
+ * NO lleva el monto. `total_amount` sin cotizar es solo la comida, y enseñarlo
+ * como si fuera el total es prometer un precio que va a subir cuando se calcule
+ * el envío.
+ */
+export function locationReminderText(orderNumber: string): string {
+  return (
+    `Tu pedido ${shortOrderNumber(orderNumber)} está guardado 🙌 Para seguir nos ` +
+    'falta tu ubicación: sin ella no podemos calcular el envío ni mandarte el QR.' +
+    '\n\n' +
+    LOCATION_HOW_TO_TEXT
+  );
+}
+
+/**
+ * El pin ya llegó y el que tarda soy yo (07-09-2026).
+ *
+ * La otra mitad del mismo estado, y es la que impide que este arreglo cree el
+ * fallo que viene a quitar. El delivery dinámico guarda el GPS y deja el pedido
+ * en `awaiting_location` hasta que responde la cotización (ver
+ * `attach-location`), así que ahí `awaiting_location` significa lo contrario:
+ * falta algo NUESTRO.
+ *
+ * Pedirle otra vez lo que acaba de mandar es el error del 04-09 —aquel cliente
+ * reenvió su comprobante tres veces y acabó hablando con una persona— con otro
+ * dato. De los catorce parados el 07-09, uno estaba justo así.
+ *
+ * NO promete un plazo. La cotización puede fallar, y prometer "en un minuto"
+ * para después callarse es peor que no decir nada.
+ */
+export function quotingWaitText(orderNumber: string): string {
+  return (
+    `Ya tenemos tu ubicación para el pedido ${shortOrderNumber(orderNumber)} 🙌 ` +
+    'Estamos calculando el costo del envío y te mandamos el total con el QR en ' +
+    'cuanto esté.'
+  );
+}
+
+/**
+ * Ya tenemos su comprobante y todavía no lo hemos mirado (06-09-2026).
+ *
+ * Es la otra mitad de `proofReminderText`. Al cliente que YA mandó su foto no
+ * se le puede pedir otra —el 04-09 le pasó a uno, y acabó reenviándola tres
+ * veces y hablando con una persona— pero tampoco se le puede dejar sin
+ * respuesta: el que escribe después de pagar está preguntando si llegó.
+ *
+ * ── Por qué pide además que no escriba más ──────────────────────────────────
+ *
+ * Porque después de este mensaje el agente CALLA, y un silencio que llega sin
+ * anunciarse se lee como que se cortó la conversación. La versión anterior solo
+ * pedía no reenviar la foto, y el cliente seguía escribiendo — cada mensaje le
+ * devolvía el mismo texto, porque el cooldown de la variante `received` nunca
+ * llegaba a calcularse. Ver `waitingOnUs` y `waitNoticeSent`.
+ *
+ * Sale UNA vez por pedido. Eso no lo gobierna un reloj sino el pedido mismo.
+ *
+ * Texto del DUEÑO, palabra por palabra: minúsculas y tildes ausentes incluidas.
+ * No se "corrige" de estilo — misma regla que `KITCHEN_NOTE_ACK_TEXT`.
+ *
+ * No lleva `📦 Pedido `, `Comida:`, `Delivery:` ni `Total:`: son las marcas
+ * canónicas con las que `outbound-classify` reconoce una confirmación, y este
+ * mensaje se emparejaría con la de otro pedido al reconciliar.
+ */
+export const PROOF_WAIT_TEXT =
+  'perfecto danos tiempo para revisar el comprobante y te diremos nuestra ' +
+  'respuesta, no es necesario que envies tu comprobante de nuevo, ni mas ' +
+  'mensajes, solo te pido un poco de paciencia.';
+
+/**
+ * El mismo aviso, para el pedido en EFECTIVO ya confirmado (06-09-2026).
+ *
+ * Aquí no hay comprobante que revisar —el cliente escribió CONFIRMO y paga en
+ * la puerta— así que la mitad del texto de arriba no aplica. Lo que sí aplica
+ * es lo mismo que hace falta decirle: que ya está hecho y que no tiene que
+ * escribir más.
+ *
+ * NO promete avisarle cuando salga. No existe ningún saliente automático que
+ * haga eso —`notifyDeliveryGroup` va a Telegram, no a él— y prometerlo lo
+ * devolvería a escribir preguntando por un aviso que nadie iba a mandar.
+ */
+export const CASH_WAIT_TEXT =
+  'Perfecto, tu pedido ya está en cocina 🙌 Danos un tiempo para prepararlo y ' +
+  'salir, no es necesario que mandes más mensajes, solo te pido un poco de ' +
+  'paciencia.';
+
+/**
+ * Pide cambiar algo cuando ya no se puede tocar el pedido (06-09-2026).
+ *
+ * ── Por qué se le manda con el repartidor ───────────────────────────────────
+ *
+ * Porque es el único que todavía puede hacerlo. Cuando este texto sale, la
+ * comanda ya está puesta y el aviso ya salió al grupo de reparto — y ese aviso
+ * NO se reescribe: el outbox manda lo que se encoló, así que una nota anotada
+ * ahora no la vería nadie con la bolsa delante. Ver `delivery-notice-service`.
+ *
+ * Antes de esto, "quiero llajua" después del comprobante se anotaba en el
+ * pedido y se le contestaba que sí. La nota entraba en la comanda si había
+ * suerte y desaparecía si no, sin que el cliente pudiera saber cuál de las dos
+ * cosas pasó.
+ *
+ * ── La variante de recojo ───────────────────────────────────────────────────
+ *
+ * A quien pasa a buscarlo no lo va a llamar ningún delivery, y decírselo sería
+ * hacerle esperar una llamada que no existe. Ahí la persona a quien decírselo
+ * es la del mostrador, cuando llegue.
+ */
+export function deliveryRelayText(deliveryType: 'delivery' | 'pickup' | null): string {
+  return deliveryType === 'pickup'
+    ? 'Tu pedido ya está en cocina 🙌 Cuando pases a recogerlo, decinos ahí mismo lo que necesitás.'
+    : 'El delivery se comunicará contigo. Espera sus mensajes y hazle saber esto mismo antes de que salga 🙌';
+}
+
+/**
+ * El pedido pasa a recojo porque el cliente dijo que se lo lleva él.
+ *
+ * Dice las TRES cosas que cambian para él, en el orden en que le importan: que
+ * ya no hay envío, cuánto queda por pagar, y que no tiene que hacer nada con el
+ * QR que ya tiene. Esa última frase es la que evita el mensaje siguiente:
+ * cambiar el tipo de entrega no cambia lo que se paga por QR —el envío nunca
+ * viajó en él, se cobraba en la puerta—, pero el cliente no tiene por qué
+ * saberlo, y sin decírselo vuelve a preguntar.
+ *
+ * NO promete deshacerlo. Mientras no exista el camino de vuelta automático,
+ * ofrecerlo sería la promesa que este proyecto no hace.
+ */
+export function pickupSwitchText(
+  orderNumber: string,
+  foodAmount: number,
+  /** `true` si paga en efectivo: no hay QR, paga al recoger. */
+  isCash = false,
+): string {
+  const pago = isCash
+    ? `Ya no pagas envío: son ${formatBs(foodAmount)} y los pagas al recoger.`
+    : `Ya no pagas envío: son ${formatBs(foodAmount)} y el QR que te mandamos sigue valiendo.`;
+  return (
+    `Listo 🛍️ Tu pedido ${shortOrderNumber(orderNumber)} queda para que lo recojas ` +
+    `en el local. ${pago} Te avisamos apenas esté listo.`
+  );
+}
+
+/**
+ * "Paso yo a recogerlo": el local ya no hace recojo (15-09-2026).
+ *
+ * Empieza por el NO y sigue con lo que le importa: que su pedido no se tocó y
+ * sale igual. Sin esa segunda mitad, un "no hay recojo" suelto se lee como que
+ * algo le pasó al pedido.
+ *
+ * Ya no dice "hoy, por la promoción". Lo decía cuando el recojo se apagaba una
+ * noche (14-09); dar ese motivo ahora sería prometer entre líneas que mañana
+ * vuelve. Ver `orders/pickup-enabled`.
+ */
+export function pickupUnavailableText(orderNumber: string): string {
+  return (
+    `No hacemos recojo: todos los pedidos salen con delivery. ` +
+    `Tu pedido ${shortOrderNumber(orderNumber)} sigue igual y te lo llevamos 🛵`
+  );
+}
+
+/**
+ * Pedidos nuevos PAUSADOS por saturación (0038, 14-09-2026).
+ *
+ * Sale EN LUGAR del botón del menú: un enlace a un menú que no deja confirmar
+ * sería peor que decirlo de frente. Tres cosas y en este orden: qué pasa (no es
+ * que no lo leímos, es que no damos abasto), qué hacer (volver a escribir en un
+ * rato, sin prometer hora) y la tranquilidad de quien ya pidió, que es quien
+ * más reclama si lee "pausamos los pedidos" sin esa frase.
+ *
+ * No manda a hablar con nadie: la cola es justamente lo que no hay que alargar.
+ *
+ * Desde el 28-09-2026 el botón se usa para cerrar la noche entera, no para un
+ * rato: el dueño pidió que diga de frente que hoy no se atiende. Con la pausa
+ * el cliente no llega al menú web, así que este es el único aviso que ve.
+ */
+export const ORDERS_PAUSED_TEXT =
+  'El día de hoy NO ESTAMOS ATENDIENDO, MIL DISCULPAS 🙏 ' +
+  'Si ya hiciste tu pedido, sigue en curso.';
+
+/**
+ * Lo que recibe quien pide algo para la plancha sobre un pedido ya armado.
+ *
+ * ── Por qué no se le manda a rearmar el pedido ──────────────────────────────
+ *
+ * Porque "sin cebolla" no cambia ni una línea ni un centavo, y hacerle rehacer
+ * todo su pedido por eso es desproporcionado — palabras del dueño el
+ * 03-09-2026. Lo que sí hace falta es que la cocina se entere, y de eso se
+ * encarga la nota; este mensaje solo lo confirma.
+ *
+ * La segunda frase es la que evita que esto se repita cada noche: le enseña
+ * dónde va la próxima vez. Enseñar el sitio vale más que pedir disculpas por no
+ * tenerlo.
+ *
+ * ── Por qué es más largo de lo que parece necesario (04-09-2026) ────────────
+ *
+ * La primera versión decía lo mismo en dos líneas y el dueño la leyó SECA. No
+ * es un capricho de tono: el cliente que escribe "sin cebolla" está pidiendo un
+ * favor, y una respuesta que solo confirma y da una instrucción se lee como un
+ * reproche por haberlo pedido mal. Por eso el texto explica el PORQUÉ —que se
+ * pierde entre los mensajes de otros clientes— y cierra agradeciendo.
+ *
+ * El texto es del dueño, palabra por palabra. No se "corrige" de estilo.
+ *
+ * Se afirma SOLO lo que ya ocurrió: cuando este texto sale, la nota está escrita
+ * en el pedido y la comanda la lleva. Es la misma regla que gobierna el resto de
+ * los salientes — nada de "se lo vamos a pasar".
+ */
+export const KITCHEN_NOTE_ACK_TEXT =
+  '¡Claro que sí! Ya se lo anotamos a la cocina 🙌 La próxima puedes escribirlo ' +
+  'en los comentarios al armar tu pedido por favor, así no se nos perdera entre ' +
+  'los msjs con otros clientes, todo esto es para darte la mejor atencion, ' +
+  'muchas gracias por su preferencia.';
+
+/**
+ * Respuesta exitosa del envío: debe contener el id del mensaje saliente en
+ * `messages[0].id` (se guarda en `orders.location_request_message_id`).
+ */
+export const kapsoSendResponseSchema = z.object({
+  messages: z
+    .array(z.object({ id: z.string().min(1) }))
+    .min(1),
+});
+
+export type KapsoSendResponse = z.infer<typeof kapsoSendResponseSchema>;
+
+
+// ── Dónde queda el local (09-09-2026) ────────────────────────────────────────
+
+/**
+ * Lo que recibe quien pregunta por la dirección DEL LOCAL.
+ *
+ * ── Por qué es un texto fijo y no una respuesta del modelo ──────────────────
+ *
+ * Porque la respuesta no cambia nunca. El agente ya tenía esta misma dirección
+ * en su prompt y la orden de darla, pero nunca llegaba a que se la preguntaran:
+ * el botón del menú es la respuesta por defecto y se comía el mensaje antes
+ * (`local-address-intent.ts` explica el caso completo).
+ *
+ * ── Las DOS cosas van juntas, y es una orden heredada ───────────────────────
+ *
+ * La dirección en palabras Y el enlace, en el mismo mensaje. Lo dice
+ * `business/facts.ts` desde el 02-09-2026, después de una regresión en la que
+ * el modelo soltaba la calle y se dejaba el enlace: cada una sola falla de una
+ * forma distinta — la dirección sin enlace obliga a buscarla a mano, y el
+ * enlace sin dirección obliga a abrir el navegador solo para saber si queda
+ * cerca.
+ *
+ * ── Y por qué dice que es el único local ────────────────────────────────────
+ *
+ * Porque el mismo detector atiende "¿tienen sucursal?" y "¿hay uno por el
+ * norte?". Contestar solo con la dirección deja esa pregunta a medias y trae un
+ * segundo mensaje preguntando lo mismo. Es un hecho, no un dato que falte.
+ *
+ * ── Sin `BUSINESS_ADDRESS` sale solo el enlace ──────────────────────────────
+ *
+ * Es la misma regla del prompt: preferible mandar solo el mapa a inventar una
+ * calle o transcribir mal un barrio.
+ */
+export function localAddressText(
+  /**
+   * ¿Hay recojo? Desde el 15-09-2026 no, nunca: ver `orders/pickup-enabled`.
+   * Ausente = sí, que es como quedan los tests que no hablan de esto.
+   *
+   * La dirección se manda igual —quien pregunta dónde queda puede querer otra
+   * cosa, y sigue siendo el único local— pero el mismo detector atiende "¿se
+   * puede pasar a recoger?", y la dirección sola le contestaría que sí.
+   */
+  options: { pickupAllowed?: boolean } = {},
+): string {
+  const donde =
+    BUSINESS_ADDRESS === null
+      ? 'Estamos acá 📍'
+      : `Estamos ${BUSINESS_ADDRESS} 📍`;
+
+  const sinRecojo =
+    options.pickupAllowed === false
+      ? '\n\nEso sí: no hacemos recojo, todos los pedidos salen con delivery 🛵'
+      : '';
+
+  return (
+    `${donde}\n${BUSINESS_MAPS_URL}\n\n` +
+    `Es nuestro único local, y atendemos todos los días de ${businessHoursClock()}.` +
+    sinRecojo
+  );
+}
+
+// ── Botones de respuesta: el pedido en efectivo (13-09-2026) ─────────────────
+
+/**
+ * El pedido en efectivo se decide con DOS BOTONES, no con una palabra.
+ *
+ * ── Por qué se cambia lo que el 05-09 se decidió al revés ───────────────────
+ *
+ * Aquel día se eligió pedir la palabra entera —"CONFIRMO", "CANCELAR"— con un
+ * argumento bueno: una palabra no se teclea por accidente, y aquí el accidente
+ * agenda o tira un pedido. Lo que no se vio es el otro lado del trato: el
+ * cliente que dice que sí con SUS palabras.
+ *
+ *   #47  "ya esta bien mandamelo"   →  el detector no lo vio  →  derivación
+ *
+ * Un botón no tiene ese problema por los dos lados a la vez: no se pulsa sin
+ * querer —hay que tocarlo— y no hay forma de decirlo mal, porque no se dice.
+ *
+ * ── El id lleva el número de pedido dentro ──────────────────────────────────
+ *
+ * `cash_confirm:ORD-260913-047`, no `cash_confirm` a secas. En WhatsApp se
+ * puede subir el chat y tocar el botón de un mensaje de anoche, y entonces la
+ * pregunta "¿de qué pedido me habla?" tiene que tener respuesta en el propio
+ * mensaje. Sin el número habría que suponerlo, y se supondría el pedido de hoy.
+ */
+export const CASH_CONFIRM_BUTTON_PREFIX = 'cash_confirm:';
+export const CASH_CANCEL_BUTTON_PREFIX = 'cash_cancel:';
+
+export const CASH_CONFIRM_BUTTON_TITLE = '✅ CONFIRMAR';
+export const CASH_CANCEL_BUTTON_TITLE = '❌ CANCELAR';
+
+/** Límites de WhatsApp Cloud API para `interactive.type = 'button'`. */
+export const REPLY_BUTTONS_MAX = 3;
+export const REPLY_BUTTON_TITLE_MAX = 20;
+export const REPLY_BUTTON_ID_MAX = 256;
+export const INTERACTIVE_BODY_MAX = 1024;
+
+export interface ReplyButton {
+  /** Viaja de vuelta en `interactive.button_reply.id`. Es el contrato. */
+  id: string;
+  /** Lo que lee el cliente. */
+  title: string;
+}
+
+/** Los dos botones de un pedido en efectivo, en el orden en que se pintan. */
+export function cashDecisionButtons(orderNumber: string): ReplyButton[] {
+  return [
+    { id: `${CASH_CONFIRM_BUTTON_PREFIX}${orderNumber}`, title: CASH_CONFIRM_BUTTON_TITLE },
+    { id: `${CASH_CANCEL_BUTTON_PREFIX}${orderNumber}`, title: CASH_CANCEL_BUTTON_TITLE },
+  ];
+}
+
+/**
+ * Payload de un mensaje interactivo con botones de respuesta.
+ *
+ * Mismas reglas que el resto de builders de este módulo: valida los invariantes
+ * del emisor y LANZA si no se cumplen; el transporte traduce eso a un error
+ * tipado y no llega a llamar a `fetch`. Un payload que WhatsApp va a rechazar no
+ * merece un viaje de red para enterarse.
+ *
+ * Los límites son los de la API, no preferencias nuestras: 3 botones, 20
+ * caracteres de título, 1024 de cuerpo. El id se comprueba además ÚNICO: dos
+ * botones con el mismo id son dos respuestas indistinguibles.
+ */
+export function buildReplyButtonsPayload(
+  toDigits: string,
+  bodyText: string,
+  buttons: readonly ReplyButton[],
+) {
+  if (bodyText.trim() === '') {
+    throw new Error('buildReplyButtonsPayload: bodyText must not be empty');
+  }
+  if (bodyText.length > INTERACTIVE_BODY_MAX) {
+    throw new Error('buildReplyButtonsPayload: bodyText too long');
+  }
+  if (buttons.length === 0 || buttons.length > REPLY_BUTTONS_MAX) {
+    throw new Error('buildReplyButtonsPayload: buttons must be between 1 and 3');
+  }
+
+  const vistos = new Set<string>();
+  for (const button of buttons) {
+    if (button.id.trim() === '' || button.id.length > REPLY_BUTTON_ID_MAX) {
+      throw new Error('buildReplyButtonsPayload: invalid button id');
+    }
+    if (button.title.trim() === '' || button.title.length > REPLY_BUTTON_TITLE_MAX) {
+      throw new Error('buildReplyButtonsPayload: invalid button title');
+    }
+    if (vistos.has(button.id)) {
+      throw new Error('buildReplyButtonsPayload: duplicate button id');
+    }
+    vistos.add(button.id);
+  }
+
+  return {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: toDigits,
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      body: { text: bodyText },
+      action: {
+        buttons: buttons.map((button) => ({
+          type: 'reply',
+          reply: { id: button.id, title: button.title },
+        })),
+      },
+    },
+  } as const;
+}
+
+/**
+ * Lo que recibe quien ESCRIBE en vez de tocar (13-09-2026).
+ *
+ * Con los botones delante, este cliente es el que se quedó sin puerta: dice que
+ * sí con sus palabras, el detector estricto no lo reconoce, y hasta hoy acababa
+ * en una derivación a una persona. Ahora se le vuelve a poner delante lo único
+ * que hace avanzar su pedido.
+ *
+ * Sale CON los botones pegados, no como texto suelto: los del mensaje anterior
+ * siguen vivos más arriba en el chat, pero pedirle que suba a buscarlos es
+ * exactamente el trabajo que este mensaje existe para ahorrarle.
+ */
+export const CASH_REPROMPT_TEXT =
+  'Para mandar tu pedido a cocina necesito que toques uno de los dos botones 👇';
+
+/**
+ * La segunda y última vez. Después de esta el agente se calla y el pedido lo
+ * cierra el barrido de los 20 minutos, que es quien tiene el reloj.
+ *
+ * Dice la consecuencia, que es lo único que la primera no decía: no es que no
+ * te entienda, es que tu pedido no se está cocinando.
+ */
+export const CASH_LAST_CALL_TEXT =
+  '⚠️ Tu pedido todavía NO está en cocina.\n\n' +
+  'Si no tocás *CONFIRMAR* o *CANCELAR* aquí abajo, se cancela solo en unos ' +
+  'minutos y nadie lo prepara 👇';

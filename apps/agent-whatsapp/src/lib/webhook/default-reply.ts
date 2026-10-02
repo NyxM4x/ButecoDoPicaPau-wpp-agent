@@ -1,0 +1,1154 @@
+import type { OrderStatus, PaymentMethod } from '@/types';
+import type { PaymentGateState } from '@/lib/payment-proof/payment-gate';
+import { PROOF_TARGET_TTL_MS } from '@/lib/payment-proof/association';
+import {
+  isKitchenNoteRequest,
+  isOrderChangeAnnouncement,
+  isOrderChangeRequest,
+  isQuantityFixRequest,
+  kitchenNoteFrom,
+} from './order-change-intent';
+import { isPickupSwitchRequest } from './pickup-switch-intent';
+import { isLocalAddressRequest } from './local-address-intent';
+import { readOrderReviewReply } from './order-review-reply';
+import { readCashConfirmReply } from './cash-confirm-reply';
+import type { CashButtonPress } from './cash-confirm-button';
+import { isCourtesyOnly } from './courtesy';
+import { mentionsCash } from '@/lib/menu/cta-context';
+import { CASH_ENABLED } from '@/lib/orders/cash-enabled';
+
+/**
+ * QUÉ RECIBE EL CLIENTE CUANDO NO PIDIÓ NADA CONCRETO — módulo PURO (03-09-2026).
+ *
+ * ── El cambio de política que documenta este archivo ────────────────────────
+ *
+ * Hasta hoy el botón del menú salía por LISTA BLANCA: `menu-intent.ts` reconocía
+ * un puñado de frases ("quiero pedir", "menú", "ver carta") y todo lo demás caía
+ * al modelo. La lista se fue alargando conversación a conversación —el imperfecto
+ * de cortesía, el saludo encadenado, el pedido dictado— y aun así el 03-09-2026
+ * una conversación entera terminó sin menú y con el cliente escribiendo "me puede
+ * responder sin ia si":
+ *
+ *   "buenas" · "noches" · "a cuanto"      →  "¿En qué puedo ayudarte esta noche?"
+ *   "esta el trancapecho" · "disculpe"    →  "¿Quieres saber a cuánto están…?"
+ *
+ * Ninguna de esas frases estaba en la lista, y las dos respuestas fueron
+ * preguntas: dos turnos gastados sin darle al cliente por dónde pedir.
+ *
+ * Así que la lista blanca deja de decidir quién recibe el botón. **El botón es
+ * la respuesta por defecto** y lo que este módulo enumera son las EXCEPCIONES —
+ * las situaciones en las que mandarlo sería peor que no mandarlo. Adivinar cómo
+ * escribe la gente es un problema abierto; enumerar en qué estado está su pedido
+ * es un problema cerrado, y esa es toda la diferencia.
+ *
+ * `menu-intent.ts` NO desaparece ni sobra: sigue decidiendo qué mensajes se
+ * atienden ANTES que la ubicación y la cotización, y sigue poniendo
+ * `explicit_request` en el ledger. Lo que ya no hace es ser la única puerta.
+ *
+ * ── Las cuatro excepciones ──────────────────────────────────────────────────
+ *
+ *   1. NO SABEMOS en qué estado está  → nada. Ver `state: null`.
+ *   2. Un HUMANO está atendiendo      → nada. Es la más importante.
+ *   3. Pide algo para la COCINA sobre un pedido que aún no se cocina
+ *      ("sin cebolla") → se anota y se le contesta que sí.
+ *   4. Quiere CAMBIAR lo que lleva su pedido y todavía no lo pagó
+ *      ("mándame 2 sodas más", "puedo aumentar", "quiero armar de nuevo") → se
+ *      le devuelve su pedido para rearmarlo. Vale también antes de que mande la
+ *      ubicación: ver `ORDER_CHANGE_STATUSES`.
+ *   5. Dice que pasa ÉL a recogerlo ("paso a recogerlo", "para llevar") → el
+ *      pedido deja de ser delivery y se le confirma con el nuevo total.
+ *   6. Tiene un pedido ESPERANDO SU COMPROBANTE → se le recuerda el comprobante.
+ *   7. Tiene cualquier otro pedido ABIERTO      → nada; sigue el camino de hoy.
+ *
+ * Todo lo demás recibe el botón, escriba lo que escriba.
+ */
+
+/**
+ * Estados en los que un pedido sigue VIVO para el cliente.
+ *
+ * `draft` queda fuera a propósito: es un carrito a medias del Flow, no un pedido
+ * que nadie esté esperando. `delivered` y `cancelled` también: ese cliente
+ * volvió a empezar, y a quien vuelve se le manda el menú como al primer día.
+ */
+export const OPEN_ORDER_STATUSES: readonly OrderStatus[] = [
+  'awaiting_location',
+  'confirmed',
+  'preparing',
+  'ready',
+  'on_the_way',
+];
+
+/**
+ * Cuánto atrás se mira un pedido abierto.
+ *
+ * El MISMO reloj con el que un pedido deja de admitir comprobantes
+ * (`PROOF_TARGET_TTL_MS`), importado y no recopiado. Si los dos números
+ * pudieran separarse, existiría la ventana en la que le callamos el menú a un
+ * cliente por un pedido que ya no acepta su pago — lo peor de las dos reglas a
+ * la vez.
+ */
+export const OPEN_ORDER_WINDOW_MS = PROOF_TARGET_TTL_MS;
+
+/**
+ * Cada cuánto, como mucho, se le repite a alguien que nos mande su comprobante.
+ *
+ * El recordatorio contesta a un mensaje del cliente, así que sin tope saldría
+ * uno por cada cosa que escriba: tres mensajes seguidos, tres veces "mandanos el
+ * comprobante". Quince minutos es la misma ventana que ya se le promete por
+ * WhatsApp tras un rechazo (`REJECTION_GRACE_MS`), y es tiempo de sobra para
+ * sacar la foto.
+ */
+export const PROOF_REMINDER_COOLDOWN_MS = 15 * 60 * 1000;
+
+/**
+ * Cada cuánto, como mucho, se le repite "decíselo al repartidor" (07-09-2026).
+ *
+ * Más corto que el del comprobante, y por la razón contraria: aquel frena un
+ * aviso NUESTRO —el cliente no ha hecho nada nuevo, solo escribe— mientras que
+ * este frena la respuesta a algo que él pidió. Callar de más aquí cuesta más,
+ * así que la ventana es la mínima que evita la repetición dentro de la misma
+ * conversación: quien mande cuatro mensajes en un minuto recibe una respuesta,
+ * y quien vuelva a acordarse de algo dentro de un rato recibe otra.
+ *
+ * Ver `deliveryRelaySentRecently`.
+ */
+export const DELIVERY_RELAY_COOLDOWN_MS = 10 * 60 * 1000;
+
+/**
+ * Estados en los que un pedido todavía puede pasar a recojo.
+ *
+ * Son aquellos en los que NADIE salió aún hacia una puerta. `on_the_way` queda
+ * fuera por lo evidente, y `awaiting_location` también, pero por lo contrario:
+ * ese pedido aún no tiene total ni QR, así que no hay nada que recalcular ni
+ * nada que confirmarle. Ese cliente sigue el camino de hoy.
+ *
+ * Las guardas finas —que el aviso de reparto no haya salido, que el envío no
+ * conste cobrado— las pone `pickup-switch-service`, que es quien lee la fila.
+ */
+/**
+ * Estados en los que el pedido todavía se puede REARMAR (04-09-2026).
+ *
+ * `awaiting_location` entró tarde y costó una prueba entera: el 04-09 se probó
+ * el flujo del botón con un pedido recién creado —el cliente escribió "me
+ * aumenta 2 papas" antes de mandar la ubicación— y no pasó nada, porque la
+ * guarda solo miraba `confirmed`. Y es justo al revés: ese es el momento MÁS
+ * seguro para rehacerlo. No hay ubicación, no hay total final, no hay QR, no
+ * hay nada en la plancha; lo único que existe es un carrito con su número.
+ *
+ * Lo que sigue fuera es lo que ya salió: `preparing`, `ready` y `on_the_way`.
+ * Ahí la comida está hecha y rehacer el pedido no la des-hace.
+ */
+export const ORDER_CHANGE_STATUSES: readonly OrderStatus[] = ['awaiting_location', 'confirmed'];
+
+export const PICKUP_SWITCHABLE_STATUSES: readonly OrderStatus[] = [
+  'confirmed',
+  'preparing',
+  'ready',
+];
+
+/** El pedido abierto del cliente, con lo justo para decidir y para escribirle. */
+export interface OpenOrderSnapshot {
+  /** Identificador interno. Solo lo usa quien tiene que ESCRIBIR en el pedido. */
+  orderId: string;
+  /** Interno (`ORD-260903-007`). El copy lo acorta; aquí viaja entero. */
+  orderNumber: string;
+  status: OrderStatus;
+  /** Total ya cotizado, en Bs: comida más envío. Por QR NO es lo que se transfiere. */
+  totalAmount: number;
+  /**
+   * Lo que cuesta la comida, en Bs (`orders.subtotal_amount`, 17-09-2026).
+   *
+   * Es lo que se transfiere por QR: el envío se le paga al repartidor. Sale de
+   * la misma columna que el pie del QR, así que todo mensaje que le pida el pago
+   * a un cliente de QR usa esta cifra y no `totalAmount`.
+   */
+  foodAmount: number;
+  /** Situación del pago, calculada con `paymentGateOf`: una sola regla. */
+  payment: PaymentGateState;
+  /**
+   * ¿Llegó ALGUNA foto para este pedido? (04-09-2026)
+   *
+   * No es lo mismo que `payment`. `payment` se calcula desde
+   * `payment_attempts`, y esa fila solo existe si el archivo se pudo descargar
+   * y guardar. La noche del 04-09 la captura falló tres veces seguidas —
+   * `capture_status: 'failed'`, sin bytes, sin hash— y el sistema quedó
+   * creyendo que aquel cliente no había pagado: le ofreció rehacer un pedido ya
+   * pagado y después le pidió el comprobante que acababa de mandar. Acabó con
+   * dos pedidos y hablando con una persona.
+   *
+   * Esto mira la otra tabla, `payment_proofs`, donde la fila SÍ se escribe
+   * aunque la descarga se caiga. Es una segunda fuente a propósito: si una falla,
+   * la otra sigue sabiendo que ese cliente mandó algo.
+   */
+  proofReceived: boolean;
+  /**
+   * Cómo se paga este pedido (04-09-2026, con la vuelta del efectivo).
+   *
+   * Solo lo usan los COPYS: un pedido en efectivo no tiene QR, y prometerle
+   * "el QR que te mandamos" a quien nunca recibió uno es la clase de frase que
+   * hace escribir al cliente para preguntar qué QR.
+   */
+  paymentMethod: PaymentMethod | null;
+  /**
+   * ¿Es un pedido en EFECTIVO que todavía espera su CONFIRMO? (05-09-2026)
+   *
+   * Sale de `orders.cash_confirmed_at` (migración 0036). Mientras sea `true`
+   * ese pedido no está en cocina ni en el grupo de reparto: el cliente acaba de
+   * ver cuánto le cuesta el envío y todavía puede decir que no.
+   *
+   * Ausente = `false`, que es como se comportaba antes de que existiera este
+   * paso: el pedido se daba por firme en cuanto se cotizaba.
+   */
+  awaitingCashConfirm?: boolean;
+  /**
+   * ¿Es un pedido en EFECTIVO que el cliente YA confirmó? (06-09-2026)
+   *
+   * El complemento de `awaitingCashConfirm`, y hace falta porque aquel no
+   * distingue los dos silencios que lleva dentro: `false` vale igual para el
+   * pedido que todavía no llegó a preguntar y para el que ya contestó.
+   *
+   * Esa ambigüedad costó una frase la noche del 06-09: el cliente del #30
+   * escribió "Ya salió el pedido" sobre un pedido ya confirmado, ninguna guarda
+   * lo agarró, cayó en `open_order` y contestó el modelo — "No puedo confirmar
+   * eso. Necesitas hablar con alguien del equipo."
+   *
+   * Sale de la misma columna, `orders.cash_confirmed_at` (0036). Ausente = `false`.
+   */
+  cashConfirmed?: boolean;
+  /**
+   * ¿Sale por la puerta o lo viene a buscar? (06-09-2026)
+   *
+   * Solo lo usa un COPY, el de `deliveryRelayText`: a quien pasa a recogerlo no
+   * se le puede decir que el delivery lo va a llamar, porque no hay ninguno.
+   */
+  deliveryType?: 'delivery' | 'pickup' | null;
+  /**
+   * ¿Ya nos mandó su ubicación? (07-09-2026)
+   *
+   * Sale de `orders.delivery_latitude`. Existe porque `awaiting_location` no
+   * quiere decir una sola cosa, y confundir las dos cuesta un mensaje absurdo en
+   * cada dirección:
+   *
+   *   SIN GPS   falta ÉL. Lo que hay que pedirle es la ubicación.
+   *   CON GPS   faltamos NOSOTROS: el delivery dinámico guarda el pin y deja el
+   *             pedido en `awaiting_location` hasta que la cotización con Mapbox
+   *             responde (ver `attach-location`). Pedirle otra vez lo que acaba
+   *             de mandar es el error del 04-09 repetido — aquel cliente reenvió
+   *             su comprobante tres veces y acabó hablando con una persona.
+   *
+   * De los catorce pedidos parados en `awaiting_location` el 07-09, trece no
+   * tenían pin y uno sí. Sin este dato, un solo mensaje serviría para los dos y
+   * estaría mal para uno.
+   *
+   * Ausente = `false`: sin saberlo se asume que falta, que es el caso de trece
+   * de cada catorce y el único en el que el cliente puede hacer algo.
+   */
+  locationReceived?: boolean;
+}
+
+/**
+ * Lo que hay que saber del cliente para decidir. Lo resuelve el wiring
+ * server-only; aquí solo se lee.
+ */
+export interface CustomerStateSnapshot {
+  /** ¿Hay una pausa VIGENTE? Es `isPauseActive`, no `state === 'paused'`. */
+  paused: boolean;
+  /** Su pedido abierto más reciente dentro de la ventana, si lo hay. */
+  openOrder: OpenOrderSnapshot | null;
+  /** ¿Ya se le recordó el comprobante hace poco? Ver `PROOF_REMINDER_COOLDOWN_MS`. */
+  proofRemindedRecently: boolean;
+  /**
+   * Cuántas veces se le volvieron a poner los botones delante (13-09-2026).
+   *
+   * Se cuenta desde que nació el pedido, no desde hace un rato: el tope es por
+   * PEDIDO, no por ventana de tiempo. Dos avisos y después el agente calla.
+   *
+   * Ausente = 0, que es lo correcto para un adaptador que todavía no lo
+   * consulta: se comporta como si nunca se le hubiera avisado.
+   */
+  cashRepromptsSent?: number;
+  /**
+   * ¿Hay una pregunta suya sin contestar? (05-09-2026)
+   *
+   * `true` mientras la pregunta "¿querés agregar algo más?" siga fresca. Cambia
+   * lo que significa el siguiente mensaje del cliente: un "no" suelto pasa a ser
+   * una respuesta en vez de un texto cualquiera.
+   *
+   * Caduca sola con `PROOF_REMINDER_COOLDOWN_MS`, el mismo reloj que el
+   * recordatorio del comprobante. Un segundo reloj para lo mismo son dos relojes
+   * que alguien tendrá que mantener a la vez.
+   */
+  awaitingReviewReply?: boolean;
+  /**
+   * Palabras de los productos que se venden, para distinguir una preferencia de
+   * cocina de un cambio de pedido. Ver `order-change-intent.ts`.
+   *
+   * Solo se resuelve cuando hay un pedido que aún admite notas; el cliente sin
+   * pedido no paga esa consulta. Ausente = lista vacía, y sin catálogo NINGUNA
+   * frase se anota: sin poder descartar que nombre un producto, la única
+   * respuesta segura es no tocar el pedido.
+   */
+  catalogTerms?: readonly string[];
+  /**
+   * ¿Ya se le pidió paciencia por ESTE pedido? (06-09-2026)
+   *
+   * No es un cooldown y no puede serlo. `PROOF_REMINDER_COOLDOWN_MS` es una
+   * ventana de 15 minutos, y a los 16 el aviso vuelve a salir; lo que hace
+   * falta aquí es UNA vez y después silencio hasta que el pedido cambie de
+   * manos. Por eso esto se ancla al PEDIDO —al instante en que llegó su
+   * comprobante o en que escribió CONFIRMO— y no al reloj de la conversación.
+   *
+   * Ante un fallo de consulta vale `true`, que es el lado prudente: callar de
+   * más deja al cliente esperando lo mismo que ya esperaba; hablar de más le
+   * repite "danos tiempo" en cada mensaje que escribe, que es exactamente la
+   * queja que esto viene a arreglar.
+   */
+  waitNoticeSent?: boolean;
+  /**
+   * ¿Se le acaba de mandar con el repartidor? (07-09-2026)
+   *
+   * ESTO SÍ es un cooldown, y ahí está la diferencia con el de arriba. El acuse
+   * sale una vez y se acaba: después de "danos un tiempo" no hay nada más que
+   * decirle. El relevo contesta a una petición SUYA, y una hora después puede
+   * tener otra —"y tampoco cebolla"— que también merece respuesta.
+   *
+   * Lo que no puede es repetirse a los dos minutos. Desde que contestar es el
+   * default en ese tramo, cualquier cosa que escriba lo dispara; sin freno, el
+   * cliente que manda cuatro mensajes seguidos leería cuatro veces la misma
+   * frase. Ver `DELIVERY_RELAY_COOLDOWN_MS`.
+   *
+   * Ante un fallo de consulta vale `true` —callar— por lo mismo que el de
+   * arriba: ya se le dijo a quién decírselo hace un momento.
+   */
+  deliveryRelaySentRecently?: boolean;
+  /**
+   * ¿Se le acaba de recordar que falta su ubicación? (07-09-2026)
+   *
+   * Un cooldown de reloj, y del mismo tamaño que el del comprobante
+   * (`PROOF_REMINDER_COOLDOWN_MS`): los dos frenan un recordatorio que DEBE
+   * repetirse, porque mientras falte algo que solo el cliente puede hacer,
+   * callarse lo deja parado. No es el "una vez y ya" del acuse.
+   *
+   * Ante un fallo de consulta vale `true` —callar—: repetirle "mandanos tu
+   * ubicación" en cada mensaje es la insistencia que este freno evita, y el pin
+   * que falta se lo vuelve a pedir su siguiente mensaje pasado el cooldown.
+   */
+  locationRemindedRecently?: boolean;
+  /**
+   * ¿Ya se le explicó a este pedido que el pago es solo por QR? (27-09-2026)
+   *
+   * Una vez por PEDIDO, como el acuse de espera: la explicación no cambia por
+   * volver a preguntar, y a partir de la segunda el mensaje sigue su camino de
+   * siempre —el recordatorio del pago, o el agente, que sabe lo mismo—.
+   *
+   * Ausente = no. Ante un fallo de consulta vale `true`: callar el aviso deja
+   * al cliente con el recordatorio de siempre, que tampoco le miente.
+   */
+  cashPolicySent?: boolean;
+}
+
+/** Por qué este mensaje no recibe nada por defecto. Solo para el log. */
+export type DefaultReplySkipReason =
+  /** No es un texto entrante del cliente (foto, audio, pin, reacción, saliente). */
+  | 'no_text'
+  /** Es texto, pero otro mensaje de la MISMA entrega es el que contesta. */
+  | 'not_anchor'
+  /** Otro mensaje de esta entrega ya recibió el botón. Uno por entrega. */
+  | 'already_sent'
+  /** No se pudo consultar su estado, o el puerto no está cableado. */
+  | 'unknown_state'
+  /** Un humano tiene el control de la conversación. */
+  | 'paused'
+  /** Tiene un pedido en curso: el menú no es lo que necesita. */
+  | 'open_order'
+  /** Espera comprobante, pero ya se le recordó hace muy poco. */
+  | 'reminded_recently'
+  /** Ya mandó una foto para este pedido: ni se le pide otra ni se le ofrece rehacerlo. */
+  | 'proof_received'
+  /**
+   * Tocó un botón que ya no decide nada (13-09-2026).
+   *
+   * En WhatsApp se puede subir el chat y pulsar el botón de un mensaje viejo. Si
+   * el pedido que nombra ese botón ya no es el que espera confirmación —porque
+   * se confirmó, se canceló o venció—, el toque no puede reabrirlo.
+   */
+  | 'stale_button';
+
+/**
+ * Por qué el agente se calla A PROPÓSITO (06-09-2026).
+ *
+ * No es un motivo más de `none`, y la diferencia no es de matiz: son desenlaces
+ * OPUESTOS. `none` significa "esta vía no se hace cargo" —el mensaje sigue su
+ * camino y acaba en el modelo, ver `deterministicDeclined` en `kapso.ts`—.
+ * Esto significa lo contrario: el mensaje QUEDA ATENDIDO, y la atención es no
+ * contestar.
+ *
+ * Esa confusión es la que costó las dos noches. A quien ya mandó su comprobante
+ * se le decía "no hace falta que lo mandes de nuevo" y su siguiente mensaje
+ * devolvía `{action:'none'}`, que no calla a nadie: le cede el turno al modelo,
+ * que contestó "necesitas hablar con alguien del equipo".
+ */
+export type DefaultSilenceReason =
+  /** QR: ya se le pidió paciencia mientras miramos su comprobante. */
+  | 'awaiting_payment_review'
+  /** Efectivo: su pedido ya está en cocina y ya se le dijo. */
+  | 'order_in_kitchen'
+  /** Pide otra cosa, pero acabamos de mandarlo con el repartidor. */
+  | 'relayed_recently'
+  /** Le falta la ubicación, y acabamos de recordárselo. */
+  | 'location_reminded_recently';
+
+export type DefaultReplyDecision =
+  | { action: 'menu' }
+  /**
+   * Preguntó dónde queda el LOCAL (09-09-2026).
+   *
+   * No lleva pedido: cuando esta rama se alcanza ya se sabe que el cliente no
+   * tiene ninguno abierto. El texto es fijo —`localAddressText`— y no depende
+   * de nada suyo.
+   */
+  | { action: 'local_address' }
+  /**
+   * Hablarle de su pago. `variant` dice QUÉ, y sale del estado, no del texto:
+   *
+   *   `missing`   no consta ninguna foto  → "falta que nos mandes el comprobante"
+   *   `received`  ya mandó una            → "lo tenemos, lo estamos revisando"
+   *
+   * Las dos comparten cooldown y camino a propósito: son la misma conversación
+   * —el pago de este pedido— y el cliente no debería recibir las dos seguidas.
+   */
+  | { action: 'proof_reminder'; order: OpenOrderSnapshot; variant: 'missing' | 'received' }
+  /** Anotar una preferencia para la plancha y confirmársela al cliente. */
+  | { action: 'kitchen_note'; order: OpenOrderSnapshot; note: string }
+  /** Mandarle el enlace que reabre SU pedido para cambiar lo que lleva dentro. */
+  | { action: 'order_change'; order: OpenOrderSnapshot }
+  /**
+   * Enseñarle lo que armó y preguntarle si le falta algo (05-09-2026).
+   *
+   * Va ANTES del botón, no en su lugar: según lo que conteste sale el enlace de
+   * modificar o la confirmación de que queda así. Lo que el cliente ve primero
+   * es su pedido desglosado, que es el dato que no tenía.
+   */
+  | { action: 'order_review'; order: OpenOrderSnapshot }
+  /** Contestó que está bien así: se le confirma y no se toca nada. */
+  | { action: 'order_review_kept'; order: OpenOrderSnapshot }
+  /**
+   * Escribió CONFIRMO sobre un pedido en efectivo (05-09-2026).
+   *
+   * Es el instante en que ese pedido entra a cocina y sale al grupo de reparto.
+   * Hasta aquí no había hecho ninguna de las dos cosas.
+   */
+  | { action: 'cash_confirm'; order: OpenOrderSnapshot }
+  /** Escribió CANCELAR: el pedido se cierra y no se cocina nada. */
+  | { action: 'cash_cancel'; order: OpenOrderSnapshot }
+  /** Pasar su pedido a recojo: se lo lleva él y ya no hay envío que cobrar. */
+  | { action: 'pickup_switch'; order: OpenOrderSnapshot }
+  /**
+   * Su pedido ya no depende de él: se le pide paciencia UNA vez (06-09-2026).
+   *
+   * `kind` dice cuál de las dos esperas es, y con eso qué texto sale. No se
+   * deduce del texto del cliente: sale del estado del pedido, igual que la
+   * `variant` de `proof_reminder`.
+   */
+  | { action: 'wait_notice'; order: OpenOrderSnapshot; kind: WaitKind }
+  /**
+   * Pide cambiar algo cuando ya no se puede: se le manda con el repartidor.
+   *
+   * Sustituye a `kitchen_note` y a `order_review` en ese tramo. Ver la guarda
+   * de `waitingOnUs` en `decideDefaultReply`.
+   */
+  | { action: 'delivery_relay'; order: OpenOrderSnapshot }
+  /**
+   * Su pedido está parado en `awaiting_location` (07-09-2026).
+   *
+   * `variant` dice de quién es el turno, y sale del ESTADO del pedido y no de lo
+   * que escriba el cliente:
+   *
+   *   `missing`  no consta ningún pin  → "mandanos tu ubicación"
+   *   `quoting`  el pin ya llegó       → "estamos calculando tu envío"
+   *
+   * Sustituye al `proof_reminder` en este tramo, que era literalmente cierto
+   * —no hay comprobante— y completamente inútil: sin cotización no hay QR que
+   * pagar. Ver la guarda en `decideDefaultReply`.
+   */
+  | {
+      action: 'location_reminder';
+      order: OpenOrderSnapshot;
+      variant: 'missing' | 'quoting';
+    }
+  /** Calla A PROPÓSITO, y cierra el turno. Ver `DefaultSilenceReason`. */
+  | { action: 'silence'; reason: DefaultSilenceReason }
+  /**
+   * Volver a ponerle los botones delante al que ESCRIBE (13-09-2026).
+   *
+   * `first` es el recordatorio amable; `last` dice la consecuencia y es el
+   * último: después de ese, el agente calla y el pedido lo cierra el barrido de
+   * los veinte minutos, que es quien tiene el reloj.
+   */
+  | { action: 'cash_reprompt'; order: OpenOrderSnapshot; step: 'first' | 'last' }
+  /**
+   * "¿Puedo pagar en efectivo?" / "No tengo QR" con un pedido por QR sin pagar
+   * (27-09-2026). El texto es `cashPolicyText`: por qué ya no hay efectivo, y
+   * cómo paga SU pedido.
+   */
+  | { action: 'cash_policy'; order: OpenOrderSnapshot }
+  | { action: 'none'; reason: DefaultReplySkipReason };
+
+export interface DefaultReplyInput {
+  /**
+   * El botón que tocó, si tocó uno (13-09-2026). Ver `cash-confirm-button.ts`.
+   *
+   * Se decide ANTES que cualquier otra cosa y por un camino propio: un botón no
+   * trae texto, así que moriría en la guarda de `no_text` que abre esta función,
+   * y tampoco tiene por qué esperar su turno de ráfaga —no es una frase suelta
+   * dentro de un chorro de mensajes, es una decisión con un solo significado.
+   */
+  buttonPress?: CashButtonPress | null;
+  /**
+   * El texto que escribió el cliente, o `null` si el mensaje no era texto suyo.
+   *
+   * Llega entero y no reducido a un booleano porque una de las decisiones —si
+   * esto es una preferencia para la cocina— se toma leyéndolo. Se lee aquí, en
+   * un módulo puro y con el catálogo delante; el webhook no interpreta nada.
+   */
+  text: string | null;
+  /**
+   * ¿Es el ÚLTIMO texto entrante de esta entrega?
+   *
+   * El buffering de Kapso agrupa las ráfagas, y este módulo se evalúa por
+   * mensaje: sin esta condición, "buenas" / "noches" / "a cuanto" produciría
+   * TRES botones en el mismo segundo. Contesta el último, que es el que cierra
+   * la ráfaga — el mismo criterio con el que `pickTurnAnchor` ancla el turno del
+   * agente, por la misma razón y con el mismo resultado.
+   */
+  isBatchAnchor: boolean;
+  /**
+   * TODOS los textos entrantes de esta entrega, en orden (05-09-2026).
+   *
+   * El ancla decide CUÁNDO se contesta —uno por ráfaga, ver `isBatchAnchor`—
+   * pero no puede decidir QUÉ, porque la gente escribe la petición en el primer
+   * mensaje y la cortesía en el último:
+   *
+   *   "Un vaso de lims" · "Grande" · "También" · "Xfa"
+   *
+   * Ese lote es del pedido #26. La primera frase la reconoce
+   * `isOrderChangeRequest` —`vaso` está en la carta— pero el ancla era "Xfa",
+   * que no dice nada, así que el cliente no recibió nada y acabó armando un
+   * segundo pedido con su segundo envío.
+   *
+   * Se leen todos y se contesta una sola vez. Ausente o vacío = solo el texto
+   * del ancla, que es el comportamiento anterior.
+   */
+  batchTexts?: readonly string[];
+  /**
+   * ¿Ya salió un botón por otro mensaje de ESTA misma entrega?
+   *
+   * Un lote puede traer una frase que la puerta de intención reconoce ("quiero
+   * pedir") y otra que no ("a cuanto"): la primera manda su CTA y la segunda es
+   * el ancla, así que sin esta bandera el cliente recibiría dos botones seguidos
+   * por escribir dos veces. Uno por entrega, venga de la puerta que venga.
+   */
+  menuAlreadySent: boolean;
+  /**
+   * ¿El cliente PIDIÓ el menú con todas las letras?
+   *
+   * Lo decide `menu-intent.ts` antes de llegar aquí. Cambia tres desenlaces, y
+   * los tres en la misma dirección: quien pide algo expresamente tiene más
+   * derecho a recibirlo que quien no dijo nada.
+   *
+   *   estado desconocido   →  se le manda igual (es el comportamiento de
+   *                           siempre, y no romperlo es lo que permite que esta
+   *                           política se despliegue sin un interruptor)
+   *   pedido en curso      →  se le manda: querrá pedir algo más
+   *   pausa / comprobante  →  NO cambia nada. Ver abajo.
+   *
+   * Que la pausa no ceda ante una petición explícita es deliberado: el cliente
+   * no sabe que hay una persona escribiéndole, y quien tiene que mandarle el
+   * menú en ese momento es esa persona. Y el que espera comprobante recibe su
+   * recordatorio pida lo que pida, porque su pedido ya está armado.
+   */
+  explicitIntent: boolean;
+  /**
+   * Estado del cliente, o `null` si no se pudo averiguar.
+   *
+   * `null` NO es "está todo despejado": es "no lo sabemos". Y ante la duda no se
+   * manda nada, porque el caso que no se puede descartar a ciegas es el de la
+   * persona del equipo escribiéndole al cliente ahora mismo. Sin el puerto
+   * cableado el comportamiento es EXACTAMENTE el anterior a este módulo: el
+   * mensaje sigue su camino y lo atiende el agente.
+   */
+  state: CustomerStateSnapshot | null;
+}
+
+/**
+ * ¿Este pedido todavía NO tiene dinero comprometido? (05-09-2026)
+ *
+ * Es la condición para poder rearmarlo: mientras nadie haya pagado nada contra
+ * ese total, cambiar las líneas no le quita el dinero a nadie.
+ *
+ * ── Por qué esto no podía seguir siendo `payment === 'no_proof'` ────────────
+ *
+ * Porque dejaba fuera a TODO el efectivo, y nadie lo notó hasta que costó un
+ * pedido. `paymentGateOf` devuelve `not_required` para cualquier método que no
+ * sea QR —no hay comprobante que esperar— así que un pedido en efectivo jamás
+ * vale `no_proof`, y esta rama era inalcanzable para él: nunca recibía el botón
+ * de "MODIFICAR MI PEDIDO".
+ *
+ * La madrugada del 05-09-2026 un cliente con un pedido en efectivo ya cotizado
+ * escribió "un vaso de limonada también". Como aquí no entraba, el turno se lo
+ * quedó el modelo, que le mandó el menú normal: armó un SEGUNDO pedido, con su
+ * segundo envío y su segunda comanda. Reclamó —"sería 10 bs el envío"— y acabó
+ * una persona en el chat.
+ *
+ * La guarda se escribió cuando todo se pagaba por QR, y el efectivo volvió
+ * después sin que nadie la revisara. Lo que quería decir siempre fue "sin
+ * dinero de por medio", no "sin comprobante".
+ *
+ * El efectivo cumple esa condición por definición: se paga en la puerta, así que
+ * hasta que el repartidor llega no hay un solo boliviano comprometido. Se exige
+ * igualmente que no conste ninguna foto —un cliente en efectivo puede mandar un
+ * comprobante igual, y entonces hay que mirarlo antes de tocar nada—, aunque la
+ * guarda de `proofReceived` de más arriba ya se lo habría llevado.
+ */
+function sinDineroComprometido(order: OpenOrderSnapshot): boolean {
+  if (order.payment === 'no_proof') return true;
+  return order.paymentMethod === 'cash' && !order.proofReceived;
+}
+
+/**
+ * ¿Este pedido todavía se puede rearmar?
+ *
+ * La MISMA pregunta que se hace la puerta del cambio aquí abajo, exportada para
+ * que la vía del agente (`agent/tools/menu-tools.ts`) no tenga que repetirla.
+ *
+ * Repetirla es exactamente lo que produjo el pedido #27: esa vía no miraba nada
+ * y mandaba el menú normal —el que abre un pedido NUEVO— a un cliente que ya
+ * tenía uno vivo. Dos listas de condiciones sobre el mismo hecho se separan el
+ * día que una se retoca, y la que se quedó vieja manda a alguien a armar un
+ * segundo pedido.
+ */
+export function isReplaceableOrder(order: OpenOrderSnapshot): boolean {
+  return ORDER_CHANGE_STATUSES.includes(order.status) && sinDineroComprometido(order);
+}
+
+/** Cuál de las dos esperas es. Decide el texto, no el camino. */
+export type WaitKind = 'payment_review' | 'kitchen';
+
+/**
+ * ¿Este pedido está en NUESTRAS manos y ya no en las del cliente? (06-09-2026)
+ *
+ * Las dos situaciones en que el cliente hizo todo lo que le tocaba y lo único
+ * que le queda es esperarnos. A partir de aquí sus mensajes no pueden cambiar
+ * el pedido, así que el agente deja de negociar y solo le pide paciencia.
+ *
+ * Exportada porque la lee también `customer-state-service`, para saber por cuál
+ * de los dos avisos preguntar. Dos copias de esta condición se separarían el día
+ * que una se retoque, y la que se quedara vieja mandaría a callar a quien
+ * todavía nos debe algo.
+ */
+export function waitingOnUs(order: OpenOrderSnapshot): WaitKind | null {
+  // QR: la foto llegó y todavía nadie la ha mirado.
+  if (order.proofReceived && order.payment !== 'accepted' && order.payment !== 'rejected_grace') {
+    return 'payment_review';
+  }
+  // QR aceptado: cocina cogió el pedido y el aviso salió al grupo de reparto
+  // (07-09-2026).
+  //
+  // Esto FALTABA, y era el agujero más grande de la guarda. Decía que un pago ya
+  // decidido "es otra conversación", pero aceptar el pago es justo lo que pone
+  // la comanda: a partir de ese instante el cliente está en la misma situación
+  // que el de efectivo que escribió CONFIRMO, y sus mensajes tampoco pueden
+  // cambiar nada. Sin esta línea, TODO cliente de QR salía de la guarda en el
+  // momento exacto en que cocina aceptaba su pago —que es cuando más cosas
+  // pide— y caía en `{action:'none', reason:'open_order'}`: silencio.
+  //
+  // Es el caso del pedido #5 del 06-09: pagó, se le confirmó, pidió salsa bbq
+  // cuatro minutos después y no recibió nada.
+  //
+  // `rejected_grace` sigue fuera, y ahí sí con razón: a ese pago le falta algo,
+  // y quien todavía nos debe un comprobante no está esperando, está pendiente.
+  if (order.payment === 'accepted') return 'kitchen';
+  // Efectivo: dijo CONFIRMO, y con eso el pedido entró a cocina y salió al
+  // grupo de reparto.
+  //
+  // `awaiting_location` queda FUERA a propósito: `cash-confirm-service` admite
+  // confirmar en ese estado, y a quien todavía nos debe su ubicación no se le
+  // puede pedir que deje de escribir — es justo lo que falta para poder cocinar.
+  if (order.cashConfirmed === true && order.status !== 'awaiting_location') return 'kitchen';
+  return null;
+}
+
+/**
+ * ¿Qué le sale a este cliente por defecto?
+ *
+ * El orden de las guardas es el argumento entero, y va de lo que más daño hace
+ * a lo que menos: primero se descarta pisar a un humano, después mandarle un
+ * menú a quien ya pidió, y solo al final se manda el botón.
+ */
+export function decideDefaultReply(input: DefaultReplyInput): DefaultReplyDecision {
+  // ── El botón del pedido en efectivo, antes que todo lo demás (13-09-2026) ──
+  //
+  // Va aquí arriba por tres motivos, y los tres son estructurales:
+  //
+  //   1. Un botón NO trae texto. La guarda de `no_text` que viene justo debajo
+  //      lo mataría sin mirarlo, que es exactamente lo que pasaba hasta hoy.
+  //   2. No espera turno de ráfaga. `isBatchAnchor` ordena frases sueltas que
+  //      compiten por una respuesta; un toque no compite con nada.
+  //   3. **Atraviesa la pausa.** Es lo contrario de un capricho: el cliente del
+  //      #47 acabó con su conversación pausada por una derivación, y si el botón
+  //      respetara esa pausa no funcionaría justo para quien más lo necesita.
+  //      Es la doctrina ya escrita en `agent/control/pause-gate.ts` — lo que
+  //      CIERRA algo que el cliente empezó sigue saliendo durante una pausa.
+  //
+  // Lo que no atraviesa es la realidad del pedido: el número que viaja en el id
+  // tiene que ser el del pedido que hoy espera confirmación. Si no lo es, el
+  // toque es de un mensaje viejo y no decide nada.
+  const boton = input.buttonPress ?? null;
+  if (boton !== null) {
+    const pedido = input.state?.openOrder ?? null;
+    if (
+      pedido !== null &&
+      pedido.awaitingCashConfirm === true &&
+      pedido.orderNumber === boton.orderNumber
+    ) {
+      return boton.decision === 'confirm'
+        ? { action: 'cash_confirm', order: pedido }
+        : { action: 'cash_cancel', order: pedido };
+    }
+    return { action: 'none', reason: 'stale_button' };
+  }
+
+  const texto = typeof input.text === 'string' ? input.text : '';
+  if (texto.trim() === '') return { action: 'none', reason: 'no_text' };
+  if (input.menuAlreadySent) return { action: 'none', reason: 'already_sent' };
+
+  /**
+   * ¿Está preguntando dónde queda el LOCAL? (09-09-2026)
+   *
+   * Se resuelve ARRIBA y no en su guarda, que está al final, porque hace falta
+   * aquí mismo: preguntar la dirección es una PETICIÓN, y las peticiones no se
+   * pierden en una ráfaga. Ver la guarda del ancla, justo debajo.
+   */
+  const pideLaDireccion = isLocalAddressRequest(texto);
+
+  // Quien lo pidió contesta aunque no sea el último de su ráfaga: su frase es la
+  // petición, no el turno. El ancla solo ordena a los que no pidieron nada.
+  //
+  // La dirección cuenta como petición por lo mismo que el menú, y el caso que
+  // lo obligó es literal: el cliente del 09-09-2026 escribió "Hola" · "Buenas" ·
+  // "Tardes" · "Me pasa la ubicación" · "Por favor". Su pregunta iba CUARTA, así
+  // que el ancla era "Por favor" y sin esto el mensaje que de verdad pedía algo
+  // se descartaba por no ser el último.
+  if (!input.explicitIntent && !pideLaDireccion && !input.isBatchAnchor) {
+    return { action: 'none', reason: 'not_anchor' };
+  }
+
+  const state = input.state;
+  if (state === null) {
+    // Sin saber nada, al que lo pidió se le manda —es lo que se hacía antes de
+    // esta política, y una consulta caída no puede dejar de contestarle— y al
+    // que no, no: ahí el silencio es lo de antes.
+    return input.explicitIntent ? { action: 'menu' } : { action: 'none', reason: 'unknown_state' };
+  }
+
+  // Alguien del equipo está en esta conversación. Un botón automático encima de
+  // una persona que responde es el fallo del 03-09-2026 repetido con más
+  // insistencia: aquel cliente pidió expresamente que no le contestara la IA.
+  //
+  // Es un cambio de doctrina y está anotado donde vivía la anterior
+  // (`agent/control/pause-gate.ts`): las comunicaciones determinísticas que
+  // CIERRAN algo que el cliente empezó —su confirmación, su QR, su ubicación—
+  // siguen saliendo durante una pausa. Esta no cierra nada: la abre.
+  if (state.paused) return { action: 'none', reason: 'paused' };
+
+  const order = state.openOrder;
+  if (order !== null) {
+    /**
+     * Lo que hay que LEER, que no es lo mismo que quién contesta (05-09-2026).
+     *
+     * El ancla sigue decidiendo cuándo se responde —una vez por ráfaga— pero
+     * las puertas miran la entrega entera. Sin esto, "Un vaso de lims" /
+     * "Grande" / "También" / "Xfa" no recibía nada: la petición iba en el
+     * primero y el ancla era el último.
+     */
+    const candidatos =
+      input.batchTexts && input.batchTexts.length > 0 ? input.batchTexts : [texto];
+    const terminos = state.catalogTerms ?? [];
+
+    /**
+     * ¿ALGUNO de los mensajes pide cambiar lo que lleva el pedido?
+     *
+     * Se calcula antes que nada porque manda sobre la preferencia de cocina:
+     * un lote con "sin cebolla" y "un vaso más" no puede acabar solo anotado.
+     * Es la asimetría de siempre —una preferencia mal tratada molesta, un
+     * cambio anotado como preferencia cuesta dinero— aplicada al lote.
+     */
+    const textoDeCambio = candidatos.find(
+      (t) =>
+        isOrderChangeRequest(t, terminos) || isOrderChangeAnnouncement(t) || isQuantityFixRequest(t),
+    );
+
+    // ── "Paso yo a recogerlo" ──────────────────────────────────────────────
+    //
+    // Va ANTES que todo lo demás porque es lo más específico que puede traer un
+    // mensaje en este punto, y lo único que cambia por dónde SALE el pedido.
+    // Contestarle "mandanos el comprobante" a quien acaba de decir que pasa a
+    // recogerlo no es solo no haberlo leído: manda además al repartidor a una
+    // puerta donde ya no lo esperan.
+    //
+    // No mira el pago, y no es un descuido: pasar a recojo no cambia un centavo
+    // de lo que se paga por QR, porque el envío nunca viajó en él —se cobra en
+    // la puerta—. Lo único que desaparece es esa puerta.
+    if (PICKUP_SWITCHABLE_STATUSES.includes(order.status)) {
+      const pideRecojo = candidatos.some((t) => isPickupSwitchRequest(t));
+      if (pideRecojo) return { action: 'pickup_switch', order };
+    }
+
+    // ── "CONFIRMO" / "CANCELAR" del pedido en efectivo ─────────────────────
+    //
+    // Va la PRIMERA de todas, y es lo más específico que puede traer un mensaje
+    // en este punto: ese pedido no está en cocina ni en el grupo de reparto, y
+    // este mensaje decide si entra o si desaparece.
+    //
+    // Antes que el recojo, incluso: quien escribe "cancelar" sobre un pedido que
+    // todavía no existe para nadie no está cambiando por dónde sale — está
+    // diciendo que no lo quiere.
+    if (order.awaitingCashConfirm === true) {
+      const decision = candidatos.map((t) => readCashConfirmReply(t)).find((r) => r !== null);
+      if (decision === 'confirm') return { action: 'cash_confirm', order };
+      if (decision === 'cancel') return { action: 'cash_cancel', order };
+      // Cualquier otra cosa sigue su camino: puede estar preguntando algo antes
+      // de decidir, y ahí el resto de puertas hacen su trabajo de siempre.
+    }
+
+    // ── Su respuesta a "¿querés agregar algo más?" ─────────────────────────
+    //
+    // Va antes que la nota de cocina, y no por gusto: "así está bien" lleva
+    // dentro la palabra `bien`, que es marca de preferencia. Leído por la otra
+    // puerta, el cliente que contesta que su pedido está bien acaba con "así
+    // está bien" impreso en la comanda y sin respuesta a lo que contestó.
+    //
+    // Si le hicimos una pregunta, su siguiente mensaje se lee primero como la
+    // respuesta. Y si en vez de contestar vuelve a pedir un cambio, eso vale
+    // por un "sí": pedirle que conteste una pregunta que ya superó sería no
+    // haberlo leído.
+    if (state.awaitingReviewReply === true && isReplaceableOrder(order)) {
+      const respuesta = candidatos.map((t) => readOrderReviewReply(t)).find((r) => r !== null);
+
+      if (textoDeCambio !== undefined || respuesta === 'add') {
+        return { action: 'order_change', order };
+      }
+      if (respuesta === 'keep') {
+        return { action: 'order_review_kept', order };
+      }
+      // Ni una cosa ni la otra: sigue su camino y NO se le repregunta. Insistir
+      // con la misma pregunta es lo que acaba llevando a una persona al chat.
+    }
+
+    // ── El pedido ya no depende de él (06-09-2026) ─────────────────────────
+    //
+    // Va ANTES de la nota de cocina y del cambio de pedido, y esa posición ES la
+    // regla: con el comprobante mandado o el CONFIRMO escrito, la comanda ya
+    // está puesta y el aviso ya salió al grupo de reparto.
+    //
+    // Una nota anotada a partir de aquí no llega al repartidor —el outbox no
+    // reescribe lo ya enviado, ver `delivery-notice-service`— así que anotarla
+    // sería guardar una preferencia que nadie va a leer a tiempo. En vez de eso
+    // se le dice a QUIÉN decírsela, que es quien va a tener la bolsa delante.
+    //
+    // Lo que NO se intercepta se lee más arriba y sigue vivo: la pausa de un
+    // humano, "paso yo a recogerlo" —que no cambia el pedido, solo por dónde
+    // sale— y el CONFIRMO/CANCELAR, que aquí ya no puede aparecer.
+    const espera = waitingOnUs(order);
+    if (espera !== null) {
+      // ── Salvo que pida el menú, y entonces es que quiere pedir OTRA cosa ──
+      //
+      // Va antes que el silencio y antes que el relevo al repartidor: quien
+      // escribe "quiero pedir" con un pedido ya en cocina no está hablando de
+      // ese pedido, está encargando el siguiente. Callarle sería confundir "no
+      // tengo nada más que contarte de tu pedido" con "no te atiendo".
+      //
+      // Es el caso real del #30: "Era para hacerle un pedido más a la misma
+      // dirección". Lo único que necesitaba era el botón.
+      if (input.explicitIntent) return { action: 'menu' };
+
+      // Las dos formas de pedir lo mismo: cambiar lo que lleva el pedido, o
+      // añadirle una preferencia. Desde aquí las dos tienen la misma respuesta,
+      // así que no hace falta distinguirlas — que es justo lo que las separaba
+      // en dos ramas más abajo.
+      const pideCambio =
+        textoDeCambio !== undefined || candidatos.some((t) => isKitchenNoteRequest(t, terminos));
+
+      // ¿Ya se le dijo que su pedido está en nuestras manos?
+      //
+      // El pago por QR aceptado cuenta aunque no conste ningún `cash_wait`: su
+      // acuse es `PAYMENT_ACCEPTED_TEXT` —"Pago confirmado ✅. Tu pedido está
+      // siendo preparado."—, que sale al aceptar el pago y dice exactamente eso.
+      // Sin esta mitad, el cliente leería "danos un tiempo para prepararlo"
+      // pegado a "tu pedido está siendo preparado".
+      const avisoYaDado = state.waitNoticeSent === true || order.payment === 'accepted';
+
+      // ── La red que atrapa lo que la lista no ve (07-09-2026) ─────────────
+      //
+      // Hasta hoy esta rama dependía ENTERAMENTE de `pideCambio`: si los
+      // detectores no reconocían la frase, el cliente recibía silencio. Tres
+      // conversaciones reales pagaron esa dependencia:
+      //
+      //   "No le coloquen locoto al trancapecho"  → la lista sabe `coloque` y
+      //        `colocar`, no `coloquen`; y aunque la supiera, el filtro del
+      //        catálogo la descarta por nombrar un `trancapecho`.
+      //   "Más salsita"                           → `mas` no es marca de
+      //        preferencia, y encima cuenta como cantidad, que también descarta.
+      //   "Me podría mandar salsa bbq"            → la lista sabe `manda` y
+      //        `mandame`, no `mandar`.
+      //
+      // Así que la lista deja de ser la condición: sigue delante porque acierta
+      // al primer mensaje —quien dice "sin cebolla" nada más confirmar merece su
+      // respuesta, no "danos un tiempo"— pero ya no es lo único. Cuando el
+      // pedido está en cocina y al cliente YA se le pidió paciencia, cualquier
+      // cosa que escriba que no sea un acuse es que quiere algo, y aquí eso
+      // basta: la respuesta es siempre la misma frase, no hay nada que anotar,
+      // ningún total que recalcular y ningún botón que mandar. La asimetría que
+      // justifica la precisión de `order-change-intent` —confundir un cambio de
+      // líneas con una preferencia cuesta dinero— no existe en este tramo.
+      //
+      // SOLO con el pedido ya en cocina, y eso no es un detalle: en
+      // `payment_review` la comanda todavía no está puesta y no hay ningún
+      // repartidor asignado, así que "el delivery se comunicará contigo" sería
+      // una promesa que nadie ha hecho aún. Ahí sigue mandando la lista.
+      //
+      // Ver `isCourtesyOnly`: reconoce lo que NO pide nada, que es la lista corta
+      // y estable, y deja que la duda conteste. Aquí el único error caro es el
+      // silencio.
+      const pideAlgo =
+        pideCambio ||
+        (espera === 'kitchen' && avisoYaDado && !candidatos.every((t) => isCourtesyOnly(t)));
+
+      if (pideAlgo) {
+        // Salvo que se lo acabemos de decir. El relevo contesta a una petición
+        // suya, así que no se agota como el acuse —puede acordarse de otra cosa
+        // dentro de un rato y merece respuesta— pero repetirle la misma frase a
+        // los dos minutos es la insistencia que devuelve a la gente al chat.
+        return state.deliveryRelaySentRecently === true
+          ? { action: 'silence', reason: 'relayed_recently' }
+          : { action: 'delivery_relay', order };
+      }
+
+      // Y si no pide nada, se le pide paciencia UNA vez y después se calla.
+      //
+      // `silence` y no `none`: `none` no calla a nadie, le cede el turno al
+      // modelo. Ver `DefaultSilenceReason`.
+      return avisoYaDado
+        ? {
+            action: 'silence',
+            reason: espera === 'payment_review' ? 'awaiting_payment_review' : 'order_in_kitchen',
+          }
+        : { action: 'wait_notice', order, kind: espera };
+    }
+
+    // ── "Sin cebolla" ──────────────────────────────────────────────────────
+    //
+    // Va ANTES que el recordatorio del pago, y también antes de su cooldown:
+    // una preferencia es una petición nueva, no una repetición, y contestarle
+    // "mandanos el comprobante" a quien acaba de decir "sin cebolla" es no
+    // haberlo leído.
+    //
+    // Solo mientras el pedido siga en `confirmed`, que es el estado en el que
+    // todavía no ha entrado a la plancha (la cocina arranca cuando se acepta el
+    // pago). Con la comida ya haciéndose, un "claro que sí" sería una promesa
+    // que no depende de nosotros.
+    //
+    // Y solo si NADIE en el lote pidió un cambio: "sin cebolla" junto a "un
+    // vaso más" no es una preferencia, es un cambio con una preferencia dentro.
+    // Anotarlo y callar lo segundo es la mitad más cara del mensaje.
+    if (order.status === 'confirmed' && textoDeCambio === undefined) {
+      const nota = candidatos.find((t) => isKitchenNoteRequest(t, terminos));
+      if (nota !== undefined) {
+        return { action: 'kitchen_note', order, note: kitchenNoteFrom(nota) };
+      }
+    }
+
+    // El comprobante ya recibido se resuelve MÁS ARRIBA, en la guarda de
+    // `waitingOnUs`: es una de las dos esperas. Aquí había una rama propia que
+    // contestaba `proof_reminder` con `variant: 'received'` y, pasado el
+    // cooldown, `{action:'none', reason:'reminded_recently'}` — que no calla al
+    // agente, le cede el turno al modelo. Ese hueco es el que produjo las dos
+    // frases del 06-09.
+    //
+    // ── "Mándame 2 sodas más" ──────────────────────────────────────────────
+    //
+    // Esto sí cambia el total, el QR y la comanda, así que no se anota en
+    // ningún sitio: se le devuelve su propio pedido para que lo rearme y el
+    // sistema recalcule todo por el camino de siempre.
+    //
+    // Solo mientras NO haya mandado comprobante. En cuanto hay un pago en
+    // revisión hay dinero de por medio contra un total concreto, y cambiar las
+    // líneas por debajo dejaría al cliente pagando una cosa y recibiendo otra.
+    // Ese caso sigue el camino de hoy y acaba donde acaban las excepciones.
+    if (isReplaceableOrder(order)) {
+      // Las DOS formas de pedirlo, y la segunda es la que llega primero: el
+      // cliente pregunta si puede antes de decir qué quiere. Reconocer solo la
+      // que nombra productos dejaba ese primer mensaje sin respuesta
+      // determinística, y con él el turno se lo quedaba el modelo — que el
+      // 04-09-2026 derivó la conversación a una persona y la calló dos horas.
+      // Ver `isOrderChangeAnnouncement`.
+      //
+      // Y la TERCERA, que se pagó con un pedido entero (05-09-2026): corregir
+      // la cantidad dando por hecho el producto. "Que sean 3" no nombra nada
+      // —el producto acaba de decirse— así que ni la vía del catálogo ni la del
+      // anuncio lo veían. Ver `isQuantityFixRequest`.
+      //
+      // Las tres se evalúan sobre la ENTREGA entera, no solo sobre el ancla:
+      // ver `batchTexts` y `textoDeCambio`.
+      //
+      // Antes del botón va una pregunta, y su respuesta se lee más arriba: ver
+      // el bloque de `awaitingReviewReply`.
+      //
+      // ── Salvo que ya tenga una pregunta abierta (05-09-2026) ──────────
+      //
+      // Al pedido en efectivo sin confirmar acabamos de preguntarle CONFIRMO o
+      // CANCELAR. Si además le mandáramos "¿querés agregar algo? 1 / 2", ese
+      // cliente tendría DOS preguntas distintas sin contestar en el mismo chat,
+      // cada una con sus palabras, y un "1" suyo ya no sabríamos a cuál iba.
+      //
+      // Así que ahí el botón sale directo. No se pierde nada: el enlace reabre
+      // su pedido con lo que eligió dentro —que es justo lo que la pregunta iba
+      // a enseñarle— y el pedido corregido traerá su propia confirmación.
+      if (textoDeCambio !== undefined) {
+        return order.awaitingCashConfirm === true
+          ? { action: 'order_change', order }
+          : { action: 'order_review', order };
+      }
+    }
+
+    // ── "¿Puedo pagar en efectivo?" / "No tengo QR" (27-09-2026) ───────────
+    //
+    // El pago es solo por QR (`orders/cash-enabled`), y quien lo pregunta con
+    // un pedido ya armado está preguntando cómo lo paga. Sin esta rama recibía
+    // el recordatorio del comprobante —"falta que transfieras…"—, que contesta
+    // otra cosa y le deja la duda entera.
+    //
+    // Va DEBAJO de todo lo que ya estaba: la espera de cocina, la nota y el
+    // cambio de pedido ganan porque son más específicos. Y ENCIMA de los dos
+    // recordatorios, que son justo los que contestarían mal.
+    //
+    // Solo pedidos por QR: el que ya es en efectivo se hizo cuando se podía y
+    // se sigue cobrando en la puerta, así que decirle que no hay efectivo sería
+    // mentirle sobre su propio pedido. Y solo mientras el efectivo esté
+    // apagado de verdad: en noche de promoción el motivo es otro.
+    if (
+      !CASH_ENABLED &&
+      order.paymentMethod !== 'cash' &&
+      state.cashPolicySent !== true &&
+      candidatos.some((t) => mentionsCash(t))
+    ) {
+      return { action: 'cash_policy', order };
+    }
+
+    // ── El QR todavía no existe: falta la ubicación (07-09-2026) ───────────
+    //
+    // Va ANTES del recordatorio del pago, y es todo el arreglo. Un pedido en
+    // `awaiting_location` no está cotizado, así que no tiene envío calculado ni
+    // QR que enseñar — y aun así caía en la rama de abajo, porque `no_proof` es
+    // literalmente cierto: no hay comprobante. El cliente recibía "falta que nos
+    // mandes la foto del comprobante" de un pago que nunca se le pidió.
+    //
+    // No es teórico. El 07-09 había CATORCE pedidos parados aquí, y cinco de
+    // ellos con comprobante: gente que hizo caso y pagó a ciegas —con el QR de
+    // un pedido anterior— por una comanda que nunca llegó a cocina. Uno de
+    // Bs 108. El del #50 mandó tres comprobantes en media hora.
+    //
+    // Escriba lo que escriba, lo único que hace avanzar su pedido es el pin. Y
+    // el recordatorio se repite, como el del pago y por lo mismo: mientras falte
+    // algo que solo él puede hacer, callarse lo deja parado.
+    //
+    // ── Las dos esperas que caben en el mismo estado ───────────────────────
+    //
+    // Con el pin ya mandado, `awaiting_location` significa lo contrario:
+    // faltamos NOSOTROS. El delivery dinámico guarda el GPS y deja el pedido
+    // aquí hasta que responde la cotización (ver `attach-location`). A ese
+    // cliente no se le puede pedir otra vez lo que acaba de mandar — es el error
+    // del 04-09, el que hizo reenviar un comprobante tres veces— así que recibe
+    // lo contrario: que espere. Ver `locationReceived`.
+    if (order.status === 'awaiting_location') {
+      return state.locationRemindedRecently === true
+        ? { action: 'silence', reason: 'location_reminded_recently' }
+        : {
+            action: 'location_reminder',
+            order,
+            variant: order.locationReceived === true ? 'quoting' : 'missing',
+          };
+    }
+
+    // El pedido está cotizado, tiene su QR y no ha llegado ningún comprobante.
+    // Lo que este cliente necesita es que le recordemos ESO, no un menú nuevo:
+    // ya armó su pedido y lo que falta es la foto del pago.
+    if (order.payment === 'no_proof') {
+      return state.proofRemindedRecently
+        ? { action: 'none', reason: 'reminded_recently' }
+        : { action: 'proof_reminder', order, variant: 'missing' };
+    }
+
+    // Cualquier otro pedido vivo —esperando ubicación, con el pago ya en
+    // revisión, aceptado, en la plancha o en camino— sigue el camino de
+    // siempre. Mandarle el menú a quien está esperando su comida es contestarle
+    // a otra persona… salvo que lo haya pedido él, que entonces es exactamente
+    // lo que quería: encargar algo más.
+    if (input.explicitIntent) return { action: 'menu' };
+
+    // ── El que ESCRIBE en vez de tocar el botón (13-09-2026) ──────────────
+    //
+    // La última puerta, y tiene que ser la última: hasta aquí llega quien tiene
+    // un pedido en efectivo sin confirmar y cuyo mensaje NO era ni la decisión,
+    // ni un cambio de pedido, ni una nota, ni una petición del menú. Todas esas
+    // se atendieron arriba y siguen ganando.
+    //
+    // Lo que queda es el caso del #47: "ya esta bien mandamelo". Un sí que el
+    // detector estricto no reconoce y que hasta hoy terminaba en silencio —y de
+    // ahí, en el modelo, y de ahí en una derivación a una persona.
+    //
+    // ── Por qué DOS y no uno, y por qué no infinitos ──────────────────────
+    //
+    // Uno solo se pierde entre lo que el cliente estaba escribiendo. Infinitos
+    // convierten cada mensaje suyo en un eco nuestro, que es justo lo que este
+    // archivo se prohíbe unas líneas más arriba con la pregunta del pedido
+    // ("insistir con la misma pregunta es lo que acaba llevando a una persona
+    // al chat"). Dos: el recordatorio y la consecuencia.
+    //
+    // Después, silencio deliberado. No es abandono: el barrido de los veinte
+    // minutos cancela el pedido y se lo dice, y ese reloj ya existe.
+    if (order.awaitingCashConfirm === true) {
+      const avisos = state.cashRepromptsSent ?? 0;
+      if (avisos < 2) {
+        return { action: 'cash_reprompt', order, step: avisos === 0 ? 'first' : 'last' };
+      }
+    }
+
+    return { action: 'none', reason: 'open_order' };
+  }
+
+  // ── "¿Dónde están ubicados?" (09-09-2026) ─────────────────────────────────
+  //
+  // La última guarda antes del botón, y tiene que ser la última: el detector
+  // reconoce preguntas por un SITIO, y hasta aquí solo llega quien no tiene
+  // ningún pedido abierto. Ese filtro es lo que hace segura una familia de
+  // palabras tan amplia.
+  //
+  // Colocarla antes se llevaría por delante a dos clientes distintos: el que
+  // está peleando con el clip de WhatsApp para mandar su GPS —"no me sale la
+  // ubicacion"— y el que pregunta "por donde estan" queriendo saber por dónde
+  // viene su moto. Al primero lo intercepta la rama de la ubicación pendiente;
+  // al segundo, `wait_notice`. Los dos van mucho más arriba.
+  //
+  // El caso que la trajo: el 09-09-2026 dos clientes preguntaron dónde queda el
+  // local y los dos recibieron el botón del menú. Uno lo preguntó dos veces.
+  //
+  // Cede ante quien pidió el MENÚ con todas las letras: "quiero pedir donde
+  // estan ubicados" dispara los dos detectores, y entre las dos cosas que pidió
+  // manda la que el sistema reconoce como explícita. Es la misma jerarquía que
+  // ya gobierna el resto de la cascada — quien pide algo expresamente tiene más
+  // derecho a recibirlo que quien no dijo nada.
+  if (pideLaDireccion && !input.explicitIntent) return { action: 'local_address' };
+
+  return { action: 'menu' };
+}

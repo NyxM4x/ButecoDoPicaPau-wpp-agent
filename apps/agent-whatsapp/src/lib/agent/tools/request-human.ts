@@ -1,0 +1,150 @@
+/**
+ * `request_human` — el agente reconoce que aquí ya no ayuda.
+ *
+ * Un cliente con una queja, con un reclamo o que pide hablar con alguien no
+ * necesita otra respuesta del bot: necesita a una persona. Esta acción calla al
+ * agente y avisa al equipo. El cliente NO recibe nada — ver `handoff/service.ts`
+ * para el porqué.
+ *
+ * ── Lo que esta acción NO cubre, y quién lo cubre ───────────────────────────
+ *
+ * El cliente ATASCADO —el que escribe una y otra vez y nunca consigue pedir— no
+ * se detecta aquí. Se cuenta, en `handoff/stuck-customer.ts`: seis mensajes
+ * suyos en 30 minutos sin ningún pedido creado. Pedirle ese juicio al modelo
+ * salió mal en la primera prueba real: con una ventana de decisión que no dice
+ * cuánto tiempo pasó entre mensajes, un "hola" nuevo se lee como la
+ * continuación de una conversación trabada de hace horas, y la gente escribe
+ * "hola" / "zarco" / "quiero ordenar" en mensajes sueltos.
+ *
+ * El reparto es el que corresponde a cada uno: lo que hay que LEER —enfado,
+ * queja, "quiero hablar con alguien"— lo juzga el modelo; lo que se puede
+ * CONTAR se cuenta.
+ *
+ * ── Ni la acción a la que se cae lo que no encaja en otra ───────────────────
+ *
+ * El 29-08-2026 esta acción derivó una conversación en su PRIMER mensaje: "hola
+ * como esta zarco cuanto me saldria delivery aqui". No hubo queja, ni historial,
+ * ni nada que leer — el modelo simplemente se quedó sin puerta, porque
+ * `answer_directly` se excluía a sí misma ante cualquier "precio" y el envío no
+ * es un producto que `get_menu_items` pueda buscar.
+ *
+ * Con `toolChoice: 'required'` el modelo elige SIEMPRE una acción, así que la
+ * que no tiene exclusiones claras se convierte en el desagüe del catálogo. Por
+ * eso esta descripción enumera lo que NO se deriva con tanto cuidado como lo que
+ * sí: aquí una elección de más no es una respuesta rara, son dos horas de
+ * silencio para alguien que solo preguntaba un precio.
+ *
+ * ── Por qué cierra el turno, igual que `send_menu` ──────────────────────────
+ *
+ * La acción pausa la conversación. Si el turno siguiera hasta la ronda de
+ * redacción, la barrera pre-send encontraría esa pausa activa y el run moriría
+ * en `skipped_paused` — habiendo gastado una llamada más al modelo para nada. El
+ * silencio es el mismo; lo que cambia es que así no se paga y el run queda
+ * registrado como lo que fue: un turno completado que decidió callar.
+ *
+ * Y hay una razón anterior a la mecánica: dejar redactar al modelo aquí es
+ * invitarle a prometer lo que el prompt le prohíbe — "ya avisé a alguien", "te
+ * paso con un compañero". En este turno no escribe, así que no puede.
+ *
+ * ── Lo que el modelo NO decide ──────────────────────────────────────────────
+ *
+ * Sin argumentos, como el resto: no elige el motivo, ni el texto del aviso, ni
+ * cuánto dura la pausa, ni a quién se avisa. Lo único que hace es reconocer que
+ * esta conversación se le fue de las manos.
+ */
+import { NO_ARGUMENTS, type AgentTool, type AgentToolContext, type AgentToolOutcome } from './registry';
+
+export const REQUEST_HUMAN = 'request_human';
+
+export interface HandoffPort {
+  escalate(input: {
+    customerPhone: string;
+    sourceMessageId: string;
+    /** Lo que escribió el cliente; viaja al aviso del equipo, no al modelo. */
+    inboundText: string;
+  }): Promise<{
+    /**
+     * ¿La conversación quedó derivada — pausada y con el equipo avisado?
+     *
+     * NO significa "el cliente recibió un acuse": no hay acuse. `false` es el
+     * caso raro en que ni siquiera se pudo escribir la pausa.
+     */
+    handed: boolean;
+  }>;
+}
+
+/** Lo que el modelo recibe de vuelta. Sin teléfono, sin ids, sin nada más. */
+export interface RequestHumanToolResult {
+  handed: boolean;
+}
+
+export function createRequestHumanAction(port: HandoffPort): AgentTool {
+  return {
+    definition: {
+      name: REQUEST_HUMAN,
+      description:
+        'Deriva la conversación a una persona del equipo y deja de responder ' +
+        'tú. Úsala cuando el cliente trae una queja o un reclamo, cuando algo ' +
+        'salió mal con su pedido, cuando pide hablar con una persona, o cuando ' +
+        'se nota molesto. NO la uses para algo que puedes resolver: un precio ' +
+        'es get_menu_items, ver qué hay es send_menu, y una duda normal es ' +
+        'answer_directly. Tampoco por un "gracias" ni por un mensaje seco que ' +
+        'se arregla contestando bien. Y NUNCA por escribir seguido: un saludo, ' +
+        'varios mensajes cortos uno detrás de otro ("hola", "zarco", "como ' +
+        'estas", "quiero ordenar") o un cliente que pide a menudo son una ' +
+        'conversación normal empezando, no un problema. Que alguien quiera ' +
+        'pedir o te dicte su pedido tampoco se deriva: eso es send_menu, ' +
+        'aunque lo repita. Y una pregunta que no sabes contestar NO se deriva: ' +
+        'se dice que no lo sabes, con answer_directly. En particular, cuánto ' +
+        'sale el envío o el delivery nunca es motivo para derivar — se contesta ' +
+        'pidiéndole la ubicación, que el sistema la cotiza solo. SÍ se deriva, en ' +
+        'cambio, todo lo que pregunte por un pedido YA hecho: en qué va, si ya ' +
+        'salió, cuánto falta para que llegue. Eso no lo puedes ver por ningún lado ' +
+        'y solo una persona puede mirarlo. Ante la duda ' +
+        'entre derivar y contestar, CONTESTA: derivar te deja mudo dos horas, ' +
+        'y una respuesta imperfecta se arregla con el mensaje siguiente.',
+      parameters: NO_ARGUMENTS,
+    },
+    // Silencia al agente, y eso es un efecto real aunque no salga ningún
+    // mensaje: el core tiene que comprobar la pausa ANTES. Si ya hay una
+    // persona atendiendo, esto no debe ejecutarse siquiera.
+    producesUserVisibleEffect: true,
+    // Ver la cabecera: sin esto el turno seguiría a redactar, la barrera
+    // pre-send encontraría la pausa recién puesta y el run moriría en
+    // `skipped_paused` habiendo pagado una llamada de más.
+    effectCompletesTurn: true,
+    async execute(context: AgentToolContext): Promise<AgentToolOutcome> {
+      const { handed } = await port.escalate({
+        customerPhone: context.customerPhone,
+        sourceMessageId: context.sourceMessageId,
+        inboundText: context.inboundText,
+      });
+
+      const toolResult: RequestHumanToolResult = { handed };
+
+      // `handed: false` = la derivación no llegó a ocurrir (ni pausa). El turno
+      // NO cierra, y el modelo redacta con ese dato delante: es el único caso
+      // en que el cliente recibe algo, y debe recibirlo — nadie le está
+      // atendiendo por otro lado.
+      return {
+        result: toolResult,
+        userVisibleEffectConfirmed: handed,
+        // ── Y después de decirlo, se calla (06-09-2026) ──────────────────
+        //
+        // Justo en el caso contrario al de arriba. Con `handed: true` la pausa
+        // ya está puesta y el cliente no recibe nada; con `handed: false` la
+        // puerta rechazó la derivación pero el modelo va a redactar igual, y el
+        // prompt le permite decir que hace falta una persona del equipo.
+        //
+        // Esa frase salía y el agente seguía conversando como si nada: el
+        // cliente leía que lo iba a atender alguien, nadie era avisado y la
+        // conversación no se pausaba. La promesa sin el efecto.
+        //
+        // Ahora la frase tiene consecuencias — silencio y aviso al grupo—, que
+        // es lo que la convierte en verdad. El puerto lo decide todo; aquí solo
+        // se levanta la mano.
+        silenceAfterReply: !handed,
+      };
+    },
+  };
+}

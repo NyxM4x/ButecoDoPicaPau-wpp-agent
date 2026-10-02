@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  /* Genera `font-display`. EXPERIMENTAL (rediseno-menu-fastfood): solo la usa
+     `ProductCard` en /menu; nada más en el sitio la pide. */
+  --font-display: var(--font-bangers);
+  /* Genera `font-price`. Solo para cifras: en Bangers el 7 parece un 1 y los
+     totales llevan 7 todo el tiempo. Ver el comentario en `layout.tsx`. */
+  --font-price: var(--font-luckiest-guy);
+}
+
+/*
+ * Paleta de marca Don Zarco (trancapecho cochabambino). Centralizada aquí para
+ * evitar rojos distintos por la interfaz. SOLO se usa en el menú del cliente
+ * (`/menu`); el dashboard no la utiliza. Genera utilidades Tailwind como
+ * `bg-donzarco-red-dark`, `text-donzarco-red`, `ring-donzarco-red/20`, etc.
+ *
+ * Criterio: fondos y superficies en tonos pastel (crema/durazno) y acentos con
+ * el rojo/naranja vivo del logo, para que botones y llamados a la acción
+ * mantengan contraste suficiente sobre blanco.
+ */
+@theme {
+  --color-donzarco-red: #e8481f;        /* rojo del logo — acento principal */
+  --color-donzarco-red-dark: #b32d0c;   /* rojo profundo — acciones/zonas */
+  --color-donzarco-red-hover: #cc3814;  /* hover del rojo oscuro */
+  --color-donzarco-red-active: #8d2208; /* active/pressed del rojo oscuro */
+  --color-donzarco-ink: #2b1108;        /* café casi negro — texto de marca */
+  --color-donzarco-surface: #fff5ef;    /* crema durazno pastel — fondo claro */
+  --color-donzarco-gold: #f9a825;       /* naranja/amarillo del aro — acento */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/*
+ * Altura de la barra fija del menú (buscador + categorías).
+ *
+ * Es el `top` al que se anclan los encabezados de sección: sin esto quedarían
+ * PEGADOS DEBAJO de la barra, tapados por ella. El valor de aquí es solo el de
+ * arranque —el del primer render, antes de hidratar—; `MenuStore` lo corrige al
+ * alto REAL de la barra y lo mantiene con un ResizeObserver, así que si alguien
+ * cambia el padding del buscador no hay que volver a tocar este número.
+ */
+:root {
+  --menu-bar-h: 134px;
+}
+
+/*
+ * Trama de puntos tipo cómic para el encabezado de cada categoría
+ * (EXPERIMENTAL, rediseno-menu-fastfood). Gradiente radial repetido: sin
+ * archivo, sin petición de red.
+ */
+.menu-halftone {
+  background-image: radial-gradient(rgba(0, 0, 0, 0.38) 1.5px, transparent 1.6px);
+  background-size: 8px 8px;
+}
+
+/*
+ * La textura de puntos en SVG que había aquí (`.menu-pattern-overlay`) se
+ * retiró el 17-09-2026: el fondo pasó a ser una ilustración propia
+ * (`/menu/fondo-patron.webp`) que ya trae su propia trama, y superponer las dos
+ * solo ensuciaba. Ver `app/menu/page.tsx`.
+ */

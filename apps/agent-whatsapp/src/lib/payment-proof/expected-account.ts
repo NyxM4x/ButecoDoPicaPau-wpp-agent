@@ -1,0 +1,300 @@
+/**
+ * La cuenta que DEBE aparecer en un comprobante — módulo PURO.
+ *
+ * Es el patrón contra el que se contrasta lo que se lee en la imagen: si el
+ * dinero no fue a esta cuenta, no fue a Don Zarco. Todo sale de configuración,
+ * nunca de la base ni del navegador: cambia una vez al año y no debe poder
+ * cambiarlo quien entra al panel.
+ *
+ * ── Por qué la comparación es tolerante ─────────────────────────────────────
+ *
+ * Cada banco pinta lo mismo de forma distinta. La cuenta puede venir enmascarada
+ * (`****1234`), con guiones o con espacios; el titular, en mayúsculas, con la
+ * inicial del segundo nombre, con el apellido delante o con la razón social
+ * abreviada. Comparar cadenas crudas produciría una alerta en cada pago legítimo
+ * — y una alerta que salta siempre deja de leerse en dos días.
+ *
+ * Así que se compara lo que de verdad identifica: los dígitos finales de la
+ * cuenta y las palabras del nombre. Estricto en lo que distingue, indiferente al
+ * formato.
+ *
+ * ── Tres respuestas, no dos ─────────────────────────────────────────────────
+ *
+ * `unknown` existe a propósito y NO es una sospecha: significa que el dato no se
+ * pudo leer, o que no está configurado. Tratar "no lo sé" como "no coincide"
+ * convertiría cada foto borrosa en una acusación.
+ */
+
+export type FieldMatch = 'match' | 'mismatch' | 'unknown';
+
+export interface ExpectedAccount {
+  /**
+   * Banco o billetera donde se cobra, con las formas en que lo escribe cada
+   * comprobante. Basta con que UNA coincida.
+   *
+   * SÍ dispara sospecha: es el tercero de los tres datos que identifican el
+   * destino. Sin él, dos cuentas de bancos distintos que compartan los cuatro
+   * últimos dígitos —una entre diez mil— pasarían por la misma.
+   */
+  bankNames: string[];
+  /**
+   * Cuentas destino válidas. Se comparan por sus dígitos finales.
+   *
+   * Una LISTA y no una sola porque el negocio puede cobrar por más de una
+   * billetera —Yape y Altoke, por ejemplo— y ambas son igual de legítimas. Con
+   * una sola cuenta configurada, cada pago a la otra saldría `account_mismatch`
+   * y la alerta acusaría a clientes que pagaron bien.
+   *
+   * Basta con que UNA coincida, igual que con los alias del banco y del
+   * titular. No se exige que además cuadre el banco de esa misma billetera:
+   * quien cobra es la misma persona en las dos, y `matchesBank` ya vigila que
+   * el dinero no se haya ido a una institución ajena.
+   */
+  accountNumbers: string[];
+  /**
+   * Nombres válidos del titular: el de la cuenta y cuantas variantes pinte cada
+   * banco. Basta con que UNO coincida.
+   */
+  holderNames: string[];
+}
+
+/** Cuántos dígitos finales bastan para reconocer la cuenta enmascarada. */
+export const ACCOUNT_TAIL_DIGITS = 4;
+
+/**
+ * Cuántos dígitos visibles se exigen a una cuenta enmascarada para compararla.
+ *
+ * Cuatro repartidos entre el principio y el final. Con menos —`7***5`— la
+ * comparación acertaría por azar demasiado a menudo, y ni reconoce ni acusa.
+ */
+const MASKED_MIN_VISIBLE_DIGITS = 4;
+
+/** Lo que un banco usa para tapar dígitos: `78***705`, `784**705`, `78xx705`. */
+const MASK_CHARS = /[*xX•·]/;
+
+/** Deja solo los dígitos: fuera guiones, espacios, puntos y asteriscos. */
+export function digitsOf(value: string | null | undefined): string {
+  return (value ?? '').replace(/\D+/g, '');
+}
+
+/**
+ * Normaliza un nombre para compararlo: mayúsculas, sin tildes, sin puntuación y
+ * con los espacios colapsados. `JUAN PÉREZ-GARCÍA` y `juan perez garcia` son el
+ * mismo nombre escrito por dos bancos distintos.
+ */
+export function normalizeName(value: string | null | undefined): string {
+  return (value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9ÑÜ\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Palabras con las que se identifica a alguien. Las de una o dos letras se
+ * descartan: `J.` y `DE` no distinguen a nadie, y exigirlas haría fallar
+ * `JUAN P. ZARCO` contra `JUAN PABLO ZARCO`, que son la misma persona.
+ */
+function significantTokens(name: string): string[] {
+  return normalizeName(name)
+    .split(' ')
+    .filter((t) => t.length > 2);
+}
+
+/**
+ * ¿Coincide la cuenta leída con la esperada?
+ *
+ * Coincide si una contiene a la otra por sus dígitos, o si comparten los cuatro
+ * últimos — que es lo único visible cuando el banco enmascara. Cuatro dígitos
+ * son 1 entre 10 000: suficiente para reconocer la cuenta propia, y no es una
+ * defensa criptográfica sino una comprobación de que el dinero fue al sitio.
+ */
+function matchesOneAccount(read: string | null, expected: string | null): FieldMatch {
+  const leido = digitsOf(read);
+  const esperado = digitsOf(expected);
+  if (!leido || !esperado) return 'unknown';
+  if (leido === esperado) return 'match';
+
+  // ── Cuentas TAPADAS POR EL MEDIO (03-09-2026) ────────────────────────────
+  //
+  // Antes de comparar nada más: si el banco tapó dígitos centrales, los que se
+  // ven NO son contiguos y pegarlos produce un número que no existe.
+  //
+  // `78***705` daba `78705`, cuya cola de cuatro es `8705`; la cuenta real
+  // `78486705` termina en `6705`. Mismatch — y la acusación decía "la cuenta
+  // que recibe el dinero NO es la nuestra" sobre un pago perfectamente bueno.
+  //
+  // Le pasaba a los dos bancos que enmascaran así, Altoke (`78***705`) y BNB
+  // (`784**705`), en TODOS sus comprobantes. La noche del 02→03-09-2026 fue una
+  // de las dos causas de que 24 de 45 comprobantes salieran sospechosos sin que
+  // ninguno lo fuera.
+  //
+  // Con la máscara delante, lo que se compara es lo que de verdad se ve: que la
+  // cuenta esperada EMPIECE por los dígitos de la izquierda y TERMINE por los de
+  // la derecha.
+  if (MASK_CHARS.test(read ?? '')) {
+    return matchesMaskedAccount(read ?? '', esperado);
+  }
+
+  // Un fragmento más corto que la cola no distingue lo suficiente NI para
+  // reconocer ni para acusar: con dos dígitos visibles, una de cada cien cuentas
+  // coincidiría por azar. Se comprueba ANTES que la inclusión, porque `90` está
+  // dentro de casi cualquier número de cuenta.
+  if (leido.length < ACCOUNT_TAIL_DIGITS || esperado.length < ACCOUNT_TAIL_DIGITS) {
+    return 'unknown';
+  }
+
+  if (leido.includes(esperado) || esperado.includes(leido)) return 'match';
+  const cola = (v: string) => v.slice(-ACCOUNT_TAIL_DIGITS);
+  return cola(leido) === cola(esperado) ? 'match' : 'mismatch';
+}
+
+/**
+ * Compara una cuenta enmascarada contra la esperada, por sus dos extremos.
+ *
+ * `78***705` contra `78486705`: empieza por `78`, termina en `705`. Coincide.
+ * `78***705` contra `12345705` no: no empieza por `78`.
+ *
+ * Un extremo vacío no se exige —hay bancos que solo dejan ver el final, y
+ * `****6705` sigue reconociendo—, pero entre los dos tienen que sumar dígitos
+ * suficientes; si no, la respuesta es `unknown` y no una acusación.
+ */
+function matchesMaskedAccount(read: string, esperado: string): FieldMatch {
+  const partes = read.split(new RegExp(`${MASK_CHARS.source}+`));
+  const cabeza = digitsOf(partes[0]);
+  const cola = digitsOf(partes[partes.length - 1]);
+
+  if (cabeza.length + cola.length < MASKED_MIN_VISIBLE_DIGITS) return 'unknown';
+  // La cuenta esperada tiene que ser al menos tan larga como lo que se ve, o
+  // los extremos se solaparían y cualquier cosa encajaría.
+  if (esperado.length < cabeza.length + cola.length) return 'mismatch';
+
+  const empieza = cabeza === '' || esperado.startsWith(cabeza);
+  const termina = cola === '' || esperado.endsWith(cola);
+  return empieza && termina ? 'match' : 'mismatch';
+}
+
+/**
+ * ¿Fue el dinero a alguna de nuestras cuentas?
+ *
+ * El orden de preferencia es el único que no acusa de más: una coincidencia con
+ * CUALQUIERA de las cuentas basta para aprobar, y solo se acusa cuando ninguna
+ * coincidió y al menos una pudo compararse de verdad. Si todas quedaron en
+ * `unknown` —la lectura trae dos dígitos sueltos, o no hay nada configurado—, la
+ * respuesta es `unknown`: no saber a dónde fue el dinero no es lo mismo que
+ * saber que fue a otro sitio.
+ */
+export function matchesAccount(read: string | null, expected: string[]): FieldMatch {
+  let huboComparacion = false;
+
+  for (const cuenta of expected) {
+    const veredicto = matchesOneAccount(read, cuenta);
+    if (veredicto === 'match') return 'match';
+    if (veredicto === 'mismatch') huboComparacion = true;
+  }
+
+  return huboComparacion ? 'mismatch' : 'unknown';
+}
+
+/**
+ * Palabras que NO distinguen a un banco.
+ *
+ * Casi todos se llaman "Banco algo", y la mitad añade "de Bolivia" o "S.A.".
+ * Comparando con esas palabras dentro, `BANCO DE CRÉDITO DE BOLIVIA S.A.` se
+ * parecería a `BANCO NACIONAL DE BOLIVIA` — y lo que hay que distinguir es
+ * justamente eso.
+ */
+const PALABRAS_GENERICAS_DE_BANCO = new Set([
+  'BANCO',
+  'BANCA',
+  'BANK',
+  'MOVIL',
+  'BOLIVIA',
+  'BOLIVIANO',
+  'SA',
+  'SRL',
+  'LTDA',
+]);
+
+/** Lo que de verdad nombra a un banco: `NACIONAL`, `MERCANTIL`, `BNB`. */
+function bankTokens(name: string): string[] {
+  return significantTokens(name).filter((t) => !PALABRAS_GENERICAS_DE_BANCO.has(t));
+}
+
+/**
+ * ¿Es el banco leído aquel donde cobramos?
+ *
+ * Las siglas y el nombre largo son el mismo banco y no comparten una sola
+ * palabra (`BNB` contra `BANCO NACIONAL DE BOLIVIA`), así que no se deducen: se
+ * configuran como alias. Lo que no esté configurado no acusa.
+ *
+ * Si a algún lado no le queda ninguna palabra distintiva —el comprobante dice
+ * solo "Banco", o solo "Banca Móvil"— la respuesta es `unknown`. Acusar con eso
+ * sería acusar por la palabra que llevan todos.
+ */
+export function matchesBank(read: string | null, expected: string[]): FieldMatch {
+  const leidos = bankTokens(read ?? '');
+  const candidatos = expected.map(bankTokens).filter((t) => t.length > 0);
+  if (leidos.length === 0 || candidatos.length === 0) return 'unknown';
+
+  for (const esperados of candidatos) {
+    const [corto, largo] =
+      leidos.length <= esperados.length ? [leidos, esperados] : [esperados, leidos];
+    if (corto.every((t) => largo.includes(t))) return 'match';
+  }
+  return 'mismatch';
+}
+
+/**
+ * ¿Es el titular leído el nuestro?
+ *
+ * Coincide si TODAS las palabras significativas del nombre más corto están en el
+ * otro. Así `DON ZARCO` encaja dentro de `DON ZARCO SRL`, y `JUAN ZARCO` dentro
+ * de `JUAN CARLOS ZARCO MENDOZA`, sin que `MARIA LOPEZ` encaje en ninguno.
+ *
+ * Con una sola palabra significativa a un lado se exige que esté en el otro: un
+ * apellido suelto es poco, pero es exactamente lo que pinta más de un banco.
+ */
+export function matchesHolder(read: string | null, expected: string[]): FieldMatch {
+  const leidos = significantTokens(read ?? '');
+  const candidatos = expected.map(significantTokens).filter((t) => t.length > 0);
+  if (leidos.length === 0 || candidatos.length === 0) return 'unknown';
+
+  for (const esperados of candidatos) {
+    const [corto, largo] =
+      leidos.length <= esperados.length ? [leidos, esperados] : [esperados, leidos];
+    if (corto.every((t) => largo.includes(t))) return 'match';
+  }
+  return 'mismatch';
+}
+
+/**
+ * Lee la cuenta esperada de la configuración.
+ *
+ * Devuelve `null` si no hay cuenta ni titular: sin patrón no hay nada que
+ * contrastar, y el análisis se queda apagado en vez de inventarse un veredicto.
+ * Es el mismo fail-closed que usa la captura sin bucket.
+ */
+export function parseExpectedAccount(raw: {
+  bank?: string | null;
+  bankAliases?: string | null;
+  accountNumber?: string | null;
+  holder?: string | null;
+  holderAliases?: string | null;
+}): ExpectedAccount | null {
+  const separadas = (v: string | null | undefined, primera?: string | null) =>
+    [primera ?? '', ...(v ?? '').split('|')].map((n) => n.trim()).filter((n) => n.length > 0);
+
+  // Las cuentas se separan con `|` como los alias: una barra es "y también
+  // esta", que es exactamente lo que significa cobrar por dos billeteras.
+  const cuentas = separadas(raw.accountNumber);
+  const nombres = separadas(raw.holderAliases, raw.holder);
+  if (cuentas.length === 0 && nombres.length === 0) return null;
+  return {
+    bankNames: separadas(raw.bankAliases, raw.bank),
+    accountNumbers: cuentas,
+    holderNames: nombres,
+  };
+}

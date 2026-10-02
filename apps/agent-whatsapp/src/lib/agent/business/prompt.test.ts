@@ -1,0 +1,573 @@
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { BUSINESS_ADDRESS, BUSINESS_HOURS, BUSINESS_MAPS_URL } from './facts';
+import { DON_ZARCO_MAX_OUTPUT_TOKENS, DON_ZARCO_SYSTEM_PROMPT, systemPromptForMode } from './prompt';
+
+/**
+ * Business Adapter — reglas grounded (Fase 6D.2F.4.1).
+ *
+ * IMPORTANTE sobre qué prueban estos tests y qué NO.
+ *
+ * Un modelo falso responde lo que el test le diga, así que con él es imposible
+ * demostrar que el modelo REAL no inventa. Afirmar lo contrario sería un test
+ * decorativo. Aquí solo se prueba lo que sí es determinista: que las reglas
+ * existen en el prompt, que no se cuela ningún dato de negocio inventado dentro
+ * de él, y que la comprensión flexible no se ha degradado a una lista de
+ * palabras clave.
+ *
+ * El comportamiento semántico se mide con el eval set contra el modelo real
+ * (`docs/agent-eval-grounded.md`), que NO se ejecuta desde `npm test`.
+ */
+
+describe('prompt — hechos con respaldo', () => {
+  it('prohíbe inventar los datos duros del negocio', () => {
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(
+      /No inventes productos, precios, promociones ni tiempos de entrega/,
+    );
+  });
+
+  it('las promociones salen de get_menu_items, y sin ninguna no se promete (14-09-2026)', () => {
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/Las promociones también salen de get_menu_items/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/no prometas que vaya a haber/);
+  });
+
+  it('el horario entra desde facts.ts, pero no autoriza a decir si está abierto', () => {
+    // El horario dejó de ser un dato prohibido: tiene una fuente única
+    // (`./facts.ts`) y es la pregunta más frecuente del chat. Lo que sigue
+    // prohibido es la INFERENCIA — el agente no tiene reloj ni sabe de
+    // feriados, así que dar el horario nunca equivale a decir "estamos
+    // abiertos".
+    expect(DON_ZARCO_SYSTEM_PROMPT).toContain(BUSINESS_HOURS);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/Lo que NO puedes es decir si están abiertos AHORA/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/No tienes reloj ni sabes de feriados/);
+  });
+
+  it('los pedidos no se arman por chat y el delivery lo cotiza el sistema', () => {
+    // El agente solo tiene send_menu / get_menu_items / answer_directly: no
+    // puede registrar un pedido ni calcular un envío. El prompt lo dice con
+    // todas las letras para que no lo intente.
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/Los pedidos NO se arman por chat contigo/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/no lo anotes, no lo confirmes/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/no haces es decir el monto de tu cabeza/);
+  });
+
+  it('tampoco le repite el pedido al cliente: repetirlo se lee como confirmarlo', () => {
+    // Un "perfecto, dos trancapechos y una coca" suena a pedido anotado, y no
+    // hay nada anotado. El cliente se queda esperando comida que nadie preparó.
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/se lo repitas de vuelta/);
+  });
+
+  it('el cambio se explica como una VENTAJA, no como una regla', () => {
+    // "No puedo" y "es el sistema" suenan a muro. A un cliente que lleva años
+    // dictando su pedido por chat, un muro lo pierde; una razón lo convence.
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/Dilo como una ventaja para él/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/suenan a muro/);
+  });
+
+  it('dice que no hay recojo, sin muro y sin prometer que vuelve', () => {
+    // El local dejó de entregar en mano (15-09-2026, `orders/pickup-enabled`).
+    // Es un caso frecuente —el cliente manda a su propio repartidor—, así que
+    // lo que se le exige al prompt es la salida: que lo pida con envío. Sin
+    // ella, un "no se puede" deja la conversación sin sitio a donde ir.
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/No hay recojo: el local no entrega pedidos en mano/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/lo pida con envío/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/No prometas que el recojo/);
+    // Y ya no lo manda a elegir una opción que el checkout no pinta.
+    expect(DON_ZARCO_SYSTEM_PROMPT).not.toMatch(/"Recojo"/);
+  });
+
+  it('ante la frustración no repite la explicación', () => {
+    // Volver a explicarle por qué el pedido se arma en el menú a quien ya lo
+    // oyó una vez es lo que convierte a un cliente atascado en uno perdido.
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/sin volver a explicarle por qué/);
+  });
+
+  it('no le pide al agente que juzgue si hace falta una persona', () => {
+    // Ese juicio se le quitó a propósito: con una ventana de decisión que no
+    // dice cuánto tiempo pasó entre mensajes, el modelo derivaba conversaciones
+    // recién empezadas. Quien detecta el atasco es `menu-loop.ts`, contando
+    // menús enviados sin pedido — y el prompt tiene que decirlo, o el agente
+    // vuelve a cargar con la decisión.
+    expect(DON_ZARCO_SYSTEM_PROMPT).not.toMatch(/Necesita a una persona/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/el equipo se entera solo/);
+  });
+
+  it('manda consultar la herramienta en vez de contestar de memoria (6D.2F.5B)', () => {
+    // Ya NO dice "no tienes el menú delante": desde 5B sí lo tiene, vía tool.
+    // Lo que se le exige ahora es que lo consulte cada vez.
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/usa get_menu_items/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/No contestes de\s+memoria/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).not.toMatch(/No tienes delante el menú/);
+  });
+
+  it('el resultado fresco de la tool gana a lo dicho antes', () => {
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(
+      /Lo que devuelve la herramienta manda sobre cualquier cosa dicha antes/,
+    );
+  });
+
+  it('la tool del menú no trae ingredientes, y el prompt lo dice', () => {
+    // El dato ausente se declara EXPLÍCITAMENTE: si no, el modelo lo deduce
+    // del nombre, que es exactamente lo prohibido.
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(
+      /get_menu_items NO trae ingredientes, alérgenos ni atributos dietéticos/,
+    );
+  });
+
+  it('no puede decir que envió el menú si el envío no salió', () => {
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/Mira el resultado antes de hablar/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/Solo si dice que se envió/);
+  });
+
+  it('ya no se contradice a sí mismo sobre el envío del menú', () => {
+    // Hasta esta corrección el prompt daba las dos órdenes a la vez: "puedes
+    // decir que lo mandaste si el resultado lo confirma" y, más abajo, "no
+    // digas que enviaste el menú". Con tools, la segunda quedó falsa.
+    expect(DON_ZARCO_SYSTEM_PROMPT).not.toMatch(/No digas que enviaste el menú/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(
+      /Del menú solo puedes decir que se lo mandaste si llamaste a send_menu/,
+    );
+    // Lo que sigue sin poder afirmar, porque no tiene forma de hacerlo. El
+    // enlace de Maps es la única excepción, y lo es porque va escrito DENTRO
+    // del mensaje: no requiere ninguna capacidad que el agente no tenga.
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/No digas que enviaste un QR ni una ubicación de WhatsApp/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toContain(BUSINESS_MAPS_URL);
+  });
+
+  it('la descripción es copy de vitrina, no una ficha técnica', () => {
+    // Se acepta repetirla —el cliente ya la lee en la web— pero no concluir
+    // nada de ella. Sin esta línea, "Doble carne, doble queso" acabaría
+    // respondiendo a "¿tienen algo vegetariano?".
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/copy de vitrina/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/puedes repetirlo tal cual/);
+    for (const conclusion of [
+      'vegetariano',
+      'vegano',
+      'sin carne',
+      'sin gluten',
+      'libre de alérgenos',
+      'seguro para una alergia',
+    ]) {
+      expect(DON_ZARCO_SYSTEM_PROMPT, conclusion).toContain(conclusion);
+    }
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/lo que no menciona no es lo que no lleva/);
+  });
+
+  it('NO contiene precios ni catálogo, y sus cifras se escriben en palabras', () => {
+    // Guarda contra la tentación de "ayudar" pegando el menú aquí. Un dato
+    // dentro del prompt parecería grounded sin serlo, y quedaría congelado en
+    // el commit mientras el negocio cambia. Los precios siguen viniendo SOLO
+    // de get_menu_items.
+    //
+    // El enlace de Maps se excluye del barrido: es un identificador opaco, no
+    // un dato que el modelo pueda leer como cantidad.
+    const texto = DON_ZARCO_SYSTEM_PROMPT.replaceAll(BUSINESS_MAPS_URL, '');
+    expect(DON_ZARCO_SYSTEM_PROMPT).not.toMatch(/\bBs\.?\s*\d/i);
+    expect(texto).not.toMatch(/\d+[.,]\d{2}/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).not.toMatch(/\d+\s*(bs|bolivianos)\b/i);
+    // Ninguna cifra suelta: en el texto los números van en palabras.
+    expect(texto).not.toMatch(/\d/);
+  });
+});
+
+describe('prompt — explorar vs. preguntar un dato', () => {
+  /**
+   * Lo que se prueba aquí es que la REGLA viaja en el prompt, no que el modelo
+   * la obedezca: eso solo lo puede demostrar el modelo real. Un fake model
+   * contestaría lo que el test le dictara.
+   */
+  it('el criterio es CUÁNTOS productos habría que nombrar, no la formulación', () => {
+    // La versión anterior separaba "explorar" de "preguntar un dato", y
+    // "¿qué hamburguesas tienen?" cae en los dos lados. Contar productos sí
+    // tiene una respuesta única.
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/cuenta cuántos productos tendrías que/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(
+      /VARIOS productos, una categoría entera o "lo que hay" ⇒ send_menu/,
+    );
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/UNO o DOS productos concretos ⇒ get_menu_items/);
+  });
+
+  it('nombra las preguntas de categoría que fallaron en Production', () => {
+    // "q hamburguesas tienen?" se contestó enumerando el catálogo (incidente
+    // heredado del catálogo anterior). Estas
+    // formulaciones quedan resueltas explícitamente del lado del menú.
+    for (const pregunta of [
+      'qué tienen?',
+      'qué trancapechos',
+      'qué bebidas manejan?',
+      'qué opciones hay?',
+      'qué puedo pedir?',
+    ]) {
+      expect(DON_ZARCO_SYSTEM_PROMPT, pregunta).toContain(pregunta);
+    }
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/MANDANDO el menú, no escribiéndolo/);
+  });
+
+  it('la regla anti-enumeración es explícita y se puede autoaplicar', () => {
+    // Redactada como algo que el modelo puede comprobar sobre su propio
+    // borrador: "si te descubres enumerando, elegiste mal".
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/REGLA DURA: nunca reescribas el catálogo/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(
+      /Si te descubres\s+enumerando productos, la respuesta correcta era mandar el menú/,
+    );
+  });
+
+  it('una categoría no cuenta como pregunta puntual, aunque lo parezca', () => {
+    // El error concreto que la versión anterior inducía: "qué extras hay"
+    // estaba puesto como EJEMPLO de dato concreto, y el modelo generalizó a
+    // "qué hamburguesas hay".
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(
+      /Preguntar por una categoría NO es una pregunta puntual/,
+    );
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/"qué extras hay" o "qué bebidas tienen"/);
+  });
+
+  it('el modelo no puede volver puntual una pregunta amplia eligiendo él', () => {
+    // El hueco que dejaba "cuenta cuántos productos nombrarías": el modelo
+    // decide cuántos nombra, así que podría contestar "qué hamburguesas
+    // tienen?" mencionando dos y declararla puntual. Quien acota es el
+    // cliente, no él.
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/Los productos los acota el CLIENTE, no/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(
+      /sigue siendo el menú aunque solo pensaras nombrar dos/,
+    );
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/Si el\s+cliente no dijo cuáles, no los eliges tú/);
+  });
+
+  it('la decisión sigue siendo semántica, no una lista de frases', () => {
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(
+      /cuántos productos tendría que nombrar la respuesta, no las/,
+    );
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/con faltas o a medias/);
+  });
+
+  it('prohíbe el turno que manda el CTA y encima lista todo', () => {
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/No hagas las dos a la vez/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/no lo enumeres además en\s+texto/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/no mandes el menú entero en vez de\s+contestarlo/);
+  });
+
+  it('YA NO sugiere ninguna frase para acompañar al CTA (6D.2F.5B.1)', () => {
+    // Describía un momento que dejó de existir: un `send_menu` confirmado cierra
+    // el turno en silencio y no hay redacción después. Mientras siguiera aquí,
+    // era la plantilla exacta del CTA falso del 16-08-2026 —escrita por
+    // nosotros— disponible en la ventana de cualquier otra redacción.
+    expect(DON_ZARCO_SYSTEM_PROMPT).not.toMatch(/una frase corta que empuje al botón/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).not.toMatch(/te paso el menú/i);
+    expect(DON_ZARCO_SYSTEM_PROMPT).not.toMatch(/tocá Ver/i);
+    expect(DON_ZARCO_SYSTEM_PROMPT).not.toMatch(/quedarte callado también vale/i);
+  });
+
+  it('pero sigue prohibiendo afirmar un envío sin confirmación', () => {
+    // Esto es lo que NO se quitó, y es lo que importa cuando el despacho falla:
+    // ahí sí hay ronda de redacción, y ahí sí puede mentir.
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/Solo si dice que se envió puedes decir/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/Sin esa confirmación, no lo digas/);
+  });
+
+  it('prohíbe la coletilla exacta que apareció en Production', () => {
+    // La respuesta real terminó en "¿Querés que te cuente precios o algo más?",
+    // que después de mandar el menú deshace justo lo que se acaba de hacer.
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(
+      /ni preguntar si quiere que le cuentes los precios/,
+    );
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/volver a ofrecerlos deshace lo que acabas de/);
+  });
+
+  it('el dato concreto sigue exigiendo la herramienta: el grounding no se afloja', () => {
+    // El ajuste es de UX. Si el agente afirma un precio, sigue teniendo que
+    // haberlo consultado.
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/get_menu_items, y contestas ese dato/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/No contestes de\s+memoria/);
+  });
+});
+
+describe('prompt — recomendaciones subjetivas', () => {
+  it('nombra una por una las etiquetas que no puede repartir', () => {
+    for (const etiqueta of [
+      'la más rica',
+      'la mejor',
+      'la favorita',
+      'la más vendida',
+      'que más llena',
+      'la más saludable',
+      'la más picante',
+      'la ideal para dos',
+    ]) {
+      expect(DON_ZARCO_SYSTEM_PROMPT, etiqueta).toContain(etiqueta);
+    }
+  });
+
+  it('da la salida concreta en vez de dejarla a la improvisación', () => {
+    expect(DON_ZARCO_SYSTEM_PROMPT).toContain(
+      'No podría recomendarte una en específico, ¡pero todas están buenísimas! 😋',
+    );
+  });
+
+  it('el cliente no puede levantar la regla insistiendo', () => {
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/elegí cualquiera|decime una aunque no sepas/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/Que te lo pidan no lo vuelve\s+cierto/);
+  });
+});
+
+describe('prompt — composición del producto', () => {
+  it('el nombre no autoriza a deducir los ingredientes', () => {
+    expect(DON_ZARCO_SYSTEM_PROMPT).toContain('El nombre no dice qué lleva');
+    expect(DON_ZARCO_SYSTEM_PROMPT).toContain('Veggie Burger');
+  });
+
+  it('una lista incompleta no prueba una ausencia', () => {
+    // El error lógico más fácil de cometer: "no aparece, luego no lleva".
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(
+      /no aparezca en una lista no prueba que no esté/,
+    );
+  });
+});
+
+describe('prompt — alérgenos: la regla más estricta', () => {
+  it('nombra las condiciones que jamás puede afirmar', () => {
+    for (const claim of ['libre de gluten', 'apto para celíacos', 'libre de maní', 'libre de lácteos']) {
+      expect(DON_ZARCO_SYSTEM_PROMPT, claim).toContain(claim);
+    }
+  });
+
+  it('prohíbe deducir seguridad alimentaria desde los ingredientes', () => {
+    // Una lista de ingredientes no dice nada del contacto en cocina.
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/Tampoco lo deduzcas de una lista de ingredientes/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/los\s+alimentos se cruzan/);
+  });
+
+  it('entrega la frase exacta para responder', () => {
+    expect(DON_ZARCO_SYSTEM_PROMPT).toContain(
+      'No puedo confirmarte que sea seguro para esa alergia',
+    );
+  });
+});
+
+describe('prompt — cuando no sabe', () => {
+  it('prefiere decirlo antes que rellenar el hueco', () => {
+    expect(DON_ZARCO_SYSTEM_PROMPT).toContain('No tengo esa información para confirmártelo');
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/No rellenes el hueco/);
+  });
+
+  it('pide ofrecer una salida real, no dejar al cliente en el aire', () => {
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/ofrece el camino que SÍ existe/);
+  });
+
+  it('no saber algo NO es motivo para derivar a una persona', () => {
+    // Antes el prompt ofrecía "eso tendría que confirmártelo una persona del
+    // equipo" como salida al no saber. Medido con el eval real, esa frase era
+    // la que convertía "¿cuánto sale el envío?" —un dato que el agente no
+    // tiene— en una derivación con dos horas de silencio detrás.
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/NO es motivo para pasar la conversación a una persona/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).not.toContain('Eso tendría que confirmártelo una persona');
+  });
+});
+
+describe('prompt — no promete un traspaso que no existe', () => {
+  it('ya no ofrece "que un compañero conteste"', () => {
+    // No hay tool que transfiera la conversación ni que avise a nadie. Ofrecerlo
+    // era invitar al modelo a afirmar un handoff que nunca ocurrió.
+    expect(DON_ZARCO_SYSTEM_PROMPT).not.toContain('que un compañero conteste');
+  });
+
+  it('prohíbe explícitamente dar el aviso por hecho', () => {
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/No digas que avisaste a alguien/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/nunca que ya la avisaste/);
+  });
+
+  it('reserva la persona para lo que de verdad la necesita', () => {
+    // La fórmula "eso tendría que confirmártelo una persona del equipo" se
+    // quitó: era cierta, pero funcionaba como imán de derivaciones ante
+    // cualquier dato que el agente no tuviera. Lo que queda escrito es cuándo
+    // SÍ hace falta una persona, que es lo que no se puede confundir.
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(
+      /reserva para una queja, un reclamo, alguien que pide hablar con el equipo/,
+    );
+  });
+
+  it('el estado de un pedido ya hecho sí va a una persona', () => {
+    // La lista de arriba es corta a propósito, y esta entró con motivo: quien
+    // ya pidió y pregunta cuánto falta no necesita saber que el agente no lo
+    // sabe, necesita a alguien que pueda mirarlo.
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/la derivas a una[\s\S]{0,40}persona con request_human/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/pregunta por un pedido YA hecho[\s\S]{0,80}que sí se/);
+  });
+
+  it('a la pregunta por el tiempo no le ofrece la ubicación', () => {
+    // El fallo que se vio en producción (02-09-2026): "¿en cuánto llega?" se
+    // contestaba con "no tengo ese dato, pero comparte tu ubicación y te digo
+    // el costo del envío". Es responder otra pregunta.
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/NO le ofrezcas compartir la ubicación/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).not.toMatch(/dilo simple: no tienes ese dato/);
+  });
+
+  it('el cierre tampoco promete plazos ni aviso', () => {
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(
+      /sin prometer\s+plazos y sin dar por hecho que ya la avisaste/,
+    );
+  });
+});
+
+describe('prompt — la memoria no es fuente de verdad', () => {
+  it('separa entender el contexto de tomarlo como dato', () => {
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/La conversación no es una fuente de datos/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/lo que TÚ dijiste antes no es una fuente autoritativa/);
+  });
+
+  it('cierra el bucle: una afirmación previa sin respaldo no se recicla como dato', () => {
+    // Es la protección contra que una alucinación se consolide al volver a
+    // entrar por el contexto turno tras turno.
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/no se volvió verdad por estar escrito/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/no lo repitas como dato/);
+  });
+});
+
+describe('prompt — la comprensión sigue siendo flexible', () => {
+  it('pide entender a la primera cómo escribe la gente', () => {
+    for (const ejemplo of ['q tienen?', 'menu xfa', 'mandme la carta', 'cual ta mas rica?']) {
+      expect(DON_ZARCO_SYSTEM_PROMPT, ejemplo).toContain(ejemplo);
+    }
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/sin pedirle a nadie que lo repita mejor/);
+  });
+
+  it('dice explícitamente dónde acaba la flexibilidad', () => {
+    // La frase que evita que "sé estricto" se lea como "sé cortante".
+    expect(DON_ZARCO_SYSTEM_PROMPT).toContain(
+      'Ser flexible es para ENTENDER. Al AFIRMAR hechos eres estricto.',
+    );
+  });
+
+  it('resuelve referencias conversacionales sin listas de palabras clave', () => {
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/a qué se refiere un "esta" o un "el otro"/);
+  });
+});
+
+describe('prompt — tono y emoji', () => {
+  it('permite UN emoji ocasional y prohíbe la cadena y la viñeta', () => {
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/Como mucho UN emoji por mensaje/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/Nunca varios\s+seguidos, nunca como viñeta/);
+    // Y que no sea obligatorio: sin esto el modelo lo mete en todas.
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/la mayoría de tus\s+respuestas no lleva ninguno/);
+  });
+
+  it('el propio prompt predica con el ejemplo: un solo emoji en todo el texto', () => {
+    const emojis = DON_ZARCO_SYSTEM_PROMPT.match(/\p{Extended_Pictographic}/gu) ?? [];
+    expect(emojis).toEqual(['😋']);
+  });
+
+  it('sigue prohibiendo markdown y viñetas en la respuesta', () => {
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/Sin markdown y sin listas con viñetas/);
+  });
+});
+
+describe('prompt — el Business Adapter sigue siendo solo texto', () => {
+  it('solo importa los datos del negocio: no sabe cómo se ejecuta un turno', () => {
+    // La separación con Agent Core no es un comentario, es una propiedad.
+    //
+    // El prompt dejó de ser un literal sin imports el día que el horario y la
+    // ubicación pasaron a tener una fuente única. La invariante que importa no
+    // era "cero imports", sino que el Business Adapter NO alcance la máquina:
+    // solo puede leer de su propio módulo de datos, que también es texto puro.
+    const source = readFileSync(new URL('./prompt.ts', import.meta.url), 'utf8');
+
+    const imports = source.match(/^\s*import\s.+$/gm) ?? [];
+    expect(imports).toHaveLength(1);
+    expect(imports[0]).toContain("from './facts'");
+
+    expect(source).not.toContain('@/lib/agent/core');
+    expect(source).not.toContain('@/lib/menu');
+    expect(source).not.toContain('supabase');
+  });
+
+  it('el techo de salida sigue siendo el de WhatsApp', () => {
+    expect(DON_ZARCO_MAX_OUTPUT_TOKENS).toBe(300);
+    expect(DON_ZARCO_MAX_OUTPUT_TOKENS).toBeLessThanOrEqual(400);
+  });
+});
+
+describe('prompt — la ubicación se responde entera', () => {
+  /** La línea del bloque de hechos que habla de dónde están. */
+  const lineaUbicacion = DON_ZARCO_SYSTEM_PROMPT.split('\n').find((l) =>
+    l.startsWith('- Dónde están:'),
+  );
+
+  it('la dirección y el enlace viajan en la MISMA instrucción', () => {
+    // Esta es la regresión de verdad (02-09-2026): con la dirección escrita, el
+    // agente respondía la calle y se dejaba el enlace. Separarlos en dos frases
+    // distintas del prompt es lo que lo permitía, así que se comprueba que
+    // estén en la misma línea y no solo que ambos aparezcan en algún sitio.
+    expect(lineaUbicacion).toBeDefined();
+    expect(lineaUbicacion).toContain(BUSINESS_MAPS_URL);
+    if (BUSINESS_ADDRESS !== null) expect(lineaUbicacion).toContain(BUSINESS_ADDRESS);
+  });
+
+  it('manda las dos cosas, no las permite', () => {
+    // "Puedes compartirlo" es un permiso y se cumple a veces. La orden no.
+    expect(lineaUbicacion).toMatch(/SIEMPRE con las dos cosas en el mismo mensaje/);
+    expect(lineaUbicacion).not.toMatch(/puedes compartirlo/i);
+  });
+
+  it('afirma que hay un solo local en vez de encogerse de hombros', () => {
+    // Sin esto cae en la sección "Cuando no sabes" y contesta que no tiene la
+    // información, que es falso: sí la tiene, y es que no hay más locales.
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/ÚNICO local: no hay sucursales/);
+    expect(DON_ZARCO_SYSTEM_PROMPT).toMatch(/no respondas que no tienes la información/);
+  });
+});
+
+describe('prompt — noche de promoción (14-09-2026)', () => {
+  it('fuera de la promoción es exactamente el prompt de siempre', () => {
+    expect(systemPromptForMode({ cashAllowed: true })).toBe(DON_ZARCO_SYSTEM_PROMPT);
+  });
+
+  it('en noche de promoción avisa que no se acepta efectivo, y que eso manda', () => {
+    const prompt = systemPromptForMode({ cashAllowed: false, active: true });
+    expect(prompt.startsWith(DON_ZARCO_SYSTEM_PROMPT)).toBe(true);
+    const bloque = prompt.slice(DON_ZARCO_SYSTEM_PROMPT.length);
+    expect(bloque).toMatch(/Hoy hay promoción vigente/);
+    expect(bloque).toMatch(/No se acepta efectivo/);
+    expect(bloque).toMatch(/Esto manda sobre lo que dice arriba/);
+  });
+
+  it('sin efectivo y SIN promoción no nombra ninguna promoción (21-09-2026)', () => {
+    // El efectivo se apaga también aparte (`orders/cash-enabled`). Ahí el
+    // bloque de la promoción le haría anunciar una que no existe.
+    const bloque = systemPromptForMode({ cashAllowed: false, active: false }).slice(
+      DON_ZARCO_SYSTEM_PROMPT.length,
+    );
+    expect(bloque).toMatch(/no se acepta efectivo: el pago es solo por QR/);
+    expect(bloque).toMatch(/Esto manda sobre lo que dice arriba/);
+    expect(bloque).not.toMatch(/promoci/i);
+  });
+
+  it('el recojo ya no se anuncia aquí, sino en el prompt fijo (15-09-2026)', () => {
+    // Está apagado SIEMPRE (`orders/pickup-enabled`). Si siguiera colgando de
+    // este bloque, el modelo leería "hoy hay promoción vigente" en todos los
+    // turnos —también en los que no hay ninguna— y acabaría anunciándole una
+    // promoción inexistente a quien preguntó por el horario.
+    for (const active of [true, false]) {
+      const bloque = systemPromptForMode({ cashAllowed: false, active }).slice(
+        DON_ZARCO_SYSTEM_PROMPT.length,
+      );
+      expect(bloque).not.toMatch(/recojo/i);
+    }
+  });
+});
+
+describe('prompt — pedidos pausados por saturación (0038)', () => {
+  it('sin pausa ni promoción es el prompt de siempre', () => {
+    expect(systemPromptForMode({ cashAllowed: true, ordersPaused: false })).toBe(
+      DON_ZARCO_SYSTEM_PROMPT,
+    );
+  });
+
+  it('con pausa le dice que no invite a pedir y que lo ya pedido sigue', () => {
+    const bloque = systemPromptForMode({ cashAllowed: true, ordersPaused: true }).slice(
+      DON_ZARCO_SYSTEM_PROMPT.length,
+    );
+    expect(bloque).toMatch(/pedidos nuevos están PAUSADOS/);
+    expect(bloque).toMatch(/No lo invites a armar un pedido/);
+    expect(bloque).toMatch(/su pedido está en curso/);
+  });
+});

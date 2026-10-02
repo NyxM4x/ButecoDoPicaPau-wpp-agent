@@ -1,0 +1,199 @@
+import { describe, it, expect } from 'vitest';
+import { classifyOutboundType, LOCATION_HOW_TO_TEXT } from './outbound-classify';
+import { buildLocationRequestPayload, buildWebLocationRequestBodyText } from './messages';
+import { normalizeOutboundMessage } from './message-history';
+import { parseOutboundEvent } from '@/lib/orders/notifications/outbound-event';
+import {
+  buildOrderReceivedText,
+  buildDynamicDeliveryConfirmationText,
+  buildConfirmationText,
+  buildQrPaymentCaption,
+} from '@/lib/orders/notifications/notify-text';
+
+const ORD = 'ORD-000123';
+
+const ORDER_RECEIVED = buildOrderReceivedText(ORD);
+const CONF_DYNAMIC = buildDynamicDeliveryConfirmationText({
+  order_number: ORD,
+  subtotal_amount: 90,
+  delivery_amount: 16,
+  total_amount: 106,
+});
+const CONF_QR_CAPTION = buildQrPaymentCaption(CONF_DYNAMIC);
+const CONF_LEGACY_PICKUP = (() => {
+  const r = buildConfirmationText({
+    order_number: ORD,
+    delivery_type: 'pickup',
+    subtotal_amount: 50,
+    total_amount: 50,
+    items: [{ product_name_snapshot: 'La Fija', quantity: 1, subtotal: 50 }],
+  });
+  return r.ok ? r.text : '';
+})();
+
+describe('classifyOutboundType — clasificación determinista', () => {
+  it('order_received (texto de recepción) → order_received, NO confirmation', () => {
+    const t = classifyOutboundType({
+      messageKind: 'text',
+      interactiveType: null,
+      bodyText: ORDER_RECEIVED,
+      orderNumber: ORD,
+    });
+    expect(t).toBe('order_received');
+  });
+
+  it('confirmation cash dinámica (Comida/Delivery/Total) → confirmation', () => {
+    expect(
+      classifyOutboundType({ messageKind: 'text', interactiveType: null, bodyText: CONF_DYNAMIC, orderNumber: ORD }),
+    ).toBe('confirmation');
+  });
+
+  it('confirmation QR (imagen con caption) → confirmation', () => {
+    expect(
+      classifyOutboundType({ messageKind: 'image', interactiveType: null, bodyText: CONF_QR_CAPTION, orderNumber: ORD }),
+    ).toBe('confirmation');
+  });
+
+  it('confirmation QR con el envío aparte (sin desglose) → confirmation', () => {
+    const caption = buildQrPaymentCaption(CONF_DYNAMIC, {
+      orderNumber: ORD,
+      dueByQr: 90,
+      deliveryAmount: 16,
+    });
+    expect(
+      classifyOutboundType({ messageKind: 'image', interactiveType: null, bodyText: caption, orderNumber: ORD }),
+    ).toBe('confirmation');
+  });
+
+  it('confirmation legacy («¡Recibí tu pedido…») → confirmation', () => {
+    expect(
+      classifyOutboundType({ messageKind: 'text', interactiveType: null, bodyText: CONF_LEGACY_PICKUP, orderNumber: ORD }),
+    ).toBe('confirmation');
+  });
+
+  it('location_request interactivo → location_request', () => {
+    expect(
+      classifyOutboundType({
+        messageKind: 'interactive',
+        interactiveType: 'location_request_message',
+        bodyText: 'ORD-000123 ubicación',
+        orderNumber: ORD,
+      }),
+    ).toBe('location_request');
+  });
+
+  it('la petición en TEXTO también → location_request', () => {
+    // Desde el 03-09-2026 la petición va sin botón. Si el clasificador solo
+    // mirara `interactive.type`, este mensaje sería `unknown` y una
+    // reconciliación dejaría de emparejarlo: un envío ambiguo se reintentaría y
+    // el cliente recibiría la petición dos veces.
+    const cuerpo = buildLocationRequestPayload('59170000001').text.body;
+    expect(
+      classifyOutboundType({
+        messageKind: 'text',
+        interactiveType: null,
+        bodyText: cuerpo,
+        orderNumber: null,
+      }),
+    ).toBe('location_request');
+  });
+
+  it('la petición WEB lleva ORD- y aún así no se confunde con una confirmación', () => {
+    // Es el caso que obliga a que la regla de ubicación vaya ANTES: el cuerpo
+    // trae el número de pedido, que es el token de emparejamiento de las otras.
+    const cuerpo = buildLocationRequestPayload(
+      '59170000001',
+      buildWebLocationRequestBodyText(ORD),
+    ).text.body;
+    expect(cuerpo).toContain(ORD);
+    expect(
+      classifyOutboundType({
+        messageKind: 'text',
+        interactiveType: null,
+        bodyText: cuerpo,
+        orderNumber: ORD,
+      }),
+    ).toBe('location_request');
+  });
+
+  it('el builder y el clasificador comparten la MISMA marca', () => {
+    // La paridad no se comprueba comparando dos cadenas parecidas: se garantiza
+    // porque el builder importa la constante del clasificador.
+    expect(buildLocationRequestPayload('59170000001').text.body).toContain(LOCATION_HOW_TO_TEXT);
+  });
+
+  it('texto genérico sin forma reconocible → unknown (ya no "todo texto = confirmation")', () => {
+    expect(
+      classifyOutboundType({ messageKind: 'text', interactiveType: null, bodyText: 'hola qué tal', orderNumber: null }),
+    ).toBe('unknown');
+  });
+
+  it('texto de fuera de cobertura (sin ORD) → unknown (no contamina reconciliación)', () => {
+    expect(
+      classifyOutboundType({
+        messageKind: 'text',
+        interactiveType: null,
+        bodyText: 'Lo sentimos, tu ubicación está fuera de nuestra zona de delivery.',
+        orderNumber: null,
+      }),
+    ).toBe('unknown');
+  });
+});
+
+// ── Paridad: los DOS clasificadores (historial y webhook) coinciden ──────────
+
+function historyType(msg: Record<string, unknown>): string {
+  return normalizeOutboundMessage(msg)?.type ?? 'null';
+}
+
+function webhookType(msg: Record<string, unknown>): string {
+  const r = parseOutboundEvent('whatsapp.message.sent', { message: { ...msg, to: '59170000000' } });
+  return r.ok ? r.event.messageType : 'invalid';
+}
+
+describe('paridad historial ↔ webhook (misma semántica de clasificación)', () => {
+  const cases: Array<{ name: string; msg: Record<string, unknown>; expected: string }> = [
+    {
+      name: 'order_received (texto)',
+      msg: { id: 'w1', to: '59170000000', type: 'text', text: { body: ORDER_RECEIVED }, timestamp: '2026-08-11T18:00:00.000Z' },
+      expected: 'order_received',
+    },
+    {
+      name: 'confirmation cash (texto)',
+      msg: { id: 'w2', to: '59170000000', type: 'text', text: { body: CONF_DYNAMIC }, timestamp: '2026-08-11T18:00:00.000Z' },
+      expected: 'confirmation',
+    },
+    {
+      name: 'confirmation QR (imagen)',
+      msg: { id: 'w3', to: '59170000000', type: 'image', image: { caption: CONF_QR_CAPTION }, timestamp: '2026-08-11T18:00:00.000Z' },
+      expected: 'confirmation',
+    },
+    {
+      name: 'location_request (interactivo)',
+      msg: {
+        id: 'w4',
+        to: '59170000000',
+        type: 'interactive',
+        interactive: { type: 'location_request_message', body: { text: `Pedido ${ORD}` } },
+        timestamp: '2026-08-11T18:00:00.000Z',
+      },
+      expected: 'location_request',
+    },
+  ];
+
+  for (const c of cases) {
+    it(`${c.name}: historial y webhook clasifican igual (${c.expected})`, () => {
+      const h = historyType(c.msg);
+      const w = webhookType(c.msg);
+      expect(h).toBe(c.expected);
+      expect(w).toBe(c.expected);
+      expect(h).toBe(w);
+    });
+  }
+
+  it('order_received NUNCA se clasifica como confirmation en ninguna vía', () => {
+    const msg = { id: 'w5', to: '59170000000', type: 'text', text: { body: ORDER_RECEIVED }, timestamp: '2026-08-11T18:00:00.000Z' };
+    expect(historyType(msg)).not.toBe('confirmation');
+    expect(webhookType(msg)).not.toBe('confirmation');
+  });
+});

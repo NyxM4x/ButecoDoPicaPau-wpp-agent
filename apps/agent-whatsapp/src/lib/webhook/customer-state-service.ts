@@ -1,0 +1,518 @@
+import 'server-only';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase/server';
+import { log } from '@/lib/log';
+import type { OrderStatus, PaymentMethod, PaymentReviewStatus } from '@/types';
+import { paymentGateOf } from '@/lib/payment-proof/payment-gate';
+import { isPauseActive } from '@/lib/agent/control/pause-gate';
+import { createAgentStore } from '@/lib/agent/memory/repository';
+import {
+  DELIVERY_RELAY_COOLDOWN_MS,
+  OPEN_ORDER_STATUSES,
+  OPEN_ORDER_WINDOW_MS,
+  ORDER_CHANGE_STATUSES,
+  PROOF_REMINDER_COOLDOWN_MS,
+  waitingOnUs,
+  type CustomerStateSnapshot,
+  type OpenOrderSnapshot,
+} from './default-reply';
+import { catalogTermsFromNames } from './order-change-intent';
+import { createMenuRepository } from '@/lib/menu/repository';
+import { PROOF_REMINDER_ACTION } from '@/lib/kapso/send-proof-reminder';
+import { ORDER_REVIEW_ACTION } from '@/lib/kapso/send-order-review';
+import { CASH_REPROMPT_ACTION } from '@/lib/kapso/send-cash-buttons';
+import { CASH_POLICY_ACTION } from '@/lib/kapso/send-cash-policy';
+import { CASH_ENABLED } from '@/lib/orders/cash-enabled';
+import {
+  CASH_WAIT_ACTION,
+  DELIVERY_RELAY_ACTION,
+  LOCATION_REMINDER_ACTION,
+  PROOF_WAIT_ACTION,
+} from '@/lib/kapso/send-wait-notice';
+
+/**
+ * En qué situación está el cliente que acaba de escribir — wiring server-only.
+ *
+ * Lo consume la respuesta POR DEFECTO del webhook (`default-reply.ts`), que
+ * desde el 03-09-2026 manda el botón del menú a todo el que escribe salvo
+ * excepciones. Este archivo resuelve exactamente esas excepciones, y ninguna
+ * otra cosa: no envía nada, no decide nada y no interpreta el mensaje.
+ *
+ * ── `null` es una respuesta, no un error ────────────────────────────────────
+ *
+ * Ante CUALQUIER fallo de consulta devuelve `null`, y `null` significa "no lo
+ * sabemos". El llamador no manda nada por defecto en ese caso, y esa es la
+ * dirección segura: lo que no se puede descartar a ciegas es que haya una
+ * persona del equipo escribiéndole al cliente en este momento.
+ *
+ * ── Por qué las tres consultas y no menos ───────────────────────────────────
+ *
+ *   1. PAUSA     → ¿hay un humano al mando? Es la que más importa.
+ *   2. PEDIDO    → ¿tiene uno abierto, y en qué punto está su pago?
+ *   3. RECUERDO  → ¿ya le pedimos el comprobante hace un momento?
+ *   4. CARTA     → ¿qué se vende? Solo para distinguir "sin cebolla" de
+ *                  "mándame 2 sodas" (`order-change-intent.ts`).
+ *
+ * Las tres últimas solo se hacen cuando la 2 encontró algo, así que el cliente
+ * normal —el que escribe sin tener nada abierto— cuesta dos consultas cortas
+ * por teléfono, ambas por índice.
+ */
+
+/** Lo que se lee de `orders`. Nada de ubicación, notas ni datos del cliente. */
+interface FilaPedido {
+  id: string;
+  order_number: string;
+  status: OrderStatus;
+  total_amount: number;
+  /** La comida: lo que se transfiere por QR. Ver `foodAmount`. */
+  subtotal_amount: number;
+  payment_method: PaymentMethod | null;
+  /** 0036: cuándo el cliente confirmó su pedido en efectivo. `null` = aún no. */
+  cash_confirmed_at: string | null;
+  /** Solo para el copy de `deliveryRelayText`: no hay delivery en un recojo. */
+  delivery_type: 'delivery' | 'pickup' | null;
+  /**
+   * ¿Consta ya su pin? Solo se mira si es `null` (07-09-2026).
+   *
+   * Distingue las dos esperas que caben en `awaiting_location`: sin pin falta
+   * él, con pin faltamos nosotros. Ver `locationReceived`.
+   */
+  delivery_latitude: number | null;
+  /** Ancla del acuse del comprobante. Ver `avisoDeEsperaEnviado`. */
+  created_at: string;
+}
+
+/**
+ * El pedido abierto MÁS RECIENTE del teléfono, dentro de la ventana.
+ *
+ * `undefined` = no se pudo consultar (se propaga como estado desconocido);
+ * `null` = no tiene ninguno, que es el caso normal y el que recibe el botón.
+ */
+async function pedidoAbierto(
+  supabase: SupabaseClient,
+  customerPhone: string,
+): Promise<FilaPedido | null | undefined> {
+  const desde = new Date(Date.now() - OPEN_ORDER_WINDOW_MS).toISOString();
+
+  const { data, error } = await supabase
+    .from('orders')
+    .select(
+      'id, order_number, status, total_amount, subtotal_amount, payment_method, cash_confirmed_at, ' +
+        'delivery_type, delivery_latitude, created_at',
+    )
+    .eq('customer_phone', customerPhone)
+    .in('status', [...OPEN_ORDER_STATUSES])
+    .gte('created_at', desde)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) return undefined;
+  return (data as FilaPedido | null) ?? null;
+}
+
+/**
+ * En qué quedó cada intento de pago del pedido. `null` si no se pudo consultar.
+ *
+ * Un `null` NO es "no ha pagado": `paymentGateOf` lo traduce a `unknown`, que no
+ * es `no_proof` y por tanto no dispara ningún recordatorio. Preguntarle por el
+ * comprobante a alguien cuyo pago no pudimos mirar es el error que esa
+ * distinción evita.
+ */
+async function intentosDePago(
+  supabase: SupabaseClient,
+  orderId: string,
+): Promise<{ attempts: { status: PaymentReviewStatus; reviewedAt: string | null }[] } | null> {
+  const { data, error } = await supabase
+    .from('payment_attempts')
+    .select('review_status, reviewed_at')
+    .eq('order_id', orderId);
+
+  if (error || !data) return null;
+
+  return {
+    attempts: (data as Array<{ review_status: PaymentReviewStatus; reviewed_at: string | null }>)
+      .map((row) => ({ status: row.review_status, reviewedAt: row.reviewed_at })),
+  };
+}
+
+/**
+ * ¿Ya le recordamos el comprobante hace poco?
+ *
+ * Se cruza por la MEMORIA CONVERSACIONAL, no por una tabla nueva: el
+ * recordatorio se persiste en `agent_messages` como saliente de `automation` con
+ * `metadata.action`, igual que el menú. Esa fila hace dos trabajos a la vez —es
+ * lo que el cliente vio, y es el reloj de este cooldown—, y por eso no hay dos
+ * verdades que puedan discrepar.
+ *
+ * Ante un fallo de consulta devuelve `true`: se asume que sí, y no se manda. Un
+ * recordatorio de menos lo arregla el siguiente mensaje del cliente; uno de más
+ * es un mensaje repetido a alguien que está buscando la foto de su pago.
+ */
+async function recordadoHacePoco(
+  supabase: SupabaseClient,
+  conversationId: string | null,
+): Promise<boolean> {
+  // Sin conversación no hay historial: nunca se le recordó nada.
+  if (conversationId === null) return false;
+
+  const desde = new Date(Date.now() - PROOF_REMINDER_COOLDOWN_MS).toISOString();
+
+  const { data, error } = await supabase
+    .from('agent_messages')
+    .select('id')
+    .eq('agent_conversation_id', conversationId)
+    .eq('actor', 'automation')
+    .eq('metadata->>action', PROOF_REMINDER_ACTION)
+    .gte('message_timestamp', desde)
+    .limit(1);
+
+  if (error) return true;
+  return (data ?? []).length > 0;
+}
+
+/**
+ * ¿Hay una pregunta "¿querés agregar algo más?" sin contestar? (05-09-2026)
+ *
+ * Misma técnica que el cooldown del comprobante y por la misma razón: el
+ * saliente ya se anota en `agent_messages`, así que la fila que prueba que se
+ * preguntó es también el reloj que dice hasta cuándo vale la respuesta. Una
+ * columna nueva sería un segundo sitio donde guardar lo mismo — y una migración
+ * a mano en la parte más caliente del flujo.
+ *
+ * Ante un error se responde `false`: sin poder confirmar que se preguntó, un
+ * "no" del cliente vuelve a ser un texto cualquiera y sigue su camino de hoy.
+ * Tratarlo como respuesta a una pregunta que quizá no se hizo es lo único que
+ * podría tocarle el pedido por error.
+ */
+async function preguntadoHacePoco(
+  supabase: SupabaseClient,
+  conversationId: string | null,
+): Promise<boolean> {
+  if (conversationId === null) return false;
+
+  const desde = new Date(Date.now() - PROOF_REMINDER_COOLDOWN_MS).toISOString();
+
+  const { data, error } = await supabase
+    .from('agent_messages')
+    .select('id')
+    .eq('agent_conversation_id', conversationId)
+    .eq('actor', 'automation')
+    .eq('metadata->>action', ORDER_REVIEW_ACTION)
+    .gte('message_timestamp', desde)
+    .limit(1);
+
+  if (error) return false;
+  return (data ?? []).length > 0;
+}
+
+/**
+ * ¿Ya salió el aviso de espera de ESTE pedido? (06-09-2026)
+ *
+ * La misma técnica que los dos de arriba —la fila del saliente en
+ * `agent_messages` es a la vez lo que el cliente vio y el estado— pero con un
+ * ancla distinta, y la diferencia es todo el punto.
+ *
+ * `recordadoHacePoco` mira los últimos quince minutos porque el recordatorio
+ * del pago DEBE repetirse: mientras falte el comprobante, el cliente todavía
+ * tiene algo que hacer. Esto mira desde que el pedido entró en espera, porque
+ * este aviso NO debe repetirse nunca: después de él, el agente calla. Un solo
+ * reloj para las dos cosas dejaba al cliente leyendo "danos tiempo" en cada
+ * mensaje que escribía, que es la queja que esto viene a arreglar.
+ *
+ * Ante un error devuelve `true` = ya se avisó = silencio. Es la dirección
+ * segura: el cliente ya sabe que estamos con su pedido, y repetírselo es
+ * justamente lo que no queremos.
+ */
+async function avisoDeEsperaEnviado(
+  supabase: SupabaseClient,
+  conversationId: string | null,
+  action: string,
+  desde: string,
+): Promise<boolean> {
+  if (conversationId === null) return false;
+
+  const { data, error } = await supabase
+    .from('agent_messages')
+    .select('id')
+    .eq('agent_conversation_id', conversationId)
+    .eq('actor', 'automation')
+    .eq('metadata->>action', action)
+    .gte('message_timestamp', desde)
+    .limit(1);
+
+  if (error) return true;
+  return (data ?? []).length > 0;
+}
+
+/**
+ * Cuántas veces salió el aviso de los botones desde `desde` (13-09-2026).
+ *
+ * Hermana de `avisoDeEsperaEnviado` y con la misma forma, salvo que aquí hace
+ * falta el NÚMERO y no un sí/no: hay dos avisos distintos y el segundo depende
+ * de que el primero ya haya salido. Se piden como mucho tres filas, que es una
+ * más de las que pueden cambiar la decisión.
+ *
+ * Ante un error devuelve el tope: si no se puede saber si ya se le avisó, no se
+ * le avisa. Es el mismo criterio conservador de la consulta hermana —callar de
+ * más es recuperable, insistir de más es lo que lleva una persona al chat.
+ */
+/** Dos avisos por pedido y después silencio. Ver `decideDefaultReply`. */
+const CASH_REPROMPT_MAX = 2;
+
+async function avisosDeBotonesEnviados(
+  supabase: SupabaseClient,
+  conversationId: string | null,
+  desde: string,
+): Promise<number> {
+  if (conversationId === null) return CASH_REPROMPT_MAX;
+
+  const { data, error } = await supabase
+    .from('agent_messages')
+    .select('id')
+    .eq('agent_conversation_id', conversationId)
+    .eq('actor', 'automation')
+    .eq('metadata->>action', CASH_REPROMPT_ACTION)
+    .gte('message_timestamp', desde)
+    .limit(CASH_REPROMPT_MAX + 1);
+
+  if (error) return CASH_REPROMPT_MAX;
+  return (data ?? []).length;
+}
+
+/**
+ * Palabras de los productos ACTIVOS. `undefined` si no se pudo leer la carta.
+ *
+ * Se lee de `menu_items` por el mismo repositorio que usa el resto del sistema:
+ * el detector de preferencias no puede tener una carta propia que se
+ * desincronice de la que se vende.
+ */
+async function terminosDeLaCarta(
+  supabase: SupabaseClient,
+): Promise<readonly string[] | undefined> {
+  try {
+    const items = await createMenuRepository(supabase).listActive();
+    return catalogTermsFromNames(items.map((item) => item.name));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * ¿Llegó alguna foto para este pedido? `true` ante la duda.
+ *
+ * Mira `payment_proofs` y no `payment_attempts`: la fila del comprobante se
+ * escribe en cuanto el mensaje entra, aunque después falle la descarga del
+ * archivo. Cualquier estado de captura cuenta —`stored`, `capturing` o
+ * `failed`—, porque lo que responde esta pregunta no es si el archivo está
+ * guardado, sino si el cliente ya mandó algo.
+ *
+ * Un fallo de consulta devuelve `true`: callar de más a quien quizá pagó es
+ * molesto; ofrecerle rehacer un pedido pagado le cuesta el pedido.
+ */
+async function llegoComprobante(
+  supabase: SupabaseClient,
+  orderId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('payment_proofs')
+    .select('id')
+    .eq('order_id', orderId)
+    .limit(1);
+
+  if (error) return true;
+  return (data ?? []).length > 0;
+}
+
+/**
+ * Estado del cliente para la respuesta por defecto. NUNCA lanza.
+ *
+ * @param customerPhone Dígitos ya normalizados por el webhook.
+ */
+export async function lookupCustomerState(
+  customerPhone: string,
+  supabase: SupabaseClient = getSupabaseAdmin(),
+): Promise<CustomerStateSnapshot | null> {
+  if (customerPhone === '') return null;
+
+  try {
+    // 1. ¿Hay un humano al mando? Se pregunta si la pausa RIGE ahora, no si la
+    //    fila dice `paused`: una pausa vencida y sin normalizar no calla a nadie.
+    const pausa = await createAgentStore(supabase).findPauseStateByPhone(customerPhone);
+    const paused = isPauseActive(pausa, new Date().toISOString());
+
+    // Con un humano dentro no hace falta nada más: la decisión ya está tomada y
+    // las otras consultas no cambiarían el desenlace.
+    if (paused) return { paused: true, openOrder: null, proofRemindedRecently: false };
+
+    // 2. ¿Tiene un pedido abierto?
+    const pedido = await pedidoAbierto(supabase, customerPhone);
+    if (pedido === undefined) return null;
+    if (pedido === null) {
+      return { paused: false, openOrder: null, proofRemindedRecently: false };
+    }
+
+    const pago = await intentosDePago(supabase, pedido.id);
+    const gate = paymentGateOf(pedido.payment_method, pago, Date.now());
+    const proofReceived = await llegoComprobante(supabase, pedido.id);
+
+    const openOrder: OpenOrderSnapshot = {
+      orderId: pedido.id,
+      orderNumber: pedido.order_number,
+      status: pedido.status,
+      totalAmount: Number(pedido.total_amount),
+      foodAmount: Number(pedido.subtotal_amount),
+      payment: gate.state,
+      proofReceived,
+      paymentMethod: pedido.payment_method ?? null,
+      // Un pedido en efectivo sin confirmar no está en cocina ni en el grupo de
+      // reparto: su siguiente mensaje puede ser el CONFIRMO que lo agenda.
+      awaitingCashConfirm:
+        pedido.payment_method === 'cash' && pedido.cash_confirmed_at === null,
+      // El complemento, calculado AQUÍ MISMO y no en otro sitio: los dos salen
+      // de la misma columna y son excluyentes por construcción. Separarlos es
+      // como se llega a que ninguno cubra el pedido ya confirmado, que es lo
+      // que pasó el 06-09.
+      cashConfirmed:
+        pedido.payment_method === 'cash' && pedido.cash_confirmed_at !== null,
+      deliveryType: pedido.delivery_type,
+      locationReceived: pedido.delivery_latitude !== null,
+    };
+
+    // 3. El cooldown del recordatorio `missing`, y SOLO ese.
+    //
+    //    Que se calcule únicamente en `no_proof` dejó de ser un descuido el
+    //    06-09-2026: la otra mitad —el comprobante ya recibido— tenía este
+    //    mismo cooldown en su rama y NUNCA llegaba a calcularse, porque con una
+    //    foto en la mano el gate vale `awaiting_review`. El aviso salía en cada
+    //    mensaje del cliente. Ahora esa mitad tiene su propio freno, permanente
+    //    y anclado al pedido (`waitNoticeSent`), así que esta condición es
+    //    exactamente la correcta.
+    const proofRemindedRecently =
+      gate.state === 'no_proof'
+        ? await recordadoHacePoco(supabase, pausa?.conversationId ?? null)
+        : false;
+
+    // 3b. ¿Ya se le pidió paciencia por este pedido? Una sola consulta, y solo
+    //     cuando la espera existe: quien todavía tiene algo que hacer no la
+    //     paga. El ancla es el instante en que el pedido entró en espera, así
+    //     que el aviso de un pedido anterior queda fuera por ser más viejo.
+    //
+    //     El QR ya aceptado NO se consulta: su acuse es `PAYMENT_ACCEPTED_TEXT`
+    //     y no una fila de `cash_wait`, que en un pedido por QR no existe ni
+    //     existirá. Esa equivalencia la resuelve `decideDefaultReply`, que es
+    //     donde vive la regla; aquí solo se ahorra la consulta que sobra.
+    const espera = waitingOnUs(openOrder);
+    const waitNoticeSent =
+      espera === null || openOrder.payment === 'accepted'
+        ? false
+        : espera === 'payment_review'
+          ? await avisoDeEsperaEnviado(
+              supabase,
+              pausa?.conversationId ?? null,
+              PROOF_WAIT_ACTION,
+              pedido.created_at,
+            )
+          : await avisoDeEsperaEnviado(
+              supabase,
+              pausa?.conversationId ?? null,
+              CASH_WAIT_ACTION,
+              pedido.cash_confirmed_at ?? pedido.created_at,
+            );
+
+    // 3c. ¿Y se le acaba de mandar con el repartidor? Este SÍ es un cooldown de
+    //     reloj, no un "una vez y ya": ver `deliveryRelaySentRecently`. Se
+    //     consulta junto al anterior y bajo la misma condición, porque los dos
+    //     solo los lee la guarda de `waitingOnUs`.
+    const deliveryRelaySentRecently =
+      espera === null
+        ? false
+        : await avisoDeEsperaEnviado(
+            supabase,
+            pausa?.conversationId ?? null,
+            DELIVERY_RELAY_ACTION,
+            new Date(Date.now() - DELIVERY_RELAY_COOLDOWN_MS).toISOString(),
+          );
+
+    // 3d. ¿Y se le acaba de recordar que falta su ubicación? Solo se pregunta
+    //     con el pedido parado ahí: es la única rama que lo lee, y el cliente
+    //     que ya está cotizado no puede pagar una consulta que no le toca.
+    const locationRemindedRecently =
+      openOrder.status === 'awaiting_location'
+        ? await avisoDeEsperaEnviado(
+            supabase,
+            pausa?.conversationId ?? null,
+            LOCATION_REMINDER_ACTION,
+            new Date(Date.now() - PROOF_REMINDER_COOLDOWN_MS).toISOString(),
+          )
+        : false;
+
+    // 3e. ¿Cuántas veces se le repusieron los botones del efectivo? (13-09-2026)
+    //
+    //     Solo se pregunta cuando el pedido los está esperando: el resto de
+    //     clientes no paga una consulta que no les toca. Se cuenta desde que
+    //     NACIÓ el pedido —el tope es por pedido, no por ventana de tiempo— y
+    //     se pide una fila de más que el tope para distinguir "ya van dos" de
+    //     "van muchas" sin traerse la conversación entera.
+    const cashRepromptsSent = openOrder.awaitingCashConfirm
+      ? await avisosDeBotonesEnviados(
+          supabase,
+          pausa?.conversationId ?? null,
+          pedido.created_at,
+        )
+      : 0;
+
+    // 3f. ¿Ya se le explicó que el pago es solo por QR? (27-09-2026)
+    //
+    //     Una vez por pedido: se cuenta desde que nació. Solo se pregunta
+    //     cuando la rama que lo lee puede alcanzarse —efectivo apagado, pedido
+    //     por QR, nada esperando de nuestro lado—; el resto no paga la consulta.
+    const cashPolicySent =
+      !CASH_ENABLED && openOrder.paymentMethod !== 'cash' && espera === null
+        ? await avisoDeEsperaEnviado(
+            supabase,
+            pausa?.conversationId ?? null,
+            CASH_POLICY_ACTION,
+            pedido.created_at,
+          )
+        : false;
+
+    // 4. La carta, mientras el pedido admita notas o todavía se pueda rearmar.
+    //    Sin ella ninguna frase se anota: no poder descartar que el cliente
+    //    nombró un producto es razón suficiente para no tocar el pedido.
+    //
+    //    `awaiting_location` entró el 05-09-2026. Solo se cargaba en
+    //    `confirmed`, y eso dejaba ciegos a los detectores del cambio justo en
+    //    el estado MÁS seguro para rehacer un pedido —sin ubicación, sin total,
+    //    sin nada en la plancha—: quien escribía "me aumentas 2 papas" antes de
+    //    mandar su pin no recibía nada, porque la lista llegaba vacía y las dos
+    //    puertas devuelven `false` de entrada sin catálogo.
+    const necesitaCarta =
+      pedido.status === 'confirmed' || ORDER_CHANGE_STATUSES.includes(pedido.status);
+    const catalogTerms = necesitaCarta ? await terminosDeLaCarta(supabase) : undefined;
+
+    // 5. ¿Se le preguntó si le falta algo y todavía no ha contestado? Solo se
+    //    consulta para el pedido que aún se puede rearmar: fuera de ahí la
+    //    pregunta no se hizo y su respuesta no cambiaría nada.
+    const awaitingReviewReply = ORDER_CHANGE_STATUSES.includes(pedido.status)
+      ? await preguntadoHacePoco(supabase, pausa?.conversationId ?? null)
+      : false;
+
+    return {
+      paused: false,
+      openOrder,
+      proofRemindedRecently,
+      catalogTerms,
+      awaitingReviewReply,
+      waitNoticeSent,
+      deliveryRelaySentRecently,
+      locationRemindedRecently,
+      cashRepromptsSent,
+      cashPolicySent,
+    };
+  } catch {
+    // Sin `error.message`: puede traer detalle técnico de Supabase.
+    log.warn('webhook_customer_state_lookup_failed');
+    return null;
+  }
+}
