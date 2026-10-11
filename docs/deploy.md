@@ -1,12 +1,12 @@
 # Publicar la demo
 
 Tres servicios del mismo repositorio y una base de datos. Estado al
-2026-10-11: **base lista, servicios todavía sin publicar.**
+2026-10-11: **base y backend publicados; agente y POS todavía no.**
 
 | Pieza | Dónde | Carpeta raíz | Estado |
 |---|---|---|---|
 | Base de datos | Supabase `gkhvijhcyysasofrukbr` | — | lista: backend en `public` (32 migraciones), agente en `agent` (39) |
-| Backend | Railway | `apps/backend` | por publicar |
+| Backend | Railway, cuenta `portafoliosmarky3`, proyecto `restaurant-demos`, servicio `backend` | `apps/backend` | **publicado**: `https://backend-production-9c48.up.railway.app`, con la demo Don Zarco cargada (15 productos con foto, abierto 24 h) |
 | Agente de WhatsApp | Vercel | `apps/agent-whatsapp` | por publicar |
 | POS | Vercel | `apps/pos` | por publicar |
 
@@ -14,18 +14,31 @@ El backend tiene que estar en internet: el agente publicado en Vercel no puede
 hablar con un backend que corre en una máquina local, y el backend necesita
 llamar al agente para enviar los WhatsApp.
 
+## Cómo se actualiza el backend
+
+Railway **no** está enlazado a GitHub: el código se sube desde esta carpeta.
+Hacer `git push` no actualiza el backend publicado.
+
+```powershell
+cd apps\backend
+railway up --service backend --ci
+```
+
+La carpeta `apps/backend` ya está enlazada al proyecto (`railway status` lo
+muestra). Las variables se cambian con `railway variable set NOMBRE=valor
+--service backend` o en el panel de Railway. Después de cada despliegue hay
+que volver a cargar la demo (paso 5), porque las fotos se pierden.
+
 ## Dos repositorios
 
-El mismo código está en dos repos privados de GitHub, porque la prueba gratis
-de Railway de la primera cuenta se agotó:
+El mismo código está en dos repos privados de GitHub:
 
 | Remoto de git | Repositorio | Para qué |
 |---|---|---|
 | `origin` | `NyxM4x/restaurant-demos` | el principal |
-| `jr` | `NyxM4xJr/DemoOficialRestaurants` | el que despliega Railway, con la cuenta nueva |
+| `jr` | `NyxM4xJr/DemoOficialRestaurants` | copia, creada para enlazar Railway; al final Railway se desplegó sin GitHub |
 
 Cada cambio se sube a los dos: `git push origin main` y `git push jr main`.
-Si solo se sube a uno, el otro servicio se queda con la versión vieja.
 
 ## Lo que NO está en git
 
