@@ -37,6 +37,7 @@ import {
   processWebhookEvent,
   type HandleKapsoWebhookParams,
 } from '@/lib/webhook/kapso';
+import { centralLocationPorts } from '@/lib/central/webhook-ports';
 
 // Requiere APIs de Node (crypto, service_role) — no Edge. Siempre dinámico.
 export const runtime = 'nodejs';
@@ -95,6 +96,9 @@ export async function POST(request: Request): Promise<Response> {
       // 0028: el pin que llega sin contexto pero con un pedido esperándolo. Va
       // antes que la cotización suelta: primero se mira si alguien lo espera.
       attachLooseLocation: (input) => attachLooseLocationForOrder(input),
+      // Backend central: la ubicación se le entrega a él, que cotiza y confirma
+      // el pedido. Pisa los tres puertos de arriba; sin él no cambia nada.
+      ...(centralLocationPorts() ?? {}),
       // 0029: la ubicación que llega como link de Google Maps en vez de pin.
       // Solo la expansión sale a la red; leer las coordenadas es puro.
       expandMapsLink: (url) => expandMapsLink(url),

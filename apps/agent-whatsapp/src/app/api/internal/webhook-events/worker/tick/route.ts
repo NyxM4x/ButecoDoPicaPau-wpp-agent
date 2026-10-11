@@ -20,6 +20,7 @@ import { expandMapsLink } from '@/lib/delivery/maps-link-service';
 import { escalateIfStuck } from '@/lib/agent/handoff/stuck-customer-service';
 import { createSupabaseDueSelector, createSupabaseWebhookStore } from '@/lib/webhook/store';
 import { handleInboxTick, type InboxWorkerDeps } from '@/lib/webhook/inbox-worker';
+import { centralLocationPorts } from '@/lib/central/webhook-ports';
 
 // Requiere APIs de Node (service_role, POST a Kapso, OpenAI) — no Edge.
 export const runtime = 'nodejs';
@@ -85,6 +86,9 @@ export async function POST(request: Request): Promise<Response> {
         // el webhook". Ahora lo son.
         quoteStandaloneLocation: (input) => quoteStandaloneLocation(input),
         attachLooseLocation: (input) => attachLooseLocationForOrder(input),
+        // Backend central: la ubicación se le entrega a él, que cotiza y confirma
+        // el pedido. Pisa los tres puertos de arriba; sin él no cambia nada.
+        ...(centralLocationPorts() ?? {}),
         expandMapsLink: (url) => expandMapsLink(url),
         askLocationForQuote: (input) => askLocationForQuote(input),
         checkStuckCustomer: (phone) => escalateIfStuck(phone),

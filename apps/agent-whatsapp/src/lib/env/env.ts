@@ -25,6 +25,17 @@ const serverEnvSchema = z.object({
   // Requeridas para usar el cliente de Supabase (Fase 1+).
   SUPABASE_URL: z.string().url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+  /**
+   * Esquema de Postgres donde viven las tablas del agente. Ausente = `public`,
+   * como siempre.
+   *
+   * Sirve para compartir un mismo proyecto de Supabase con el backend central:
+   * 9 tablas se llaman igual en los dos (`orders`, `promotions`…), así que las
+   * del agente van en un esquema aparte (`agent`, creado por
+   * `scripts/agent-db.mjs`). Ese esquema tiene que estar en "Exposed schemas"
+   * de la API de Supabase.
+   */
+  SUPABASE_DB_SCHEMA: optionalString,
 
   // Requeridas en fases posteriores (webhook / Kapso / correlación).
   // Opcionales por ahora para no bloquear otras fases.

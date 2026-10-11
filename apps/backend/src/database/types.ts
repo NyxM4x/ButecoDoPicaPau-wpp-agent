@@ -361,6 +361,8 @@ export interface OperationalSettingsTable {
   restaurant_longitude: number | null;
   orders_paused: Generated<boolean>;
   pickup_enabled: Generated<boolean>;
+  /** Nombre comercial: lo muestran el POS y el ticket. */
+  restaurant_name: Generated<string>;
   updated_at: Timestamp;
 }
 

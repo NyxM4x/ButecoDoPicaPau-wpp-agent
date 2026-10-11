@@ -163,6 +163,24 @@ export function createMenuSessionRepository(supabase: SupabaseClient) {
     },
 
     /**
+     * Teléfono del cliente de una sesión, o `null` si no existe.
+     *
+     * Lo usa el pedido por el backend central, que identifica al cliente por
+     * teléfono. Solo se llama en el servidor y con una sesión ya validada por
+     * su token: el teléfono no sale hacia el navegador.
+     */
+    async findPhoneById(menuSessionId: string): Promise<string | null> {
+      const { data, error } = await supabase
+        .from('menu_sessions')
+        .select('customer_phone')
+        .eq('id', menuSessionId)
+        .maybeSingle();
+
+      if (error) throw new Error('session.findPhoneById: lookup failed');
+      return (data as { customer_phone: string } | null)?.customer_phone ?? null;
+    },
+
+    /**
      * Busca la sesión VIGENTE (no vencida) más reciente de un teléfono (6D.2E).
      *
      * Sirve para reutilizar una sesión aún válida en vez de crear una nueva por

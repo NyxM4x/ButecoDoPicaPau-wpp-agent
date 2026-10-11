@@ -7,6 +7,8 @@ import type { Promotion } from '@/lib/promotions/promotion';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { readOrdersPaused } from '@/lib/delivery/settings';
 import { getServerEnv } from '@/lib/env/env';
+import { isCentralEnabled } from '@/lib/central/client';
+import { loadCentralCatalog } from '@/lib/central/catalog-service';
 import { log } from '@/lib/log';
 import { businessChatUrl } from '@/lib/menu/whatsapp-chat';
 import { createMenuSessionRepository } from '@/lib/menu/session-repository';
@@ -99,7 +101,35 @@ export default async function MenuPage(props: {
   }
 
   let items: MenuItem[] | null = null;
+  let promotions: Promotion[] = [];
+  /** Solo con el backend central: el nombre que se puso en Configuración del POS. */
+  let restaurantName: string | null = null;
+  let ordersPaused = false;
+  let rules: { cashAllowed: boolean; pickupAllowed: boolean } | null = null;
 
+  // ── Backend central ───────────────────────────────────────────────────────
+  //
+  // Con `CENTRAL_API_BASE_URL` y `CENTRAL_API_TOKEN`, el catálogo es el que
+  // se edita en el POS: categorías, productos, precios, fotos, promociones y la
+  // pausa de pedidos. Aquí no se toca Supabase, así que el menú abre aunque el
+  // agente no tenga su base configurada.
+  const central = isCentralEnabled();
+  if (central) {
+    try {
+      const catalog = await loadCentralCatalog();
+      items = catalog.items;
+      promotions = catalog.promotions;
+      restaurantName = catalog.restaurantName;
+      ordersPaused = catalog.ordersPaused;
+      // El efectivo todavía no tiene interruptor en el backend: se ofrece.
+      rules = { cashAllowed: true, pickupAllowed: catalog.pickupEnabled };
+    } catch (error) {
+      log.error('menu.page.centralCatalog', {
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+      items = null;
+    }
+  } else {
   try {
     // TODOS, no solo los que están a la venta (07-09-2026).
     //
@@ -124,7 +154,6 @@ export default async function MenuPage(props: {
   // Las promociones se cargan APARTE y su fallo no tumba el menú: sin combos se
   // puede pedir igual, y un catálogo entero caído por una sección opcional
   // sería cambiar un problema pequeño por uno grande.
-  let promotions: Promotion[] = [];
   try {
     promotions = await createPromotionsRepository(getSupabaseAdmin()).list();
   } catch (error) {
@@ -135,7 +164,8 @@ export default async function MenuPage(props: {
   }
 
   // 0038: pedidos nuevos pausados por saturación. Nunca lanza; si falla, abierto.
-  const ordersPaused = await readOrdersPaused();
+  ordersPaused = await readOrdersPaused();
+  }
 
   // El chat del negocio, adonde lleva el botón de "Pedido registrado". Sin el
   // número configurado, esa pantalla se queda sin botón pero el menú abre igual.
@@ -165,14 +195,16 @@ export default async function MenuPage(props: {
         aria-hidden
       />
       <div className="relative z-10">
-        <MenuHeader />
+        <MenuHeader restaurantName={restaurantName} />
         {ordersPaused && (
           <div role="status" className="bg-red-600 px-4 py-3 text-center text-sm font-semibold text-white">
             Estamos con demasiados pedidos y pausamos los nuevos por un rato. Vuelve a intentarlo en
             unos minutos. Si ya hiciste tu pedido, sigue en curso.
           </div>
         )}
-        <ServiceNoticeBanner serverNow={serverNow} />
+        {/* El aviso de horario es el de Don Zarco, escrito en el código. Con
+            el backend central quien decide si se atiende es la caja del POS. */}
+        {!central && <ServiceNoticeBanner serverNow={serverNow} />}
         {replacingOrder && <ReplacingOrderBanner orderNumber={replacingOrder.orderNumber} />}
 
         {items === null ? (
@@ -191,6 +223,7 @@ export default async function MenuPage(props: {
           // confirmar un pedido. No se registra ni se persiste en ningún sitio.
           <MenuStore
             ordersPaused={ordersPaused}
+            rules={rules}
             items={items}
             promotions={promotions}
             serverNow={serverNow}

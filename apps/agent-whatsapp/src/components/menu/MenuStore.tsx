@@ -8,7 +8,12 @@ import { useServerClock } from '@/lib/menu/use-server-clock';
 import { unifiedTotals } from '@/lib/cart/promo-cart';
 import { evaluatePromotion, isPurchasable, type Promotion } from '@/lib/promotions/promotion';
 import { orderSectionsForMode, promoModeAt } from '@/lib/promotions/promo-mode';
-import { filterMenuItems, groupByCategory, type CategoryFilter } from '@/lib/menu/catalog';
+import {
+  categoryTabsFor,
+  filterMenuItems,
+  groupByCategory,
+  type CategoryFilter,
+} from '@/lib/menu/catalog';
 import { submitOrder } from '@/lib/checkout/client';
 import { validateCheckoutForm, type CheckoutFormFields } from '@/lib/checkout/form';
 import {
@@ -71,7 +76,17 @@ export function MenuStore({
   ordersPaused = false,
   whatsappChatUrl = null,
   cartSessionId = null,
+  rules = null,
 }: {
+  /**
+   * Qué se ofrece en el checkout cuando el catálogo viene del backend central.
+   *
+   * Con esto presente NO aplica la "noche de promoción" de Don Zarco (sin
+   * efectivo, sin recojo, bebidas arriba): esa regla era de un negocio, y con
+   * el backend central cada local decide lo suyo en Configuración del POS.
+   * Ausente = todo como siempre.
+   */
+  rules?: { cashAllowed: boolean; pickupAllowed: boolean } | null;
   /**
    * La sesión del menú con que se abrió la página (19-09-2026), o `null` sin
    * enlace. El carrito guardado en el navegador solo se recupera con el mismo
@@ -158,7 +173,20 @@ export function MenuStore({
    * la pestaña abierta vuelve sola al menú de siempre —orden, sueltos y
    * efectivo— sin recargar.
    */
-  const modo = useMemo(() => promoModeAt(promotions, ahora), [promotions, ahora]);
+  const cashRule = rules?.cashAllowed;
+  const pickupRule = rules?.pickupAllowed;
+  const modo = useMemo(
+    () =>
+      cashRule === undefined || pickupRule === undefined
+        ? promoModeAt(promotions, ahora)
+        : {
+            active: false,
+            cashAllowed: cashRule,
+            pickupAllowed: pickupRule,
+            comboOnlyCodes: new Set<string>(),
+          },
+    [promotions, ahora, cashRule, pickupRule],
+  );
   // `modo` es un objeto nuevo en cada tick del reloj. La lista de productos solo
   // tiene que rehacerse cuando cambia QUÉ se esconde, no cada 30 segundos.
   const soloEnCombo = [...modo.comboOnlyCodes].sort().join(',');
@@ -237,6 +265,7 @@ export function MenuStore({
   const inFlight = useRef(false);
 
   const modoActivo = modo.active;
+  const tabs = useMemo(() => categoryTabsFor(items), [items]);
   const groups = useMemo(
     () =>
       // En noche de promoción las bebidas suben debajo de Promociones: son lo
@@ -409,7 +438,7 @@ export function MenuStore({
         className="sticky top-0 z-20 bg-donzarco-ink/85 px-4 pt-4 pb-3 shadow-lg shadow-black/20 backdrop-blur-md"
       >
         <div className="mx-auto max-w-5xl space-y-3">
-          <CategoryTabs active={category} onChange={setCategory} />
+          <CategoryTabs tabs={tabs} active={category} onChange={setCategory} />
         </div>
       </div>
 
@@ -438,7 +467,7 @@ export function MenuStore({
 
         {hasResults ? (
           groups.map((group) => (
-            <section key={group.category} aria-label={group.label}>
+            <section key={group.key} aria-label={group.label}>
               <SectionHeader label={group.label} />
               {/* Móvil: 1 columna (igual que antes). Tablet: 2. Desktop amplio: 3. */}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">

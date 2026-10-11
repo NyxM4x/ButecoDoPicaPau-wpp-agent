@@ -6,7 +6,10 @@ import { CATEGORY_TABS, type CategoryFilter } from '@/lib/menu/catalog';
 export function CategoryTabs({
   active,
   onChange,
+  tabs = CATEGORY_TABS,
 }: {
+  /** Pestañas a pintar; por defecto las 3 del esquema. Ver `categoryTabsFor`. */
+  tabs?: ReadonlyArray<{ id: CategoryFilter; label: string }>;
   active: CategoryFilter;
   onChange: (category: CategoryFilter) => void;
 }) {
@@ -16,7 +19,7 @@ export function CategoryTabs({
       aria-label="Categorías del menú"
       className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
-      {CATEGORY_TABS.map((tab) => {
+      {tabs.map((tab) => {
         const selected = tab.id === active;
         return (
           <button

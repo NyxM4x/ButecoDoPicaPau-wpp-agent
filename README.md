@@ -1,23 +1,114 @@
 # restaurant-demos
 
-Plataforma para demos de restaurantes: un backend central, un agente de
-WhatsApp (API oficial de WhatsApp) y un POS con caja, cocina y administración,
-todo multi-restaurante mediante `restaurant_id`.
+Plataforma para demos de restaurantes: un backend central, un POS con venta,
+cocina, caja y administración, y un agente de WhatsApp. El menú, las fotos y
+los datos del local se cambian en segundos, desde el POS o cargando un perfil
+de demo.
 
-| Carpeta | Qué es | Stack |
-|---|---|---|
-| `apps/backend` | Backend central: catálogo, pedidos, pagos, caja | NestJS + PostgreSQL (Supabase) |
-| `apps/agent-whatsapp` | Agente de IA para WhatsApp | Next.js + Supabase + Vitest |
-| `apps/pos` | POS, cocina (KDS) y administración — **por construir** | — |
-| `packages/` | Contratos y máquina de estados compartidos — **por construir** | — |
-| `docs/` | Plan maestro, inventario, mapeo de datos y avance | — |
+| Carpeta | Qué es | Stack | Estado |
+|---|---|---|---|
+| `apps/backend` | Backend central: catálogo, pedidos, pagos, caja | NestJS + PostgreSQL | funciona |
+| `apps/pos` | POS: venta, cocina (KDS), caja, pedidos y administración | Vite + React + Tailwind | funciona |
+| `apps/agent-whatsapp` | Agente de IA para WhatsApp | Next.js + Supabase | funciona solo; **todavía no manda sus pedidos al backend** |
+| `demos/` | Perfiles de demo: `menu.json` + fotos por restaurante | JSON | 2 perfiles |
+| `scripts/` | Base local, cargador de demos y simulador de pedidos | Node / PowerShell | funciona |
+| `docs/` | Plan maestro, inventario, mapeo de datos y avance | — | — |
 
-Empieza por `docs/CLAUDE_MONOREPO_CONTEXT.md` (arquitectura y fases) y
-`docs/implementation-progress.md` (en qué quedamos).
+Empieza por `docs/implementation-progress.md` (en qué quedamos) y
+`docs/CLAUDE_MONOREPO_CONTEXT.md` (arquitectura y fases).
 
 Cada app tiene su propio `package.json` y `package-lock.json`: se instala y se
 prueba dentro de su carpeta.
 
-La base de datos de las demos es la de Supabase `gkhvijhcyysasofrukbr`.
-`rgoesdoqmhlurpclacha` es la del backend central que usa el POS de producción:
-solo lectura.
+## Levantar la demo en tu máquina
+
+Requisitos: Node 20 o superior y PostgreSQL instalado (se usan sus binarios, no
+su servicio).
+
+```powershell
+# 1. Base de datos local (puerto 54329, datos en .local/, no toca nada remoto)
+.\scripts\dev-db.ps1 start
+
+# 2. Backend (puerto 3100)
+cd apps\backend
+npm ci
+npm run migrate:local     # aplica las migraciones a la base de .env.dev
+npm run start:local
+
+# 3. POS (http://localhost:5180)
+cd apps\pos
+npm ci
+npm run dev
+
+# 4. Cargar un restaurante
+node scripts\load-demo.mjs don-zarco --replace --with-staff --24h
+```
+
+`apps/backend/.env.dev` no está en git. Si no lo tienes, créalo con estas
+claves: `DATABASE_URL` (`postgres://postgres@localhost:54329/restaurant_demos_dev`),
+`PORT=3100`, `CORS_ORIGINS`, `SERVICE_AUTH_TOKENS` (forma
+`whatsapp-gateway:<token>,pos:<token>,web:<token>`), `GATEWAY_BASE_URL`,
+`GATEWAY_AUTH_TOKEN`, `JWT_SECRET`, `JWT_EXPIRES_IN=8h`, `DEV_ADMIN_USER` y
+`DEV_ADMIN_PASSWORD`. El primer administrador se crea con
+`ADMIN_PASSWORD=<clave> npx ts-node scripts/create-admin.ts <usuario>` dentro de
+`apps/backend`.
+
+Se entra al POS con ese administrador. Con `--with-staff` se crean además los
+usuarios `cocina` y `caja`, con la misma contraseña.
+
+## Cambiar de restaurante
+
+Un perfil de demo es una carpeta en `demos/<nombre>/` con un `menu.json`
+(nombre del local, horario, categorías, productos, promociones) y una carpeta
+`images/` con las fotos.
+
+```powershell
+node scripts\load-demo.mjs cafe-central --replace   # pasa a otro restaurante
+node scripts\load-demo.mjs don-zarco --replace      # y vuelve
+```
+
+- Sin `--replace` solo agrega o actualiza. Con `--replace` apaga lo que no sea
+  de esa demo. Nunca borra: los pedidos viejos siguen apuntando a algo que existe.
+- `--24h` deja el local abierto todo el día. Sin eso rige el horario del
+  `menu.json`, y fuera de ese horario el backend rechaza los pedidos de WhatsApp
+  y web (el POS vende siempre).
+- Se puede correr las veces que haga falta. Para una demo nueva, copia una
+  carpeta de `demos/` y edita su `menu.json`.
+
+Los cambios sueltos (un precio, una foto, marcar algo agotado, pausar pedidos)
+se hacen desde el POS, en **Menú**, **Promociones** y **Configuración**.
+
+## Probar un pedido de WhatsApp sin WhatsApp
+
+```powershell
+node scripts\simulate-whatsapp-order.mjs                    # delivery, paga al recibir
+node scripts\simulate-whatsapp-order.mjs --pickup --qr      # retira en el local, paga por QR
+node scripts\simulate-whatsapp-order.mjs --nota "sin cebolla"
+```
+
+Crea el pedido en el backend con el token del gateway, igual que lo hará el
+agente, y aparece en la **Cocina** del POS con la etiqueta WHATSAPP. Con la
+caja cerrada el pedido no se confirma: queda esperando en **Pedidos** hasta que
+alguien abra la caja y lo acepte.
+
+## Bases de datos
+
+| Base | Qué es |
+|---|---|
+| PostgreSQL local, puerto 54329 | desarrollo y demos en esta máquina |
+| Supabase `rgoesdoqmhlurpclacha` | backend central del POS de producción: **solo lectura** |
+
+El proyecto de Supabase `gkhvijhcyysasofrukbr`, que era el de las demos, ya no
+existe (no resuelve por DNS desde el 2026-10-02). Para publicar la demo hace
+falta una base PostgreSQL nueva.
+
+Para saber si una base sirve antes de migrarla (solo lee, no escribe nada):
+
+```powershell
+cd apps\backend
+node --env-file=.env.supabase scripts\check-database.mjs
+```
+
+`.env.supabase` (fuera de git) lleva `DIRECT_URL` (conexión de sesión, puerto
+5432, la que usan las migraciones) y `DATABASE_URL` (pooler, puerto 6543, la
+que usa el backend al correr).

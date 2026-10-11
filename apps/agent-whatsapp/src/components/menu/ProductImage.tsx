@@ -34,7 +34,7 @@ export function ProductImage({
    * reutilizar esta tarjeta pasando su componente protagonista, sin fabricar un
    * `MenuItem` entero con precios e ids que no significan nada.
    */
-  item: Pick<MenuItem, 'code' | 'category' | 'name'>;
+  item: Pick<MenuItem, 'code' | 'category' | 'name' | 'image_url'>;
   className?: string;
   sizes?: string;
   /** Atenúa la imagen cuando el producto no está disponible (presentación). */
@@ -64,6 +64,10 @@ export function ProductImage({
           alt={alt ?? item.name}
           fill
           sizes={sizes}
+          // Las fotos del backend central llegan por una ruta propia que ya las
+          // sirve con caché: pasarlas además por el optimizador las pediría dos
+          // veces y fijaría una copia vieja cuando la foto cambia en el POS.
+          unoptimized={(elegida as string).startsWith('/api/')}
           className="object-cover"
           onError={() => setFailed(true)}
         />

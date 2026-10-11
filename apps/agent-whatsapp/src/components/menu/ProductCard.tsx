@@ -48,7 +48,7 @@ export function ProductCard({
   onAdd: () => void;
   onRemove: () => void;
 }) {
-  const description = productDescription(item.code);
+  const description = productDescription(item);
   const available = item.is_active;
   const inCart = quantity > 0;
   const breakoutSrc = BREAKOUT_IMAGES[item.code];

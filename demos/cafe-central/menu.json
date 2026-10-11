@@ -1,0 +1,45 @@
+{
+  "restaurant": {
+    "name": "Café Central",
+    "description": "Cafetería de ejemplo para probar el cambio rápido de demo",
+    "address": "Dirección de ejemplo",
+    "mapsUrl": null
+  },
+  "settings": {
+    "businessOpensHour": 7,
+    "businessClosesHour": 21,
+    "pickupEnabled": true,
+    "ordersPaused": false,
+    "rainSurchargeEnabled": false,
+    "rainSurchargeAmount": 0,
+    "restaurantLatitude": -17.7833,
+    "restaurantLongitude": -63.1821,
+    "_nota": "Coordenadas de ejemplo (centro de Santa Cruz)."
+  },
+  "categories": [
+    { "name": "Cafés", "sortOrder": 10 },
+    { "name": "Panadería", "sortOrder": 20 },
+    { "name": "Jugos", "sortOrder": 30 }
+  ],
+  "products": [
+    { "code": "cafe_espresso", "name": "Espresso", "category": "Cafés", "price": 10, "sortOrder": 10, "description": "Café corto e intenso." },
+    { "code": "cafe_capuchino", "name": "Capuchino", "category": "Cafés", "price": 16, "sortOrder": 20, "description": "Espresso con leche vaporizada y espuma." },
+    { "code": "cafe_latte", "name": "Latte", "category": "Cafés", "price": 16, "sortOrder": 30, "description": "Suave, con mucha leche." },
+    { "code": "pan_cunape", "name": "Cuñapé", "category": "Panadería", "price": 5, "sortOrder": 10, "description": "Horneado del día, de queso." },
+    { "code": "pan_empanada", "name": "Empanada de queso", "category": "Panadería", "price": 8, "sortOrder": 20 },
+    { "code": "pan_medialuna", "name": "Medialuna", "category": "Panadería", "price": 6, "sortOrder": 30 },
+    { "code": "jugo_naranja", "name": "Jugo de naranja", "category": "Jugos", "price": 12, "sortOrder": 10, "description": "Exprimido al momento." },
+    { "code": "jugo_frutilla", "name": "Jugo de frutilla", "category": "Jugos", "price": 12, "sortOrder": 20 }
+  ],
+  "promotions": [
+    {
+      "name": "Desayuno Central",
+      "description": "Capuchino + cuñapé",
+      "promoPrice": 18,
+      "items": [
+        { "code": "cafe_capuchino", "quantity": 1 },
+        { "code": "pan_cunape", "quantity": 1 }
+      ]
+    }
+  ]
+}

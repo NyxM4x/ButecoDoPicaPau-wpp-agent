@@ -154,6 +154,18 @@ export interface MenuItem {
   sort_order: number;
   created_at: string;
   updated_at: string;
+  /**
+   * Solo cuando el catálogo viene del backend central (`lib/central`). Con la
+   * tabla `menu_items` de siempre no llegan, y entonces la descripción, la
+   * foto y la sección salen de `lib/menu/catalog` como hasta ahora.
+   */
+  description?: string | null;
+  /** Ruta de la foto servida por este mismo sitio (`/api/menu/image/:id`). */
+  image_url?: string | null;
+  /** Nombre de la categoría tal como se editó en el POS ("Cafés", "Platos"). */
+  category_label?: string;
+  /** Orden de esa categoría en el menú. */
+  category_order?: number;
 }
 
 export interface Order {

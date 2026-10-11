@@ -1,0 +1,4 @@
+# Finales de línea LF en todas las máquinas. Sin esto, Git en Windows
+# (core.autocrlf=true) entrega los archivos con CRLF y fallan los tests que
+# leen migraciones SQL como texto (p. ej. migration-0039.test.ts).
+* text=auto eol=lf

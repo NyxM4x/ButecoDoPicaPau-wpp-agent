@@ -1,122 +1,280 @@
 # Avance de implementación
 
-Última actualización: 2026-10-02.
+Última actualización: 2026-10-11.
+
+## Dónde estamos
+
+**Hay una demo que funciona de punta a punta en local, sin WhatsApp real:**
+backend + POS + cargador de demos, y desde el 2026-10-11 el menú web del agente
+lee el catálogo del backend y crea ahí los pedidos (Fase 5, primera mitad).
+Falta probarlo con WhatsApp de verdad: hacen falta las credenciales del agente.
+
+El plan maestro pedía contratos primero (Fase 1) y POS después (Fase 4). El
+usuario pidió el 2026-10-02 una demo usable ya: menús, fotos y datos
+cambiables en segundos, y la cocina del POS mostrando lo que entra por
+WhatsApp. Por eso se construyó primero el POS contra el contrato real del
+backend, y `packages/contracts` queda para cuando el agente también lo use.
 
 ## Reorganización del 2026-10-02: repo nuevo `restaurant-demos`
 
 El repo `NyxM4x/Demo_MonoRepoRestaurant` desapareció de GitHub (404), igual
 que `rochayoan/backend-central-zarco-dev`. Se armó un repo nuevo, **privado**,
 `NyxM4x/restaurant-demos`, **con historial limpio** (un commit inicial). El
-historial anterior (359 commits) quedó en un `.zip` local en `DEMO_RESTAURANT/`.
+historial anterior (359 commits) quedó en un `.zip` local.
 
 Qué entró:
 
-- `apps/backend` ← árbol de `33a9da7` (igual que en el monorepo viejo).
+- `apps/backend` ← árbol de `33a9da7` de `backend-central-zarco-dev`.
 - `apps/agent-whatsapp` ← `NyxM4x/sarcoRestaurant` @ `main` **`5cb2943`**
-  (2026-09-28). Trae 5 commits más que `420b8ef`: efectivo apagado (solo QR)
-  y «hoy no atendemos» con la pausa. Lo de «solo QR» debe volverse una opción
-  por restaurante.
-- `docs/` y `docs/CLAUDE_MONOREPO_CONTEXT.md` (el plan maestro, que antes
-  estaba fuera de git).
+  (2026-09-28). Trae el efectivo apagado (solo QR) y «hoy no atendemos» con la
+  pausa. Lo de «solo QR» debe volverse una opción por restaurante.
+- `docs/` y `docs/CLAUDE_MONOREPO_CONTEXT.md` (el plan maestro).
 
-Qué quedó afuera a propósito:
+Qué quedó afuera a propósito: la colección de Postman (tenía `adminPassword`
+y `posToken`), el PDF de Baneco, las carpetas `fotos_*` (el código no las
+usa), los workflows `.github` del backend (corrían sobre otra rama y en una
+subcarpeta GitHub no los ejecuta) y `READMEZARCOV01.md`.
 
-- `apps/backend/postman/`: tenía `adminPassword` y `posToken`.
-- `apps/backend/Api Market Baneco v1.0.0.pdf`: documentación del banco.
-- `apps/backend/fotos_*`: el código no las usa.
-- `apps/backend/.github/`: los workflows corrían sobre `feat/sarco-integration`
-  y en una subcarpeta GitHub no los ejecuta.
-- `apps/agent-whatsapp/READMEZARCOV01.md`: específico de Zarco.
+## Qué se hizo el 2026-10-02
 
-`apps/backend/.env` no se copió: hay que copiarlo a mano desde el respaldo.
+### Entorno local (sesión de la madrugada, cortada por un fallo de red)
+
+- Dependencias instaladas en backend y agente.
+- `.gitattributes` con `eol=lf`: con CRLF fallaba `migration-0039.test.ts`
+  del agente, que lee una migración SQL como texto.
+- La base de Supabase de demos no existe más → `scripts/dev-db.ps1` levanta un
+  PostgreSQL aislado en el puerto 54329 (datos en `.local/`, ignorado por git).
+- `apps/backend/.env.dev` (fuera de git) y `npm run start:local`.
+- `demos/don-zarco` y `demos/cafe-central` + `scripts/load-demo.mjs`: carga un
+  perfil por la misma API que usa el POS. Ida y vuelta entre demos: 2 s.
+- La sesión se cortó al instalar el POS (error de certificado SSL contra la
+  API de Claude, de las 09:07 a las 10:06 UTC). Quedó solo
+  `apps/pos/package.json`.
+
+### POS (`apps/pos`)
+
+Vite + React 19 + TypeScript + Tailwind 4 + React Router + TanStack Query +
+Zustand. Sin shadcn ni react-hook-form: los componentes base son propios y
+viven en `src/components/ui.tsx`.
+
+| Pantalla | Qué hace | Roles |
+|---|---|---|
+| Cocina | Tablero Nuevos / En preparación / Listos, etiqueta de canal (WhatsApp, POS, Web), reloj por pedido, combos desarmados, nota, campana, refresco cada 5 s | todos (mueven: cocina y admin) |
+| Venta | Catálogo con fotos, carrito que sobrevive a un refresco, efectivo con vuelto, QR con confirmación manual, ticket imprimible | caja y admin |
+| Pedidos | Todos los canales, filtros (en curso, sin cobrar, cuadre con motos…), cobrar, anular cobro, cancelar, y la cola de pedidos que entraron con la caja cerrada | todos |
+| Caja | Abrir, totales en vivo, cerrar con arqueo, cierres anteriores | caja y admin |
+| Menú | Categorías, productos, precio editable en la fila, disponible/agotado, foto | admin (cocina: solo agotado) |
+| Promociones | Combos de 2 o más productos, activar, archivar | admin |
+| Configuración | Nombre del local, horario, pausa de pedidos, retiro, lluvia, ubicación | admin |
+| Usuarios | Alta y baja de administradores, caja y cocina | admin |
+
+Decisiones:
+
+- El POS llama a `/api`, que Vite reenvía al backend (`POS_BACKEND_URL`). Así
+  en desarrollo no depende de `CORS_ORIGINS`. En producción se compila con
+  `VITE_API_URL`.
+- Solo JWT de staff; nunca un token de servicio en el navegador.
+- La clave de idempotencia nace al abrir el carrito. Si un envío falla y el
+  carrito cambia, se genera otra (misma clave con otro cuerpo da 409).
+- El QR del banco (Baneco) no está configurado en local y responde 502: la
+  pantalla lo intenta y deja el botón «Confirmar pago manualmente».
+- En Menú, las categorías apagadas (las de otra demo) quedan plegadas abajo.
+
+### Backend (2 cambios, con pruebas)
+
+- **Misma hora de apertura y de cierre = abierto las 24 horas.** Antes esa
+  combinación dejaba el local siempre cerrado. La caja sigue decidiendo si el
+  pedido se confirma o se encola. `load-demo.mjs --24h` lo usa.
+- **`restaurantName` en `operational_settings`** (migración
+  `1700000031000`). El POS y el ticket lo leen de ahí; `load-demo.mjs` lo
+  toma de `restaurant.name`.
+- `npm run migrate:local`: migra la base de `.env.dev`.
+
+### Simulador
+
+`scripts/simulate-whatsapp-order.mjs` crea un pedido con canal `whatsapp` con
+el token del gateway, como lo hará el agente.
+
+## Qué se hizo el 2026-10-11 — Fase 5, primera mitad
+
+El agente tiene un **modo backend central**, que se enciende con
+`CENTRAL_API_BASE_URL` + `CENTRAL_API_TOKEN`. Sin esas variables no cambia
+nada: sigue con sus tablas de Supabase, y sus 4222 pruebas de antes pasan igual.
+Todo lo nuevo está en `apps/agent-whatsapp/src/lib/central/`.
+
+| Qué | Cómo queda con el backend central | Probado |
+|---|---|---|
+| Menú web (`/menu`) | Categorías, productos, precios, descripciones, fotos, promociones, nombre del local, pausa y recojo salen del backend (lo que se edita en el POS). Las pestañas dejan de ser Platos/Extras/Bebidas fijas. No usa Supabase si se abre sin enlace de sesión | navegador, con Don Zarco y Café Central |
+| Fotos | `GET /api/menu/image/:id` las pide al backend con el token del servidor (el navegador nunca lo ve) | 8/8 cargan |
+| Pedido (`POST /api/store/orders`) | Cliente por teléfono → `POST /orders` canal `whatsapp`. Una clave de idempotencia por enlace: mismo carrito = mismo pedido; otro carrito con el mismo enlace = «enlace ya utilizado» | contra el backend local real |
+| Ubicación entrante | `POST /orders/:id/location` al pedido activo del cliente; el backend cotiza y confirma | contra el backend local real: ORD-000007, envío Bs 14, confirmado y visible en Cocina del POS |
+| Avisos al cliente | El backend los pide a `/api/gateway/whatsapp/messages`, `/location-requests` y `/telegram/alerts` (Bearer `GATEWAY_AUTH_TOKEN`), que envían por Kapso y Telegram | solo pruebas unitarias: no hay credenciales de Kapso |
+
+Reglas de Don Zarco que **no** aplican en modo backend central (eran constantes
+en el código): efectivo apagado, recojo apagado y la «noche de promoción». El
+recojo lo decide Configuración del POS; el efectivo se ofrece siempre porque el
+backend todavía no tiene ese interruptor.
+
+**Falta de la Fase 5** (el webhook tiene ~30 puertos; se migraron los de
+ubicación):
+
+1. Comprobantes de pago: `POST /payment-proofs` y su análisis. Hoy se guardan
+   en las tablas del agente y el backend no se entera.
+2. Estado del cliente para la respuesta por defecto (`lookupCustomerState` →
+   `GET /customers/:id/active-order`).
+3. «Cambiar mi pedido» (`POST /orders/:id/replace`): hoy un enlace de cambio
+   crea un pedido nuevo sin cancelar el anterior.
+4. CONFIRMO/CANCELAR de efectivo, cambio a recojo, nota de cocina por chat y
+   cotización de un pin suelto (`POST /delivery/quotes`).
+5. Herramientas del agente de IA (`get_menu_items`) y el menú que se envía por
+   chat: todavía leen `menu_items`. Los datos del local en `facts.ts`
+   (nombre, horario, dirección) siguen escritos en el código.
+6. Sin caja abierta el backend responde 202 (solicitud en revisión): el menú lo
+   muestra como aviso, no como pantalla propia.
+7. Retirar `/cocina` y el dashboard de pedidos del agente.
+8. Base del agente: sus tablas propias en un esquema aparte (ver más abajo).
+
+### Base del agente y preparación para publicar (2026-10-11)
+
+- **El agente comparte el Supabase de demos (`gkhvijhcyysasofrukbr`) con el
+  backend**, en un esquema propio: `agent`. `scripts/agent-db.mjs` aplica las
+  39 migraciones del agente sin editarlas, cambiando `public` por `agent` al
+  vuelo, y lleva la cuenta en `agent.schema_migrations`. El agente lo usa con
+  `SUPABASE_DB_SCHEMA=agent`. Aplicado y comprobado por la API: 22 tablas en
+  `agent`, `public` idéntico a antes.
+- Se borraron `apps/backend/.env` (clave vieja, no conectaba) y
+  `apps/backend/.db-clean.js` (vaciaba todas las tablas; nada lo usaba).
+- Usuario `admin` creado en la base de Supabase (clave en
+  `apps/backend/.env.supabase`, fuera de git).
+- Variables de producción listas para pegar, fuera de git:
+  `apps/backend/.env.railway`, `apps/agent-whatsapp/.env.vercel`,
+  `apps/pos/.env.vercel`. Tokens nuevos, distintos de los de desarrollo.
+- `apps/pos/vercel.json`: build de Vite y rutas de React Router.
+- El número de Kapso configurado es el **Sandbox**: solo escribe a teléfonos
+  registrados en ese sandbox.
+
+**Pendiente al publicar:** el backend guarda las fotos de producto en disco
+(`storage/`), y en Railway ese disco se pierde en cada despliegue. Hasta que
+se configure un bucket (`PAYMENT_PROOFS_S3_*`) o un volumen, hay que volver a
+correr `load-demo.mjs` después de cada despliegue del backend.
 
 ## Fase actual
 
-**Fase 0 (inventario): terminada.** El monorepo local está creado. La
-**Fase 1 (contratos)** está lista para empezar, pero depende de dos decisiones
-pendientes (ver abajo).
+**Fase 4 (POS y cocina): hecha contra el backend actual.** Pendiente de esa
+fase: impresión térmica real (hoy es `window.print()` con CSS de 72 mm) y la
+pantalla de reportes (`GET /reports/*` ya existe en el backend).
 
-## Tareas completadas
+**Fase 5 (agente): a medias.** Menú, pedido, ubicación y gateway ya van por el
+backend (ver arriba). Falta lo listado ahí y una prueba con WhatsApp real.
 
-- Inventario técnico de backend y agente → `docs/repository-inventory.md`.
-- Matriz de equivalencias y 17 conflictos → `docs/data-mapping.md`.
-- Propuesta de contrato canónico → `docs/canonical-contract-proposal.md`.
-- Monorepo local `Demo_MonoRepoRestaurant` (rama `main`) con historial importado
-  mediante `git subtree`:
-  - `apps/backend` ← `rochayoan/backend-central-zarco-dev` @ `feat/sarco-integration` (`33a9da7`).
-  - `apps/agent-whatsapp` ← `NyxM4x/sarcoRestaurant` @ `main` (`420b8ef`).
-- Remote configurado: `github.com/NyxM4x/Demo_MonoRepoRestaurant` (ya
-  **privado**). `main` subida el 2026-09-24.
-- `apps/backend/.env` creado por el usuario (ignorado por git): `DATABASE_URL`
-  (pooler de transacciones, puerto 6543) y `DIRECT_URL` (sesión, puerto 5432),
-  ambos hacia `gkhvijhcyysasofrukbr`. Las migraciones deben usar `DIRECT_URL`.
+## Tests ejecutados (2026-10-02)
 
-## Archivos modificados
+| Dónde | Comando | Resultado |
+|---|---|---|
+| `apps/backend` | `npx jest` | 25 suites, **108 tests pasan** (105 + 3 del horario 24 h) |
+| `apps/backend` | `npx tsc --noEmit`, `npm run build` | sin errores |
+| `apps/backend` | `npx eslint` | fallan reglas de prettier que **ya venían** del origen; no se tocaron |
+| `apps/backend` | `scripts/staging-http-smoke.mjs` | pasa (sesión de la madrugada) |
+| `apps/agent-whatsapp` | `npx vitest run` | 181 archivos, **4256 tests pasan** (2026-10-11: 4222 + 34 del modo backend central) |
+| `apps/agent-whatsapp` | `tsc`, `eslint`, `npm run build` | sin errores |
+| `apps/pos` | `npx vitest run` | 3 archivos, **27 tests pasan** |
+| `apps/pos` | `npx tsc --noEmit`, `npx vite build` | sin errores (JS 380 kB, 115 kB gzip) |
+| `apps/pos` | recorrido en Chrome sin ventana, 3 roles | pasa |
 
-Solo archivos nuevos: `.gitignore` y `docs/*.md`. No se cambió ni una línea de
-`apps/backend` ni de `apps/agent-whatsapp` respecto de su origen. Los repos
-originales en `DEMO_RESTAURANT/` quedaron intactos.
+El recorrido en el navegador (hecho con `puppeteer-core` en una carpeta
+temporal; no está en el repo):
 
-## Tests ejecutados
+- **Administrador:** entrar, abrir caja, vender 2 productos y 1 promoción,
+  cobrar en efectivo con vuelto, ver el ticket, simular un delivery de
+  WhatsApp, verlo en Cocina con su etiqueta, mover el pedido del POS a
+  preparación y a listo, abrir Pedidos, Menú, Promociones, Configuración y
+  Usuarios, cambiar un precio y devolverlo, y la vista de celular. Sin errores
+  de consola ni respuestas 4xx/5xx.
+- **Cocina:** solo ve Cocina, Pedidos y Menú; inicia un pedido de WhatsApp
+  (delivery en efectivo, sin pagar); marca un producto agotado y lo rehabilita;
+  no puede editar precios; `/venta` lo devuelve a Cocina.
+- **Caja:** solo ve Cocina, Venta, Pedidos y Caja; vende en Mesa con QR y
+  confirma el pago a mano; ve la cocina sin botones para mover pedidos.
 
-Línea base de `apps/backend` sin cambios (2026-09-24, tras `npm ci`):
-
-| Comando | Resultado |
-|---|---|
-| `npx jest` (unitarios) | 25 suites, **105 tests pasan** |
-| `npm run build` | compila sin errores |
-| `npm run test:e2e` | no ejecutado: usa base de datos real |
-| `npx eslint`, `npx tsc --noEmit` | pendiente |
-| `apps/agent-whatsapp` | pendiente: sin dependencias instaladas |
-
-Entorno: Node v24.21.0, npm 11.19.0. Permisos de Claude Code para jest, vitest,
-tsc, eslint y build ya autorizados por el usuario.
-
-## Errores pendientes
-
-Ninguno de código. Riesgos abiertos:
-
-- `apps/backend` incluye el manual de la API de Baneco (PDF) y una colección de
-  Postman con variables `adminPassword`, `posToken` y `jwtToken`. El repo ya es
-  privado; si alguna vez se hace público, sacarlos antes del historial.
-- `CLIENTES/SasS_Restaurante/restauranteAI/.git/config` tiene un token de GitHub
-  incrustado en el remote (fuera de este proyecto).
+No probado: QR real del banco, impresora térmica, subir una foto desde el POS
+(sí por el cargador, que usa el mismo endpoint), cierre de caja en el
+navegador, y el agente contra el backend.
 
 ## Migraciones aplicadas
 
-Ninguna. Bases de datos:
+Las 32 del backend, en las dos bases (2026-10-02):
 
-| Ref de Supabase | Qué es | Uso permitido |
+| Base | Qué es | Estado |
 |---|---|---|
-| `rgoesdoqmhlurpclacha` | base del backend central que usa el POS (según el usuario) | **solo lectura**, sin confirmar si es producción |
-| `gkhvijhcyysasofrukbr` | base nueva para el monorepo y las demos | migraciones y seeds desde la Fase 2 |
+| PostgreSQL local, puerto 54329 | desarrollo | 32 migraciones, con datos de prueba |
+| Supabase `gkhvijhcyysasofrukbr` | demos publicadas | 32 migraciones, **vacía** (solo los 16 tramos de tarifa y la fila de configuración que siembran las migraciones) |
+| Supabase `rgoesdoqmhlurpclacha` | backend central del POS de producción | **solo lectura**, no se tocó |
 
-Para migrar hace falta la cadena de conexión Postgres (`DATABASE_URL`), no la
-URL REST.
+- `gkhvijhcyysasofrukbr` no estaba borrada sino pausada: de madrugada no
+  resolvía por DNS y horas después volvió. La cadena de conexión está en
+  `apps/backend/.env.supabase` (fuera de git). `apps/backend/.env` tiene la
+  clave vieja y ya no sirve.
+- **Migración 32 (`enable-rls-on-later-tables`), nueva:** la 18 activaba RLS
+  solo en las tablas que existían entonces. `cash_register_sessions` y
+  `bank_qr_charges` se crearon después y quedaron sin RLS y con permisos para
+  `anon`: con la clave pública de Supabase se podían leer y escribir. Ahora
+  las 20 tablas tienen RLS. **El backend de producción (`rgoesdoqmhlurpclacha`)
+  viene del mismo código y probablemente tiene el mismo hueco: revisarlo.**
+- `scripts/check-database.mjs` (`npm run db:check`): revisa una base sin
+  escribir y dice si está vacía, al día o es de otro sistema.
+- Las 39 migraciones del agente **no** se aplicaron: 9 de sus tablas se llaman
+  igual que las del backend (`orders`, `order_items`, `order_promotions`,
+  `promotions`, `promotion_items`, `payment_attempts`, `payment_proofs`,
+  `delivery_quote_requests`, `dashboard_users`). Ver la Fase 5.
 
-## Decisiones necesarias
+## Errores y riesgos pendientes
 
-1. **POS frontend:** no está en `backend-central-zarco-dev` (ese repo solo
-   tiene el backend NestJS). Hace falta el repo o la carpeta del frontend
-   (Vite + React), o decidir construirlo desde cero en `apps/pos`.
-2. Conflictos C3 (número de pedido), C5 (efectivo histórico), C8 (extras
-   históricos) y C13 (un solo cambio de pedido) → `docs/data-mapping.md` §9.
-   Mientras no haya respuesta, la Fase 1 usa las propuestas del documento como
-   valores por defecto.
-3. Upstream de producción `julico155/backend-central-zarco` (`master` =
-   `f576967`): falta compararlo con `af20b02` para saber si tiene cambios que no
-   están en el fork.
+- La base local tiene pedidos de prueba (ORD-000001 a 000005) y una caja
+  abierta con Bs 100 de las pruebas.
+- `CLIENTES/SasS_Restaurante/restauranteAI/.git/config` tiene un token de
+  GitHub incrustado en el remote (fuera de este proyecto): revocarlo.
+- Las coordenadas de `demos/don-zarco` son aproximadas: ajustarlas antes de
+  cotizar delivery de verdad.
+- Upstream de producción `julico155/backend-central-zarco`: falta compararlo
+  con este backend para saber si tiene cambios que aquí no están.
+
+## Decisiones necesarias (del usuario)
+
+1. **Dónde se publica la demo.** Hace falta una base PostgreSQL nueva
+   (Supabase u otra) y dónde corren el backend (antes Railway) y el POS.
+2. **Credenciales del agente:** un proyecto de Supabase para sus tablas de
+   conversación, Kapso (WhatsApp) y OpenAI. Sin eso no se puede probar la
+   Fase 5 de verdad.
+3. Conflictos C3, C5, C8 y C13 de `docs/data-mapping.md` §9. Siguen con las
+   propuestas por defecto.
 
 ## Próxima sesión: por dónde seguir
 
-1. **Fase 1:** crear `packages/contracts` (enums, entidades y códigos de error
-   de `docs/canonical-contract-proposal.md`) y `packages/state-machine`
-   (transiciones de pedido y de pago, guardas por rol, cierre de caja,
-   modificación única), con pruebas en vitest. Sin base de datos.
-2. Instalar dependencias de `apps/agent-whatsapp` y medir su línea base
-   (`npm test`, `npm run build`, `npm run lint`).
-3. Completar la línea base del backend con `eslint` y `tsc --noEmit`.
-4. Comparar el upstream `julico155/backend-central-zarco` con el fork (solo
-   lectura).
-5. Las decisiones de arriba siguen abiertas; mientras tanto se usan las
-   propuestas de `docs/data-mapping.md` y cada choque se reporta aquí.
+1. **Fase 5, en este orden**, para que un pedido de WhatsApp real llegue a la
+   cocina del POS:
+   1. El agente lee el menú del backend (`GET /categories`, `/products`,
+      `/promotions`) en vez de `menu_items`. Punto de entrada:
+      `apps/agent-whatsapp/src/lib/menu/repository.ts`.
+   2. `POST /api/store/orders` del agente crea el pedido con `POST /orders`
+      del backend (canal `whatsapp` o `web`, con `Idempotency-Key`) en vez de
+      la RPC `create_order_web_v4`.
+   3. Ubicación y cotización de delivery por el backend
+      (`POST /orders/:id/location`).
+   4. Los 3 endpoints del gateway que el backend llama para avisar al cliente
+      (`apps/backend/docs/gateway-integration.md` §3).
+   5. Retirar del agente `/cocina` y el dashboard de pedidos: los reemplaza
+      el POS.
+
+   Base del agente: mismo proyecto de Supabase, en un esquema aparte
+   (`agent`) y solo con sus tablas propias (`agent_conversations`,
+   `agent_messages`, `agent_runs`, `agent_control_events`, `webhook_events`,
+   `menu_send_deliveries`, `menu_sessions`, `telegram_alerts`). Las de negocio
+   no se crean: las reemplaza el backend.
+
+   Variables nuevas del agente: `CENTRAL_API_BASE_URL`, `CENTRAL_API_TOKEN` y
+   `GATEWAY_AUTH_TOKEN`. El inventario de los 19 archivos que hoy tocan
+   `orders` está en `docs/repository-inventory.md` §3.3.
+2. Pantalla de reportes en el POS.
+3. `packages/contracts`: compartir los tipos entre POS y agente cuando el
+   agente ya consuma el backend (hoy los tipos del POS están en
+   `apps/pos/src/lib/types.ts`).

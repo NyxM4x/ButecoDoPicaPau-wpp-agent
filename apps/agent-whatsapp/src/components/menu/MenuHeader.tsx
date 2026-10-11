@@ -10,7 +10,37 @@ import Image from 'next/image';
  * descuentos ni promociones: esos datos no existen en el modelo y no deben
  * inventarse.
  */
-export function MenuHeader() {
+export function MenuHeader({
+  restaurantName = null,
+}: {
+  /**
+   * Nombre del local cuando el catálogo viene del backend central (el que está
+   * en Configuración del POS). Con él, la cabecera deja de ser la de Don Zarco:
+   * enseña ese nombre y no el logo, que es de un negocio concreto.
+   */
+  restaurantName?: string | null;
+} = {}) {
+  if (restaurantName) {
+    return (
+      <header className="relative overflow-hidden border-b border-donzarco-gold/30 bg-donzarco-red-dark px-4 pt-[max(1.25rem,env(safe-area-inset-top))] pb-5 text-white">
+        <div className="relative mx-auto flex max-w-5xl items-center gap-4">
+          <span
+            className="font-display flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-white/10 text-3xl text-donzarco-gold uppercase ring-1 ring-donzarco-gold/40 sm:h-20 sm:w-20"
+            aria-hidden
+          >
+            {restaurantName.trim().charAt(0)}
+          </span>
+          <div className="min-w-0">
+            <h1 className="font-display truncate text-2xl tracking-wide uppercase">{restaurantName}</h1>
+            <p className="mt-0.5 text-xs leading-relaxed text-white/70">
+              Arma tu carrito y termina el pedido por WhatsApp.
+            </p>
+          </div>
+        </div>
+      </header>
+    );
+  }
+
   return (
     <header className="relative overflow-hidden border-b border-donzarco-gold/30 bg-donzarco-red-dark px-4 pt-[max(1.25rem,env(safe-area-inset-top))] pb-5 text-white">
       {/* Motivo discreto: rayos radiales + aro, como el emblema. */}

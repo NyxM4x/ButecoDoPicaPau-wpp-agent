@@ -14,6 +14,7 @@ export interface OperationalSettingsResponse {
   restaurantLongitude: number | null;
   ordersPaused: boolean;
   pickupEnabled: boolean;
+  restaurantName: string;
 }
 
 /**
@@ -64,6 +65,7 @@ export class OperationalSettingsService {
           : {}),
         ...(dto.ordersPaused !== undefined ? { orders_paused: dto.ordersPaused } : {}),
         ...(dto.pickupEnabled !== undefined ? { pickup_enabled: dto.pickupEnabled } : {}),
+        ...(dto.restaurantName !== undefined ? { restaurant_name: dto.restaurantName.trim() } : {}),
         updated_at: new Date(),
       })
       .where('id', '=', true)
@@ -82,6 +84,7 @@ function toResponse(row: {
   restaurant_longitude: number | null;
   orders_paused: boolean;
   pickup_enabled: boolean;
+  restaurant_name: string;
 }): OperationalSettingsResponse {
   return {
     rainSurchargeEnabled: row.rain_surcharge_enabled,
@@ -92,5 +95,6 @@ function toResponse(row: {
     restaurantLongitude: row.restaurant_longitude,
     ordersPaused: row.orders_paused,
     pickupEnabled: row.pickup_enabled,
+    restaurantName: row.restaurant_name,
   };
 }

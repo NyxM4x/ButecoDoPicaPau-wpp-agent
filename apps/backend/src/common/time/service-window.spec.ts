@@ -29,6 +29,26 @@ describe('classifyServiceWindow (margen ancho de cordura, horario 17-23)', () =>
   });
 });
 
+describe('classifyServiceWindow (misma hora de apertura y cierre = 24 horas)', () => {
+  const ALL_DAY = { opensHour: 0, closesHour: 0 };
+
+  it('abierto a cualquier hora del día', () => {
+    for (const hour of [0, 6, 10, 16, 23]) {
+      expect(classifyServiceWindow(laPazTime(hour), ALL_DAY)).toBe('open');
+    }
+    expect(classifyServiceWindow(laPazTime(3), { opensHour: 9, closesHour: 9 })).toBe('open');
+  });
+
+  it('un instante ilegible sigue saliendo closed', () => {
+    expect(classifyServiceWindow(new Date(NaN), ALL_DAY)).toBe('closed');
+  });
+
+  it('la caja sigue decidiendo: sin caja abierta el pedido se encola', () => {
+    expect(checkoutGateAt(laPazTime(10), ALL_DAY, false)).toEqual({ gate: 'late_review' });
+    expect(checkoutGateAt(laPazTime(10), ALL_DAY, true)).toEqual({ gate: 'proceed' });
+  });
+});
+
 const OVERNIGHT_HOURS = { opensHour: 19, closesHour: 4 };
 
 describe('classifyServiceWindow (margen cruzando medianoche, horario 19-4)', () => {

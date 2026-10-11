@@ -5,8 +5,11 @@ import {
   IsLongitude,
   IsNumber,
   IsOptional,
+  IsString,
   Max,
+  MaxLength,
   Min,
+  MinLength,
 } from 'class-validator';
 
 export class UpdateOperationalSettingsDto {
@@ -46,4 +49,10 @@ export class UpdateOperationalSettingsDto {
   @IsOptional()
   @IsLongitude()
   restaurantLongitude?: number;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(80)
+  restaurantName?: string;
 }

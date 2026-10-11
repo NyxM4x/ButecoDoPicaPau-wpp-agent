@@ -23,6 +23,7 @@ describe('OperationalSettingsService ordersPaused', () => {
           restaurant_longitude: -63.18,
           orders_paused: true,
           pickup_enabled: false,
+          restaurant_name: 'Don Zarco',
         }),
       ),
     } as unknown as Kysely<Database>;
@@ -35,6 +36,7 @@ describe('OperationalSettingsService ordersPaused', () => {
       rainSurchargeEnabled: false,
       businessOpensHour: 17,
       businessClosesHour: 23,
+      restaurantName: 'Don Zarco',
     });
   });
 });

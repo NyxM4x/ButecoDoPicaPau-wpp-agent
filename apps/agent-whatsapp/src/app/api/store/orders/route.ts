@@ -19,6 +19,8 @@ import {
 } from '@/lib/orders/order-replacement';
 import { readCurrentPromoMode } from '@/lib/promotions/current-mode';
 import { readOrdersPaused } from '@/lib/delivery/settings';
+import { centralRequest, isCentralEnabled } from '@/lib/central/client';
+import { createCentralWebOrder } from '@/lib/central/orders';
 
 // Requiere APIs de Node (crypto, service_role) — no Edge. Siempre dinámico.
 export const runtime = 'nodejs';
@@ -39,6 +41,8 @@ export const maxDuration = 60;
  */
 function buildDeps(): WebCheckoutDeps {
   const supabase = getSupabaseAdmin();
+
+  if (isCentralEnabled()) return buildCentralDeps(supabase);
 
   return {
     /**
@@ -109,6 +113,37 @@ function buildDeps(): WebCheckoutDeps {
 
     /** 0038 — pedidos nuevos pausados por saturación. Nunca lanza. */
     readOrdersPaused: () => readOrdersPaused(supabase),
+  };
+}
+
+/**
+ * Dependencias cuando el pedido se crea en el backend central.
+ *
+ * La sesión del menú sigue siendo del agente (es quien sabe de qué chat vino el
+ * enlace). Todo lo demás lo decide el backend al crear el pedido: precios,
+ * disponibilidad, horario, pausa, recojo y promociones. Por eso aquí no hay
+ * ninguna de las lecturas previas del camino de siempre.
+ *
+ * Los avisos al cliente tampoco salen de aquí: el backend los pide por el
+ * gateway (`/api/gateway/*`), incluida la petición de ubicación de un delivery.
+ *
+ * Pendiente: «Cambiar mi pedido» (`POST /orders/:id/replace`). Un enlace de
+ * cambio crea hoy un pedido nuevo y no cancela el anterior.
+ */
+function buildCentralDeps(supabase: ReturnType<typeof getSupabaseAdmin>): WebCheckoutDeps {
+  const sessions = createMenuSessionRepository(supabase);
+
+  return {
+    findSessionIdByTokenHash: (tokenHash) => sessions.findValidIdByHash(tokenHash),
+
+    callCreateOrderWeb: (params) =>
+      createCentralWebOrder(params, {
+        request: centralRequest,
+        findSessionPhone: (menuSessionId) => sessions.findPhoneById(menuSessionId),
+      }),
+
+    isPickupEnabled: () => true,
+
   };
 }
 

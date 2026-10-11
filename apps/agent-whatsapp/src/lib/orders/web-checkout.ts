@@ -153,6 +153,13 @@ export interface WebCheckoutDeps {
    * que se abrió antes de pausar. Opcional: sin ella, como antes.
    */
   readOrdersPaused?: () => Promise<boolean>;
+  /**
+   * ¿Se acepta el recojo? Sin ella manda la constante `PICKUP_ENABLED`, como
+   * siempre. Con el backend central la respuesta es la de Configuración del
+   * POS, y la da el propio backend al crear el pedido: aquí solo se devuelve
+   * `true` para no rechazar antes de preguntarle.
+   */
+  isPickupEnabled?: () => boolean;
 }
 
 /** Ver `checkReplacementFeasible` en `@/lib/orders/order-replacement`. */
@@ -212,6 +219,14 @@ const PICKUP_UNAVAILABLE_MESSAGE =
  */
 const COMBO_ONLY_MESSAGE =
   'Hoy uno de tus productos solo se vende dentro de la promoción. Actualiza la página para verla.';
+/** Backend central: fuera del horario configurado en el POS. */
+const CLOSED_MESSAGE = 'En este momento estamos cerrados. Vuelve a intentarlo en nuestro horario de atención.';
+/**
+ * Backend central: no hay caja abierta, así que el pedido quedó esperando a que
+ * el personal lo acepte. Se le pide que NO lo repita: reenviarlo no lo acelera.
+ */
+const PENDING_REVIEW_MESSAGE =
+  'Recibimos tu pedido, pero el local todavía no abrió caja. Lo estamos revisando y te avisamos por WhatsApp en unos minutos; no hace falta que lo envíes de nuevo.';
 /** Pedidos nuevos pausados por saturación (0038). Mismo texto que el menú. */
 const ORDERS_PAUSED_MESSAGE =
   'Estamos con demasiados pedidos y pausamos los nuevos por un rato. Vuelve a intentarlo en unos minutos.';
@@ -228,6 +243,21 @@ function jsonResponse(status: number, body: unknown): Response {
  */
 function mapRpcError(errorCode: string | null, errorMessage?: string | null): Response {
   switch (errorCode) {
+    // ── Backend central (`lib/central/orders`) ──────────────────────────────
+    case 'central_closed':
+      return jsonResponse(422, { error: 'validation_error', message: CLOSED_MESSAGE });
+    case 'central_paused':
+      return jsonResponse(422, { error: 'validation_error', message: ORDERS_PAUSED_MESSAGE });
+    case 'central_pending_review':
+      // No hay caja abierta: el pedido quedó como solicitud en el POS. No es un
+      // pedido confirmado y no se le dice al cliente que lo sea.
+      return jsonResponse(422, { error: 'validation_error', message: PENDING_REVIEW_MESSAGE });
+    case 'central_pickup_disabled':
+      return jsonResponse(422, {
+        error: 'validation_error',
+        message: PICKUP_UNAVAILABLE_MESSAGE,
+        issues: [{ field: 'delivery_type', message: PICKUP_UNAVAILABLE_MESSAGE }],
+      });
     case 'P1004': {
       // Una promoción dejó de ser vendible entre que el cliente la vio y pulsó
       // confirmar. El pedido NO se crea: la transacción ya hizo rollback.
@@ -405,7 +435,7 @@ export async function handleCreateWebOrder(
   //       conteste, así que tampoco puede caerse con ellas: aquí llega el
   //       cliente con la pestaña vieja —la nueva ni le ofrece el botón— y
   //       cualquier POST hecho a mano. Ver `orders/pickup-enabled`.
-  if (body.delivery_type === 'pickup' && !PICKUP_ENABLED) {
+  if (body.delivery_type === 'pickup' && !(deps.isPickupEnabled?.() ?? PICKUP_ENABLED)) {
     log.warn('store.orders.pickup_disabled');
     return jsonResponse(422, {
       error: 'validation_error',

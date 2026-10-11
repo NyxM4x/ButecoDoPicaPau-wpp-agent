@@ -23,7 +23,9 @@ export function getSupabaseAdmin(): SupabaseClient {
       persistSession: false,
       autoRefreshToken: false,
     },
-  });
+    // Todas las consultas y RPC van a este esquema. Ver `SUPABASE_DB_SCHEMA`.
+    db: { schema: env.SUPABASE_DB_SCHEMA ?? 'public' },
+  }) as unknown as SupabaseClient;
 
   return client;
 }

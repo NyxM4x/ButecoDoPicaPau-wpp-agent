@@ -67,10 +67,15 @@ function hoursSinceOpen(hour: number, opensHour: number): number {
  * Frontera en punto, ya normalizada relativa a `opensHour` (ver comentario
  * de cabecera). Un instante ilegible (NaN) sale 'closed': ante la duda, no
  * se toma un pedido que nadie va a cocinar.
+ *
+ * Misma hora de apertura y de cierre = sin margen horario (24 horas): solo
+ * la caja decide. Sin esta regla esa combinación dejaba el local cerrado
+ * siempre, y un local de demostración no se podía mostrar a cualquier hora.
  */
 export function classifyServiceWindow(instant: Date, hours: ServiceHours): ServiceWindow {
   const hour = hourInBolivia(instant);
   if (hour === null) return 'closed';
+  if (hours.opensHour === hours.closesHour) return 'open';
   const relHour = hoursSinceOpen(hour, hours.opensHour);
   const relCloses = hoursSinceOpen(hours.closesHour, hours.opensHour);
   return relHour >= relCloses ? 'closed' : 'open';
