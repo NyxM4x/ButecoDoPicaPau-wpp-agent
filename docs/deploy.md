@@ -14,6 +14,19 @@ El backend tiene que estar en internet: el agente publicado en Vercel no puede
 hablar con un backend que corre en una máquina local, y el backend necesita
 llamar al agente para enviar los WhatsApp.
 
+## Dos repositorios
+
+El mismo código está en dos repos privados de GitHub, porque la prueba gratis
+de Railway de la primera cuenta se agotó:
+
+| Remoto de git | Repositorio | Para qué |
+|---|---|---|
+|  |  | el principal |
+|  |  | el que despliega Railway, con la cuenta nueva |
+
+Cada cambio se sube a los dos:  y .
+Si solo se sube a uno, el otro servicio se queda con la versión vieja.
+
 ## Lo que NO está en git
 
 Un `git clone` no trae nada de esto. Si se trabaja desde otra carpeta u otra
