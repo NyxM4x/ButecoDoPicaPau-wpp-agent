@@ -21,10 +21,10 @@ de Railway de la primera cuenta se agotó:
 
 | Remoto de git | Repositorio | Para qué |
 |---|---|---|
-|  |  | el principal |
-|  |  | el que despliega Railway, con la cuenta nueva |
+| `origin` | `NyxM4x/restaurant-demos` | el principal |
+| `jr` | `NyxM4xJr/DemoOficialRestaurants` | el que despliega Railway, con la cuenta nueva |
 
-Cada cambio se sube a los dos:  y .
+Cada cambio se sube a los dos: `git push origin main` y `git push jr main`.
 Si solo se sube a uno, el otro servicio se queda con la versión vieja.
 
 ## Lo que NO está en git
