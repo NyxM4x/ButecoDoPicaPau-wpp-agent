@@ -1,14 +1,19 @@
 # Publicar la demo
 
 Tres servicios del mismo repositorio y una base de datos. Estado al
-2026-10-11: **base y backend publicados; agente y POS todavía no.**
+2026-10-11: **todo publicado y comprobado en el navegador; falta el webhook de
+Kapso y la primera prueba con un teléfono.**
 
 | Pieza | Dónde | Carpeta raíz | Estado |
 |---|---|---|---|
 | Base de datos | Supabase `gkhvijhcyysasofrukbr` | — | lista: backend en `public` (32 migraciones), agente en `agent` (39) |
 | Backend | Railway, cuenta `portafoliosmarky3`, proyecto `restaurant-demos`, servicio `backend` | `apps/backend` | **publicado**: `https://backend-production-9c48.up.railway.app`, con la demo Don Zarco cargada (15 productos con foto, abierto 24 h) |
-| Agente de WhatsApp | Vercel | `apps/agent-whatsapp` | por publicar |
-| POS | Vercel | `apps/pos` | por publicar |
+| Agente de WhatsApp | Vercel, equipo «grad's projects», proyecto `demo_restaurant_agente`, desde `NyxM4x/restaurant-demos` | `apps/agent-whatsapp` | **publicado**: `https://demorestaurantagente.vercel.app` — `/menu` muestra el catálogo y las fotos del backend; falta `KAPSO_WEBHOOK_SECRET` |
+| POS | Vercel, mismo equipo, proyecto `demo_restaurant_pos` | `apps/pos` | **publicado**: `https://demorestaurantpos-sooty.vercel.app` — entra con `admin` y muestra menú y cocina |
+
+Vercel sí está enlazado a GitHub: un `git push origin main` vuelve a desplegar
+el agente y el POS. Sus variables están en el panel de cada proyecto (copia en
+`apps/*/.env.vercel`, fuera de git).
 
 El backend tiene que estar en internet: el agente publicado en Vercel no puede
 hablar con un backend que corre en una máquina local, y el backend necesita
