@@ -207,13 +207,13 @@ Las 32 del backend, en las dos bases (2026-10-02):
 | Base | Qué es | Estado |
 |---|---|---|
 | PostgreSQL local, puerto 54329 | desarrollo | 32 migraciones, con datos de prueba |
-| Supabase `gkhvijhcyysasofrukbr` | demos publicadas | 32 migraciones, **vacía** (solo los 16 tramos de tarifa y la fila de configuración que siembran las migraciones) |
+| Supabase `gkhvijhcyysasofrukbr`, esquema `public` | demos publicadas, backend | 32 migraciones; sin menú cargado todavía, con el usuario `admin` creado |
+| Supabase `gkhvijhcyysasofrukbr`, esquema `agent` | demos publicadas, agente | 39 migraciones del agente (2026-10-11) |
 | Supabase `rgoesdoqmhlurpclacha` | backend central del POS de producción | **solo lectura**, no se tocó |
 
 - `gkhvijhcyysasofrukbr` no estaba borrada sino pausada: de madrugada no
   resolvía por DNS y horas después volvió. La cadena de conexión está en
-  `apps/backend/.env.supabase` (fuera de git). `apps/backend/.env` tiene la
-  clave vieja y ya no sirve.
+  `apps/backend/.env.supabase` (fuera de git). `apps/backend/.env` tenía la clave vieja y se borró el 2026-10-11.
 - **Migración 32 (`enable-rls-on-later-tables`), nueva:** la 18 activaba RLS
   solo en las tablas que existían entonces. `cash_register_sessions` y
   `bank_qr_charges` se crearon después y quedaron sin RLS y con permisos para
@@ -222,10 +222,11 @@ Las 32 del backend, en las dos bases (2026-10-02):
   viene del mismo código y probablemente tiene el mismo hueco: revisarlo.**
 - `scripts/check-database.mjs` (`npm run db:check`): revisa una base sin
   escribir y dice si está vacía, al día o es de otro sistema.
-- Las 39 migraciones del agente **no** se aplicaron: 9 de sus tablas se llaman
-  igual que las del backend (`orders`, `order_items`, `order_promotions`,
+- Las 39 migraciones del agente se aplicaron en el esquema `agent` con
+  `scripts/agent-db.mjs`, no en `public`: 9 de sus tablas se llaman igual que
+  las del backend (`orders`, `order_items`, `order_promotions`,
   `promotions`, `promotion_items`, `payment_attempts`, `payment_proofs`,
-  `delivery_quote_requests`, `dashboard_users`). Ver la Fase 5.
+  `delivery_quote_requests`, `dashboard_users`).
 
 ## Errores y riesgos pendientes
 
@@ -240,41 +241,27 @@ Las 32 del backend, en las dos bases (2026-10-02):
 
 ## Decisiones necesarias (del usuario)
 
-1. **Dónde se publica la demo.** Hace falta una base PostgreSQL nueva
-   (Supabase u otra) y dónde corren el backend (antes Railway) y el POS.
-2. **Credenciales del agente:** un proyecto de Supabase para sus tablas de
-   conversación, Kapso (WhatsApp) y OpenAI. Sin eso no se puede probar la
-   Fase 5 de verdad.
-3. Conflictos C3, C5, C8 y C13 de `docs/data-mapping.md` §9. Siguen con las
+1. **Dónde corre el backend.** La prueba gratis de Railway de la cuenta
+   `NyxM4x` está agotada. Opciones vistas el 2026-10-11: plan Hobby (5 USD al
+   mes) en esa cuenta, otra cuenta de Railway (riesgo: «Limited Trial» sin
+   salida de red), u otro servicio con plan gratis. Sin decidir.
+2. **OpenAI y Telegram** para el agente: opcionales, todavía sin configurar.
+   Sin OpenAI el bot manda el menú y toma pedidos, pero no conversa.
+3. **Dónde se guardan las fotos en producción** (bucket R2/S3 o volumen): hoy
+   se pierden en cada despliegue del backend.
+4. Conflictos C3, C5, C8 y C13 de `docs/data-mapping.md` §9. Siguen con las
    propuestas por defecto.
 
 ## Próxima sesión: por dónde seguir
 
-1. **Fase 5, en este orden**, para que un pedido de WhatsApp real llegue a la
-   cocina del POS:
-   1. El agente lee el menú del backend (`GET /categories`, `/products`,
-      `/promotions`) en vez de `menu_items`. Punto de entrada:
-      `apps/agent-whatsapp/src/lib/menu/repository.ts`.
-   2. `POST /api/store/orders` del agente crea el pedido con `POST /orders`
-      del backend (canal `whatsapp` o `web`, con `Idempotency-Key`) en vez de
-      la RPC `create_order_web_v4`.
-   3. Ubicación y cotización de delivery por el backend
-      (`POST /orders/:id/location`).
-   4. Los 3 endpoints del gateway que el backend llama para avisar al cliente
-      (`apps/backend/docs/gateway-integration.md` §3).
-   5. Retirar del agente `/cocina` y el dashboard de pedidos: los reemplaza
-      el POS.
-
-   Base del agente: mismo proyecto de Supabase, en un esquema aparte
-   (`agent`) y solo con sus tablas propias (`agent_conversations`,
-   `agent_messages`, `agent_runs`, `agent_control_events`, `webhook_events`,
-   `menu_send_deliveries`, `menu_sessions`, `telegram_alerts`). Las de negocio
-   no se crean: las reemplaza el backend.
-
-   Variables nuevas del agente: `CENTRAL_API_BASE_URL`, `CENTRAL_API_TOKEN` y
-   `GATEWAY_AUTH_TOKEN`. El inventario de los 19 archivos que hoy tocan
-   `orders` está en `docs/repository-inventory.md` §3.3.
-2. Pantalla de reportes en el POS.
-3. `packages/contracts`: compartir los tipos entre POS y agente cuando el
-   agente ya consuma el backend (hoy los tipos del POS están en
-   `apps/pos/src/lib/types.ts`).
+1. **Publicar**, siguiendo `docs/deploy.md`: backend, agente, POS, cargar la
+   demo y crear el webhook de Kapso. Si se trabaja desde otra carpeta, copiar
+   antes los archivos que no están en git (la lista está en ese documento).
+2. **Primera prueba con WhatsApp real** y arreglar lo que salga. Lo que nunca
+   se ejecutó de verdad: envío por Kapso, enlace de sesión del menú, y las
+   llamadas del backend a `/api/gateway/*`.
+3. **Resto de la Fase 5** (lista completa en «Qué se hizo el 2026-10-11»):
+   comprobantes de pago, «Cambiar mi pedido», estado del cliente para la
+   respuesta por defecto, CONFIRMO/CANCELAR de efectivo, el menú que usa el
+   agente de IA, y los datos del local que siguen en `facts.ts`.
+4. Fotos en un bucket, pantalla de reportes en el POS y `packages/contracts`.

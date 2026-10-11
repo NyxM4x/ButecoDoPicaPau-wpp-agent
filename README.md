@@ -9,12 +9,13 @@ de demo.
 |---|---|---|---|
 | `apps/backend` | Backend central: catálogo, pedidos, pagos, caja | NestJS + PostgreSQL | funciona |
 | `apps/pos` | POS: venta, cocina (KDS), caja, pedidos y administración | Vite + React + Tailwind | funciona |
-| `apps/agent-whatsapp` | Agente de IA para WhatsApp | Next.js + Supabase | funciona solo; **todavía no manda sus pedidos al backend** |
+| `apps/agent-whatsapp` | Agente de IA para WhatsApp y menú web del cliente | Next.js + Supabase | menú, pedido y ubicación ya van por el backend; falta probarlo con WhatsApp real |
 | `demos/` | Perfiles de demo: `menu.json` + fotos por restaurante | JSON | 2 perfiles |
 | `scripts/` | Base local, cargador de demos y simulador de pedidos | Node / PowerShell | funciona |
 | `docs/` | Plan maestro, inventario, mapeo de datos y avance | — | — |
 
-Empieza por `docs/implementation-progress.md` (en qué quedamos) y
+Empieza por `docs/implementation-progress.md` (en qué quedamos), sigue con
+`docs/deploy.md` (cómo se publica y qué archivos no están en git) y
 `docs/CLAUDE_MONOREPO_CONTEXT.md` (arquitectura y fases).
 
 Cada app tiene su propio `package.json` y `package-lock.json`: se instala y se
@@ -96,11 +97,12 @@ alguien abra la caja y lo acepte.
 | Base | Qué es |
 |---|---|
 | PostgreSQL local, puerto 54329 | desarrollo y demos en esta máquina |
+| Supabase `gkhvijhcyysasofrukbr` | la demo publicada: el backend en el esquema `public` y el agente en el esquema `agent` |
 | Supabase `rgoesdoqmhlurpclacha` | backend central del POS de producción: **solo lectura** |
 
-El proyecto de Supabase `gkhvijhcyysasofrukbr`, que era el de las demos, ya no
-existe (no resuelve por DNS desde el 2026-10-02). Para publicar la demo hace
-falta una base PostgreSQL nueva.
+Las tablas del agente van en un esquema aparte porque 9 se llaman igual que las
+del backend. Se crean y se actualizan con `scripts/agent-db.mjs`, y el agente
+las usa con `SUPABASE_DB_SCHEMA=agent`.
 
 Para saber si una base sirve antes de migrarla (solo lee, no escribe nada):
 
@@ -109,6 +111,25 @@ cd apps\backend
 node --env-file=.env.supabase scripts\check-database.mjs
 ```
 
-`.env.supabase` (fuera de git) lleva `DIRECT_URL` (conexión de sesión, puerto
-5432, la que usan las migraciones) y `DATABASE_URL` (pooler, puerto 6543, la
-que usa el backend al correr).
+`.env.supabase` (fuera de git) lleva el `DATABASE_URL` de esa base (pooler de
+sesión, puerto 5432) y la clave del administrador de producción.
+
+## Publicar
+
+Backend en Railway, agente y POS en Vercel. El paso a paso, las variables de
+cada servicio y la lista de archivos que hay que copiar a mano están en
+`docs/deploy.md`.
+
+## El agente con el backend central
+
+Con `CENTRAL_API_BASE_URL` y `CENTRAL_API_TOKEN`, el menú web del agente lee
+categorías, productos, fotos y promociones del backend, y los pedidos se crean
+allí: aparecen en la Cocina del POS. Sin esas variables el agente funciona con
+sus propias tablas, como antes. El código está en
+`apps/agent-whatsapp/src/lib/central/`.
+
+```powershell
+cd apps\agent-whatsapp
+npm ci
+npm run dev        # http://localhost:3000/menu  (lee .env.local)
+```
