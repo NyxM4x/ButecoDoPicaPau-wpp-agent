@@ -8,6 +8,7 @@ import { enableChime, playChime } from '../lib/chime';
 import { DELIVERY_LABEL, elapsed, minutesSince, time } from '../lib/format';
 import {
   KITCHEN_STATUSES,
+  awaitingCustomerConfirm,
   canStartPreparing,
   newArrivals,
   nextAction,
@@ -206,7 +207,7 @@ function OrderCard({ order, now, fresh, canMove, busy, onMove }: OrderCardProps)
             busy={busy}
             onClick={() => onMove(action.to)}
           >
-            {blocked ? 'Falta cobrar en caja' : action.label}
+            {blocked ? (awaitingCustomerConfirm(order) ? 'Esperando que el cliente confirme' : 'Falta cobrar en caja') : action.label}
           </Button>
         </div>
       )}

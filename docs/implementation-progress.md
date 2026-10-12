@@ -158,6 +158,33 @@ ubicación):
 se configure un bucket (`PAYMENT_PROOFS_S3_*`) o un volumen, hay que volver a
 correr `load-demo.mjs` después de cada despliegue del backend.
 
+## Primera prueba con WhatsApp real (2026-10-11, 20:06) y arreglo del 2026-10-12
+
+Menú, enlace, pedido y ubicación funcionaron: ORD-000001 se cotizó con Mapbox
+(4,08 km, envío Bs 18, total Bs 72) y quedó en Cocina. Pero el cliente no
+recibió nada después de mandar la ubicación: el backend solo avisaba al
+cotizar si el pago era por QR, y en efectivo se quedaba callado.
+
+Arreglo (decisión del usuario: en efectivo, botones CONFIRMAR / CANCELAR):
+
+- **Backend:** al cotizar el envío (o al crear un pedido para retirar), si es
+  en efectivo manda el desglose —productos, envío con km, total— con los dos
+  botones (`cash_order_review`, `src/orders/cash-review-message.ts`). El
+  mensaje del gateway acepta `buttons`. El aviso de `cash/confirm` al cliente
+  ahora dice que el pedido pasa a cocina y cuánto paga.
+- **Agente:** el gateway envía los botones por Kapso. Al tocar uno, el estado
+  del cliente toma del backend el pedido que espera confirmación y la decisión
+  va a `POST /orders/:id/cash/confirm|cancel` (`src/lib/central/cash.ts`). La
+  respuesta al cliente la manda el backend.
+- **POS:** en Cocina, un pedido en efectivo de WhatsApp o web sin confirmar
+  muestra «Esperando que el cliente confirme» y no se puede empezar.
+
+Pendientes que deja: `cash/confirm` marca el pedido como pagado (así venía
+el backend), así que un delivery confirmado deja de figurar como «cobra el
+repartidor»; nadie llama todavía a `expireStaleOrders`, así que un pedido sin
+confirmar no se cancela solo a los 20 minutos; y el tope de dos recordatorios
+de botones no cuenta en modo backend central.
+
 ## Fase actual
 
 **Fase 4 (POS y cocina): hecha contra el backend actual.** Pendiente de esa
@@ -254,9 +281,9 @@ Las 32 del backend, en las dos bases (2026-10-02):
 
 ## Próxima sesión: por dónde seguir
 
-1. **Publicar**, siguiendo `docs/deploy.md`: backend, agente, POS, cargar la
-   demo y crear el webhook de Kapso. Si se trabaja desde otra carpeta, copiar
-   antes los archivos que no están en git (la lista está en ese documento).
+1. **Publicado** (backend, agente, POS, demo cargada y webhook de Kapso), según
+   `docs/deploy.md`. Si se trabaja desde otra carpeta, copiar antes los
+   archivos que no están en git (la lista está en ese documento).
 2. **Primera prueba con WhatsApp real** y arreglar lo que salga. Lo que nunca
    se ejecutó de verdad: envío por Kapso, enlace de sesión del menú, y las
    llamadas del backend a `/api/gateway/*`.

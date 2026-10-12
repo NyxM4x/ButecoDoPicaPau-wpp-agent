@@ -35,7 +35,23 @@ export function isCashOnDelivery(order: Pick<Order, 'deliveryType' | 'paymentMet
   return order.deliveryType === 'delivery' && order.paymentMethod === 'cash';
 }
 
-export function canStartPreparing(order: Pick<Order, 'deliveryType' | 'paymentMethod' | 'paymentStatus'>): boolean {
+/**
+ * Pedido en efectivo de WhatsApp o web que el cliente todavía no confirmó.
+ *
+ * Recibe el desglose con el envío y los botones CONFIRMAR / CANCELAR; hasta que
+ * toca CONFIRMAR puede echarse atrás por el precio, así que no se cocina. Las
+ * ventas del POS no pasan por ese paso.
+ */
+export function awaitingCustomerConfirm(
+  order: Pick<Order, 'channel' | 'paymentMethod' | 'paymentStatus' | 'cashConfirmedAt'>,
+): boolean {
+  return order.channel !== 'pos' && order.paymentMethod === 'cash' && order.paymentStatus !== 'paid' && order.cashConfirmedAt === null;
+}
+
+export function canStartPreparing(
+  order: Pick<Order, 'channel' | 'deliveryType' | 'paymentMethod' | 'paymentStatus' | 'cashConfirmedAt'>,
+): boolean {
+  if (awaitingCustomerConfirm(order)) return false;
   return order.paymentStatus === 'paid' || isCashOnDelivery(order);
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canStartPreparing, kitchenLines, newArrivals, nextAction, oldestFirst, urgency } from './kitchen';
+import { awaitingCustomerConfirm, canStartPreparing, kitchenLines, newArrivals, nextAction, oldestFirst, urgency } from './kitchen';
 import type { Order } from './types';
 
 const item = (name: string, quantity: number): Order['items'][number] => ({
@@ -38,11 +38,21 @@ describe('kitchenLines', () => {
 });
 
 describe('canStartPreparing', () => {
+  const pos = { channel: 'pos', cashConfirmedAt: null } as const;
+
   it('exige pago, salvo delivery en efectivo', () => {
-    expect(canStartPreparing({ deliveryType: 'pickup', paymentMethod: 'cash', paymentStatus: 'unpaid' })).toBe(false);
-    expect(canStartPreparing({ deliveryType: 'delivery', paymentMethod: 'qr', paymentStatus: 'unpaid' })).toBe(false);
-    expect(canStartPreparing({ deliveryType: 'delivery', paymentMethod: 'cash', paymentStatus: 'unpaid' })).toBe(true);
-    expect(canStartPreparing({ deliveryType: 'dine_in', paymentMethod: 'qr', paymentStatus: 'paid' })).toBe(true);
+    expect(canStartPreparing({ ...pos, deliveryType: 'pickup', paymentMethod: 'cash', paymentStatus: 'unpaid' })).toBe(false);
+    expect(canStartPreparing({ ...pos, deliveryType: 'delivery', paymentMethod: 'qr', paymentStatus: 'unpaid' })).toBe(false);
+    expect(canStartPreparing({ ...pos, deliveryType: 'delivery', paymentMethod: 'cash', paymentStatus: 'unpaid' })).toBe(true);
+    expect(canStartPreparing({ ...pos, deliveryType: 'dine_in', paymentMethod: 'qr', paymentStatus: 'paid' })).toBe(true);
+  });
+
+  it('el efectivo de WhatsApp espera a que el cliente toque CONFIRMAR', () => {
+    const whatsapp = { channel: 'whatsapp', deliveryType: 'delivery', paymentMethod: 'cash', paymentStatus: 'unpaid' } as const;
+    expect(canStartPreparing({ ...whatsapp, cashConfirmedAt: null })).toBe(false);
+    expect(awaitingCustomerConfirm({ ...whatsapp, cashConfirmedAt: null })).toBe(true);
+    expect(canStartPreparing({ ...whatsapp, paymentStatus: 'paid', cashConfirmedAt: '2026-10-12T00:10:00Z' })).toBe(true);
+    expect(awaitingCustomerConfirm({ ...whatsapp, channel: 'pos', cashConfirmedAt: null })).toBe(false);
   });
 });
 

@@ -8,6 +8,16 @@ export interface WhatsappMessagePayload {
   to: string;
   text?: string;
   imageUrl?: string;
+  /**
+   * Botones de respuesta (máximo 3, título de hasta 20 caracteres). El `id`
+   * vuelve al agente cuando el cliente toca uno; no se combina con `imageUrl`.
+   */
+  buttons?: WhatsappReplyButton[];
+}
+
+export interface WhatsappReplyButton {
+  id: string;
+  title: string;
 }
 
 export interface WhatsappLocationRequestPayload {

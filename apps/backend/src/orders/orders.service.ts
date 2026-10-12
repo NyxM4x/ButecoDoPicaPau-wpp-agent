@@ -30,6 +30,7 @@ import { QrCheckoutService } from '../bank-qr/qr-checkout.service';
 import { QrPaymentsService } from '../bank-qr/qr-payments.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ReplaceOrderDto } from './dto/replace-order.dto';
+import { cashConfirmedText, cashReviewButtons, cashReviewText } from './cash-review-message';
 
 export interface OrderItemResponse {
   productId: string;
@@ -646,15 +647,98 @@ export class OrdersService {
       }
     }
 
-    if (order.paymentMethod === 'qr') {
-      try {
-        await this.qrCheckout.notifyIfReady(order.id);
-      } catch (error) {
-        this.logger.warn(
-          `No se pudo preparar qr_confirmation para ${order.id}: ${(error as Error).message}`,
-        );
-      }
+    // Retiro en el local: el total ya es definitivo al crearse. El delivery
+    // espera a la cotización, en `attachLocation`.
+    await this.notifyPriceReady(order.id);
+  }
+
+  /**
+   * El total del pedido ya es definitivo: QR para cobrar, o desglose con
+   * CONFIRMAR / CANCELAR si es en efectivo. Cada uno se salta solo cuando no
+   * le toca, y ninguno lanza: el pedido ya está guardado.
+   */
+  private async notifyPriceReady(orderId: string): Promise<void> {
+    try {
+      await this.qrCheckout.notifyIfReady(orderId);
+    } catch (error) {
+      this.logger.warn(`No se pudo preparar QR para ${orderId}: ${(error as Error).message}`);
     }
+    try {
+      await this.notifyCashReview(orderId);
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo enviar el desglose en efectivo de ${orderId}: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Desglose del pedido en efectivo con los botones CONFIRMAR / CANCELAR.
+   *
+   * El cliente ve el envío por primera vez en este mensaje, y es ahí cuando
+   * decide. Hasta que toca CONFIRMAR (`confirmCash`) el pedido no se prepara;
+   * si no toca nada, `expireStaleOrders` lo cancela a los 20 minutos.
+   */
+  async notifyCashReview(orderId: string): Promise<'skipped' | 'notified'> {
+    const order = await this.db
+      .selectFrom('orders')
+      .selectAll()
+      .where('id', '=', orderId)
+      .executeTakeFirst();
+    if (!order) throw new NotFoundDomainError('order', orderId);
+    if (
+      !order.customer_id ||
+      order.payment_method !== 'cash' ||
+      order.status !== 'confirmed' ||
+      order.cash_confirmed_at !== null
+    ) {
+      return 'skipped';
+    }
+    if (order.delivery_type === 'delivery' && order.delivery_quote_status !== 'quoted') {
+      return 'skipped';
+    }
+
+    const existing = await this.db
+      .selectFrom('notification_jobs')
+      .select('status')
+      .where('kind', '=', 'cash_order_review')
+      .where('target_ref', '=', order.id)
+      .executeTakeFirst();
+    if (existing && ['pending', 'sending', 'sent'].includes(existing.status)) return 'skipped';
+
+    const { items, promotions } = await loadOrderLines(this.db, order.id);
+    const lines = [
+      ...items.map((item) => ({
+        name: item.product_name_snapshot,
+        quantity: item.quantity,
+        subtotal: Number(item.subtotal),
+      })),
+      ...promotions.map((promotion) => ({
+        name: promotion.promotion_name_snapshot,
+        quantity: promotion.combo_quantity,
+        subtotal: Number(promotion.subtotal),
+      })),
+    ];
+
+    await this.notifications.notifyNow({
+      channel: 'whatsapp',
+      kind: 'cash_order_review',
+      targetRef: order.id,
+      payload: {
+        customerId: order.customer_id,
+        text: cashReviewText({
+          orderNumber: order.order_number,
+          deliveryType: order.delivery_type,
+          lines,
+          deliveryAmount:
+            Number(order.delivery_base_amount) + Number(order.delivery_surcharge_amount),
+          deliveryDistanceMeters: order.delivery_distance_meters,
+          totalAmount: Number(order.total_amount),
+        }),
+        buttons: cashReviewButtons(order.order_number),
+      },
+    });
+    return 'notified';
   }
 
   private async executeCreateOrder(
@@ -1116,15 +1200,7 @@ export class OrdersService {
         ['pending', 'failed'].includes(order.delivery_quote_status ?? '')
       ) {
         const retryQuote = await this.deliveryService.quoteForOrder(orderId);
-        if (retryQuote.result === 'applied') {
-          try {
-            await this.qrCheckout.notifyIfReady(orderId);
-          } catch (error) {
-            this.logger.warn(
-              `No se pudo preparar QR después de cotizar ${orderId}: ${(error as Error).message}`,
-            );
-          }
-        }
+        if (retryQuote.result === 'applied') await this.notifyPriceReady(orderId);
       }
       return this.findById(orderId);
     }
@@ -1176,15 +1252,7 @@ export class OrdersService {
     }
 
     const quote = await this.deliveryService.quoteForOrder(orderId);
-    if (quote.result === 'applied') {
-      try {
-        await this.qrCheckout.notifyIfReady(orderId);
-      } catch (error) {
-        this.logger.warn(
-          `No se pudo preparar QR después de cotizar ${orderId}: ${(error as Error).message}`,
-        );
-      }
-    }
+    if (quote.result === 'applied') await this.notifyPriceReady(orderId);
     return this.findById(orderId);
   }
 
@@ -1295,13 +1363,7 @@ export class OrdersService {
       return toOrderResponse(updated, items, promotions);
     });
 
-    try {
-      await this.qrCheckout.notifyIfReady(orderId);
-    } catch (error) {
-      this.logger.warn(
-        `No se pudo preparar QR al cambiar ${orderId} a pickup: ${(error as Error).message}`,
-      );
-    }
+    await this.notifyPriceReady(orderId);
     return response;
   }
 
@@ -1369,7 +1431,11 @@ export class OrdersService {
           targetRef: updated.id,
           payload: {
             customerId: updated.customer_id,
-            text: `Tu pago en efectivo para el pedido ${updated.order_number} fue confirmado.`,
+            text: cashConfirmedText({
+              orderNumber: updated.order_number,
+              deliveryType: updated.delivery_type,
+              totalAmount: Number(updated.total_amount),
+            }),
           },
         });
       }

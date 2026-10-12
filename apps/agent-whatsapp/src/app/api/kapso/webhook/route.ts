@@ -37,7 +37,7 @@ import {
   processWebhookEvent,
   type HandleKapsoWebhookParams,
 } from '@/lib/webhook/kapso';
-import { centralLocationPorts } from '@/lib/central/webhook-ports';
+import { centralCashPorts, centralLocationPorts } from '@/lib/central/webhook-ports';
 
 // Requiere APIs de Node (crypto, service_role) — no Edge. Siempre dinámico.
 export const runtime = 'nodejs';
@@ -134,6 +134,10 @@ export async function POST(request: Request): Promise<Response> {
       // recibe los botones otra vez —dos veces como mucho— en lugar de acabar
       // derivado a una persona. Ver `kapso/send-cash-buttons.ts`.
       sendCashButtons: (input) => sendCashButtons(input),
+      // Backend central: el pedido en efectivo que espera CONFIRMAR sale del
+      // backend, y la decisión se le entrega a él. Pisa `lookupCustomerState`
+      // y `decideCashOrder` de arriba; sin él no cambia nada.
+      ...(centralCashPorts((phone) => lookupCustomerState(phone)) ?? {}),
       // 04-09-2026: "sin cebolla" no es rearmar el pedido — se anota en la
       // comanda y se le contesta que sí. Ver `webhook/order-change-intent.ts`.
       appendKitchenNote: (input) => appendKitchenNote(input),

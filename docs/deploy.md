@@ -1,14 +1,14 @@
 # Publicar la demo
 
 Tres servicios del mismo repositorio y una base de datos. Estado al
-2026-10-11: **todo publicado y comprobado en el navegador; falta el webhook de
-Kapso y la primera prueba con un teléfono.**
+2026-10-11: **todo publicado y comprobado en el navegador, con el webhook de
+Kapso creado; falta la primera prueba con un teléfono.**
 
 | Pieza | Dónde | Carpeta raíz | Estado |
 |---|---|---|---|
 | Base de datos | Supabase `gkhvijhcyysasofrukbr` | — | lista: backend en `public` (32 migraciones), agente en `agent` (39) |
 | Backend | Railway, cuenta `portafoliosmarky3`, proyecto `restaurant-demos`, servicio `backend` | `apps/backend` | **publicado**: `https://backend-production-9c48.up.railway.app`, con la demo Don Zarco cargada (15 productos con foto, abierto 24 h) |
-| Agente de WhatsApp | Vercel, equipo «grad's projects», proyecto `demo_restaurant_agente`, desde `NyxM4x/restaurant-demos` | `apps/agent-whatsapp` | **publicado**: `https://demorestaurantagente.vercel.app` — `/menu` muestra el catálogo y las fotos del backend; falta `KAPSO_WEBHOOK_SECRET` |
+| Agente de WhatsApp | Vercel, equipo «grad's projects», proyecto `demo_restaurant_agente`, desde `NyxM4x/restaurant-demos` | `apps/agent-whatsapp` | **publicado**: `https://demorestaurantagente.vercel.app` — `/menu` muestra el catálogo y las fotos del backend; webhook de Kapso creado, con `KAPSO_WEBHOOK_SECRET` en Vercel |
 | POS | Vercel, mismo equipo, proyecto `demo_restaurant_pos` | `apps/pos` | **publicado**: `https://demorestaurantpos-sooty.vercel.app` — entra con `admin` y muestra menú y cocina |
 
 Vercel sí está enlazado a GitHub: un `git push origin main` vuelve a desplegar
@@ -53,7 +53,7 @@ máquina, hay que **copiar estos archivos a mano** desde la carpeta original:
 | Archivo | Qué lleva |
 |---|---|
 | `apps/backend/.env.railway` | variables de producción del backend (tokens generados) |
-| `apps/agent-whatsapp/.env.vercel` | variables de producción del agente (Supabase, Kapso, tokens) |
+| `apps/agent-whatsapp/.env.vercel` | variables de producción del agente (Supabase, Kapso, tokens); `KAPSO_WEBHOOK_SECRET` no está en esta copia, solo en Vercel y en `.env.local` |
 | `apps/pos/.env.vercel` | variable de producción del POS |
 | `apps/backend/.env.supabase` | conexión a la base de Supabase y la clave del `admin` de producción |
 | `apps/backend/.env.dev` | entorno local del backend y su `admin` de pruebas |

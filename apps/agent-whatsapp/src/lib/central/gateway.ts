@@ -14,6 +14,34 @@
  */
 import { safeCompare } from '@/lib/security/compare';
 
+/** Un botón de respuesta tal como lo manda el backend. */
+export interface GatewayReplyButton {
+  id: string;
+  title: string;
+}
+
+/** Límites de WhatsApp para `interactive.type = 'button'`. */
+const MAX_BUTTONS = 3;
+const MAX_BUTTON_TITLE = 20;
+const MAX_BUTTON_ID = 256;
+
+/**
+ * Los botones del cuerpo, o `null` si no vino ninguno. `'invalid'` si vinieron
+ * mal: reintentar no los arregla, así que es un 400 y no un envío a medias.
+ */
+function readButtons(value: unknown): GatewayReplyButton[] | null | 'invalid' {
+  if (value === undefined || value === null) return null;
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_BUTTONS) return 'invalid';
+  const buttons: GatewayReplyButton[] = [];
+  for (const raw of value) {
+    const b = raw as { id?: unknown; title?: unknown } | null;
+    if (!b || !nonEmpty(b.id) || !nonEmpty(b.title)) return 'invalid';
+    if (b.id.length > MAX_BUTTON_ID || [...b.title].length > MAX_BUTTON_TITLE) return 'invalid';
+    buttons.push({ id: b.id, title: b.title });
+  }
+  return buttons;
+}
+
 /** Resultado de un envío por WhatsApp, reducido a lo que hace falta aquí. */
 export type GatewaySendResult = { ok: true; wamid: string } | { ok: false; error: string; status?: number };
 
@@ -22,6 +50,8 @@ export interface GatewayDeps {
   authToken: string | undefined;
   sendText(to: string, text: string): Promise<GatewaySendResult>;
   sendImage(to: string, imageUrl: string, caption: string): Promise<GatewaySendResult>;
+  /** Texto con botones de respuesta: el `id` del que toque vuelve por el webhook. */
+  sendButtons(to: string, text: string, buttons: GatewayReplyButton[]): Promise<GatewaySendResult>;
   sendLocationRequest(to: string): Promise<GatewaySendResult>;
   /** `true` si Telegram aceptó el mensaje. */
   sendTelegram(text: string): Promise<boolean>;
@@ -66,7 +96,10 @@ function sendFailure(result: { error: string; status?: number }): Response {
   return json(permanent ? 422 : 502, { code: 'whatsapp_send_failed', message: result.error });
 }
 
-/** POST /gateway/whatsapp/messages — texto, o imagen con el texto como pie. */
+/**
+ * POST /gateway/whatsapp/messages — texto, imagen con el texto como pie, o
+ * texto con botones de respuesta (el desglose del pedido en efectivo).
+ */
 export async function handleGatewayMessage(request: Request, deps: GatewayDeps): Promise<Response> {
   if (!authorized(request, deps)) return json(401, { code: 'unauthorized', message: 'Token inválido.' });
 
@@ -75,9 +108,19 @@ export async function handleGatewayMessage(request: Request, deps: GatewayDeps):
     return json(400, { code: 'validation_error', message: 'Se requieren "to" y "text".' });
   }
 
-  const result = nonEmpty(body.imageUrl)
-    ? await deps.sendImage(body.to, body.imageUrl, body.text)
-    : await deps.sendText(body.to, body.text);
+  const buttons = readButtons(body.buttons);
+  if (buttons === 'invalid') {
+    return json(400, {
+      code: 'validation_error',
+      message: `"buttons" admite de 1 a ${MAX_BUTTONS} botones con "id" y "title" (máximo ${MAX_BUTTON_TITLE} caracteres).`,
+    });
+  }
+
+  const result = buttons
+    ? await deps.sendButtons(body.to, body.text, buttons)
+    : nonEmpty(body.imageUrl)
+      ? await deps.sendImage(body.to, body.imageUrl, body.text)
+      : await deps.sendText(body.to, body.text);
 
   if (!result.ok) return sendFailure(result);
   // El backend guarda este id para reconocer cuándo el cliente RESPONDE a este

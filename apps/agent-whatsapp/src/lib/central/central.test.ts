@@ -295,6 +295,7 @@ function gatewayDeps(over: Partial<GatewayDeps> = {}): GatewayDeps {
     authToken: 'secreto',
     sendText: vi.fn(async () => ({ ok: true as const, wamid: 'wamid.T' })),
     sendImage: vi.fn(async () => ({ ok: true as const, wamid: 'wamid.I' })),
+    sendButtons: vi.fn(async () => ({ ok: true as const, wamid: 'wamid.B' })),
     sendLocationRequest: vi.fn(async () => ({ ok: true as const, wamid: 'wamid.L' })),
     sendTelegram: vi.fn(async () => true),
     ...over,
@@ -336,6 +337,32 @@ describe('gateway: lo que el backend pide enviar', () => {
     );
     expect(await res.json()).toEqual({ externalMessageId: 'wamid.I' });
     expect(deps.sendImage).toHaveBeenCalledWith('+59170010001', 'https://x.test/qr.png', 'Tu QR');
+  });
+
+  it('con buttons envía el texto con los botones de respuesta', async () => {
+    const deps = gatewayDeps();
+    const buttons = [
+      { id: 'cash_confirm:ORD-000001', title: '✅ CONFIRMAR' },
+      { id: 'cash_cancel:ORD-000001', title: '❌ CANCELAR' },
+    ];
+    const res = await handleGatewayMessage(post({ to: '+59170010001', text: 'Desglose', buttons }), deps);
+    expect(await res.json()).toEqual({ externalMessageId: 'wamid.B' });
+    expect(deps.sendButtons).toHaveBeenCalledWith('+59170010001', 'Desglose', buttons);
+    expect(deps.sendText).not.toHaveBeenCalled();
+  });
+
+  it('rechaza botones mal formados sin enviar nada', async () => {
+    const deps = gatewayDeps();
+    const malos = [
+      [],
+      [{ id: 'a' }],
+      [{ id: 'a', title: 'un título que pasa de veinte' }],
+      [1, 2, 3, 4].map((n) => ({ id: `b${n}`, title: `B${n}` })),
+    ];
+    for (const buttons of malos) {
+      expect((await handleGatewayMessage(post({ to: '+591700', text: 'x', buttons }), deps)).status).toBe(400);
+    }
+    expect(deps.sendButtons).not.toHaveBeenCalled();
   });
 
   it('si WhatsApp falla responde error para que el backend reintente', async () => {
@@ -435,5 +462,108 @@ describe('ubicación de WhatsApp → backend central', () => {
 
     const caido = backend(waiting, centralError(0, 'central_unreachable'));
     await expect(attachCentralLocation(input, { request: caido.request })).rejects.toThrow();
+  });
+});
+
+describe('efectivo: CONFIRMAR / CANCELAR con el backend central', () => {
+  const awaiting = {
+    orderId: 'o1',
+    orderNumber: 'ORD-000001',
+    status: 'confirmed',
+    paymentMethod: 'cash',
+    totalAmount: 72,
+    subtotalAmount: 54,
+    deliveryType: 'delivery',
+    cashConfirmed: false,
+    locationReceived: true,
+    proofReceived: false,
+  };
+
+  function backend(active: unknown, decision?: Error) {
+    const paths: string[] = [];
+    const request = (async (path: string) => {
+      paths.push(path);
+      if (path === '/customers/find-or-create') return { status: 201, body: { id: 'cust-1' } };
+      if (path.endsWith('/active-order')) return { status: 200, body: active };
+      if (decision) throw decision;
+      return { status: 201, body: {} };
+    }) as CentralRequestFn;
+    return { request, paths };
+  }
+
+  const base = { paused: false, openOrder: null, proofRemindedRecently: false };
+
+  it('el pedido que espera CONFIRMAR pasa al estado del cliente y el botón lo decide', async () => {
+    const { withCentralCashOrder } = await import('./cash');
+    const { decideDefaultReply } = await import('@/lib/webhook/default-reply');
+    const state = await withCentralCashOrder(base, '59170010001', backend(awaiting));
+
+    expect(state?.openOrder).toMatchObject({
+      orderId: 'o1',
+      orderNumber: 'ORD-000001',
+      awaitingCashConfirm: true,
+      totalAmount: 72,
+    });
+    const decision = decideDefaultReply({
+      buttonPress: { decision: 'confirm', orderNumber: 'ORD-000001' },
+      text: null,
+      isBatchAnchor: true,
+      menuAlreadySent: false,
+      explicitIntent: false,
+      state,
+    });
+    expect(decision).toMatchObject({ action: 'cash_confirm', order: { orderId: 'o1' } });
+  });
+
+  it('un botón de otro pedido no decide nada', async () => {
+    const { withCentralCashOrder } = await import('./cash');
+    const { decideDefaultReply } = await import('@/lib/webhook/default-reply');
+    const state = await withCentralCashOrder(base, '59170010001', backend(awaiting));
+    const decision = decideDefaultReply({
+      buttonPress: { decision: 'cancel', orderNumber: 'ORD-000099' },
+      text: null,
+      isBatchAnchor: true,
+      menuAlreadySent: false,
+      explicitIntent: false,
+      state,
+    });
+    expect(decision).toMatchObject({ action: 'none', reason: 'stale_button' });
+  });
+
+  it('fuera de la espera el estado queda como estaba', async () => {
+    const { withCentralCashOrder } = await import('./cash');
+    const casos = [
+      null,
+      { ...awaiting, cashConfirmed: true },
+      { ...awaiting, paymentMethod: 'qr' },
+      { ...awaiting, status: 'awaiting_location' },
+    ];
+    for (const active of casos) {
+      expect(await withCentralCashOrder(base, '59170010001', backend(active))).toBe(base);
+    }
+  });
+
+  it('con una pausa no consulta al backend, y si el backend cae no rompe', async () => {
+    const { withCentralCashOrder } = await import('./cash');
+    const pausado = { ...base, paused: true };
+    const espia = backend(awaiting);
+    expect(await withCentralCashOrder(pausado, '59170010001', espia)).toBe(pausado);
+    expect(espia.paths).toHaveLength(0);
+
+    const caido = (async () => {
+      throw centralError(0, 'central_unreachable');
+    }) as CentralRequestFn;
+    expect(await withCentralCashOrder(base, '59170010001', { request: caido })).toBe(base);
+  });
+
+  it('la decisión va al backend; si la rechaza, ok es false', async () => {
+    const { decideCentralCashOrder } = await import('./cash');
+    const bien = backend(awaiting);
+    expect(await decideCentralCashOrder({ orderId: 'o1', decision: 'confirm' }, bien)).toEqual({ ok: true });
+    expect(await decideCentralCashOrder({ orderId: 'o1', decision: 'cancel' }, bien)).toEqual({ ok: true });
+    expect(bien.paths).toEqual(['/orders/o1/cash/confirm', '/orders/o1/cash/cancel']);
+
+    const rechazo = backend(awaiting, centralError(409, 'cash_order_already_confirmed'));
+    expect(await decideCentralCashOrder({ orderId: 'o1', decision: 'cancel' }, rechazo)).toEqual({ ok: false });
   });
 });

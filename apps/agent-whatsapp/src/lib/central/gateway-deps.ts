@@ -10,6 +10,7 @@ export function buildGatewayDeps(): GatewayDeps {
     authToken: process.env.GATEWAY_AUTH_TOKEN?.trim() || undefined,
     sendText: (to, text) => getKapsoClient().sendText(to, text),
     sendImage: (to, imageUrl, caption) => getKapsoClient().sendImage(to, imageUrl, caption),
+    sendButtons: (to, text, buttons) => getKapsoClient().sendButtons(to, text, buttons),
     sendLocationRequest: (to) => getKapsoClient().sendLocationRequest(to),
     async sendTelegram(text) {
       const env = getServerEnv();

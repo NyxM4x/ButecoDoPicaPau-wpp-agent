@@ -3,7 +3,10 @@ import { Kysely, sql } from 'kysely';
 import { KYSELY } from '../database/database.module';
 import { Database } from '../database/types';
 import { GatewayClientService } from '../gateway-client/gateway-client.service';
-import { TelegramAlertPayload } from '../gateway-client/gateway-client.service';
+import {
+  TelegramAlertPayload,
+  WhatsappReplyButton,
+} from '../gateway-client/gateway-client.service';
 import { NotificationJobPayload } from './notification-job.types';
 
 const MAX_ATTEMPTS = 8;
@@ -191,8 +194,18 @@ export class NotificationsOutService {
       return undefined;
     }
 
-    const { text, imageUrl } = payload as { text?: string; imageUrl?: string };
-    const result = await this.gateway.sendWhatsappMessage({ customerId, to, text, imageUrl });
+    const { text, imageUrl, buttons } = payload as {
+      text?: string;
+      imageUrl?: string;
+      buttons?: WhatsappReplyButton[];
+    };
+    const result = await this.gateway.sendWhatsappMessage({
+      customerId,
+      to,
+      text,
+      imageUrl,
+      ...(buttons && buttons.length > 0 ? { buttons } : {}),
+    });
     return result.externalMessageId;
   }
 }
