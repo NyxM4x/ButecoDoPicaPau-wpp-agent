@@ -4,11 +4,11 @@ Agente de WhatsApp que vende y toma pedidos para el restaurante **Buteco do
 Pica-Pau**, con un backend que guarda catálogo y pedidos mientras llega el POS
 multi-tenant.
 
-Este repo nació el **2026-10-13** como copia, con todo su historial, de
-[`NyxM4x/restaurant-demos`](https://github.com/NyxM4x/restaurant-demos) en el
-commit `1b81500`. Aquel repo sigue siendo la **demo de ventas** (Don Zarco).
-Este es el **producto**: lo que se construya aquí debe servir para cualquier
-restaurante, y Buteco es el primero.
+Este repo nació el **2026-10-13** como copia, con su historial, del proyecto de
+demo de restaurantes (Don Zarco), para no empezar de cero. Es independiente: no
+está enlazado a aquel repositorio y no recibe ni envía cambios de él. Lo que
+se construya aquí debe servir para cualquier restaurante, y Buteco es el
+primero.
 
 > **Estado:** el código todavía es el de la demo y dice «Don Zarco» en muchos
 > sitios. Nada está publicado. El plan está en [`docs/plan.md`](docs/plan.md).
@@ -17,7 +17,7 @@ restaurante, y Buteco es el primero.
 
 | Tema | Decisión |
 |---|---|
-| Repositorio | Propio, con el historial de la demo. Los arreglos útiles se traen de `restaurant-demos` cuando hagan falta. |
+| Repositorio | Propio e independiente, con el historial de la demo como punto de partida. |
 | Agente | **Uno por restaurante**: un despliegue en Vercel con sus variables (número de WhatsApp, token del POS, datos del local). |
 | POS | **Todavía no hay.** El backend de este repo hace de POS provisional, sin pantallas: el personal recibe los pedidos por Telegram o WhatsApp. |
 | POS futuro | Un POS **multi-tenant**, aparte. El agente se conectará a él cambiando `CENTRAL_API_BASE_URL` y `CENTRAL_API_TOKEN`, siempre que cumpla el contrato que se escribe en la [Fase 1](docs/plan.md#fase-1--contrato-del-pos). El restaurante se identifica por el token, nunca por un parámetro. |
@@ -56,28 +56,15 @@ Documentos:
 - `docs/canonical-contract-proposal.md`, `docs/data-mapping.md`: base del
   contrato del POS.
 
-## Remotos de git
+## Repositorio
 
-| Remoto | Repositorio | Uso |
-|---|---|---|
-| `demos` | `NyxM4x/restaurant-demos` | **solo para traer** arreglos. El push está desactivado a propósito: ese repo publica la demo de Don Zarco en Vercel. |
-| `origin` | [`NyxM4x/ButecoDoPicaPau-wpp-agent`](https://github.com/NyxM4x/ButecoDoPicaPau-wpp-agent) | el repo de este proyecto |
+Un solo remoto, `origin`:
+[`NyxM4x/ButecoDoPicaPau-wpp-agent`](https://github.com/NyxM4x/ButecoDoPicaPau-wpp-agent).
 
 Clonarlo en otra máquina:
 
 ```powershell
 git clone https://github.com/NyxM4x/ButecoDoPicaPau-wpp-agent.git buteco-do-pica-pau
-cd buteco-do-pica-pau
-git remote add demos https://github.com/NyxM4x/restaurant-demos.git
-git remote set-url --push demos NO_PUSH__solo_para_traer_arreglos
-```
-
-Traer un arreglo de la demo:
-
-```powershell
-git fetch demos
-git log demos/main --oneline -10      # elegir el commit
-git cherry-pick <commit>
 ```
 
 ## Trabajar en local

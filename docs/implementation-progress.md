@@ -1,5 +1,10 @@
 # Avance de implementación
 
+> **Documento heredado de la demo (Don Zarco), congelado el 2026-10-13.** Las
+> URLs, cuentas, bases y servicios que nombra son los de la demo y **no** se
+> usan en Buteco. Sirve como historia y guía técnica; el estado de este
+> proyecto está en [`docs/plan.md`](plan.md).
+
 Última actualización: 2026-10-11.
 
 ## Dónde estamos

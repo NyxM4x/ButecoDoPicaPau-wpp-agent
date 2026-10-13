@@ -23,9 +23,9 @@ ya. La 5 necesita la información del cliente (lista al final).
 
 Hecho el 2026-10-13:
 
-- Carpeta `CLIENTES/ButecoDoPicaPau/buteco-do-pica-pau`, clonada con historial
-  de `restaurant-demos` (`1b81500`).
-- Remoto `demos` para traer arreglos, con el push desactivado.
+- Carpeta `CLIENTES/ButecoDoPicaPau/buteco-do-pica-pau`, copiada con su
+  historial del proyecto de demo (`1b81500`). Sin enlace a aquel repositorio:
+  el único remoto es `origin`.
 - Este plan y el README.
 
 Falta, y son cuentas que crea el usuario:
@@ -104,8 +104,13 @@ Cómo:
    si el POS no lo tiene todavía, variables de entorno (`RESTAURANT_NAME`,
    `RESTAURANT_HOURS`…).
 2. Cada archivo de la lista lee del perfil en vez de su constante.
-3. Las URL fijas (`MENU_URL`, `MENU_VIDEO_URL`, `MENU_COVER_URL`) salen de
-   `APP_BASE_URL` o del perfil.
+3. Las URL fijas salen de `APP_BASE_URL` o del perfil. **Hoy apuntan a los
+   despliegues de la demo** y hay que cambiarlas antes de publicar Buteco:
+   - `src/lib/kapso/messages.ts`: `MENU_URL`, `MENU_VIDEO_URL`,
+     `MENU_COVER_URL`, `PAYMENT_QR_URL`.
+   - `src/lib/menu/session-service.ts`: valor por defecto de `APP_BASE_URL`.
+   - `cloudflare/recovery-cron/wrangler.jsonc` y `.dev.vars.example`:
+     `APP_BASE_URL`.
 4. Prueba: con el perfil de Buteco, ninguna respuesta del agente dice «Zarco».
 
 Ojo con el idioma y la moneda: el agente habla en español de Bolivia y cobra en
