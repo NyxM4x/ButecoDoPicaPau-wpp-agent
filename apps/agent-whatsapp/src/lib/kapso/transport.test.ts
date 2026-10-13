@@ -191,7 +191,7 @@ describe('createKapsoTransport.sendMenuCtaUrl (Fase 5.2A)', () => {
     );
     expect(MENU_CTA_BUTTON_TEXT).toBe('Ver menú');
     expect(MENU_URL).toBe('https://sarco-restaurant.vercel.app/menu');
-    expect(MENU_VIDEO_URL).toBe('https://demorestaurantagente.vercel.app/tutorialPedido.mp4');
+    expect(MENU_VIDEO_URL).toBe('https://demorestaurantagente.vercel.app/tutorialPedido.mp4?v=2');
   });
 
   it('6D.2E: header de video + el session_token viaja SOLO en la URL (no en body/header)', async () => {

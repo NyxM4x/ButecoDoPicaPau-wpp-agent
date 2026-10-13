@@ -486,11 +486,18 @@ export const MENU_COVER_URL = 'https://sarco-restaurant.vercel.app/menu/menu-cov
  *
  * WhatsApp lo descarga desde esta URL, así que tiene que ser pública y https:
  * por eso es una constante y no sale de `APP_BASE_URL`, que en local vale
- * `http://localhost:3000`. Formato que exige WhatsApp: MP4 con video H.264 y
- * audio AAC (una sola pista), hasta 16 MB. Si cambia el dominio del agente,
- * cambiar aquí.
+ * `http://localhost:3000`. Si cambia el dominio del agente, cambiar aquí.
+ *
+ * Formato: MP4, H.264 perfil **Baseline** sin B-frames y audio AAC-LC, hasta
+ * 16 MB. WhatsApp acepta el perfil High al enviarlo, pero después WhatsApp Web
+ * y algunos teléfonos muestran "No se puede reproducir el video" (13-10-2026).
+ * Conversión: `ffmpeg -i in.mp4 -c:v libx264 -profile:v baseline -level 3.1
+ * -pix_fmt yuv420p -r 30 -crf 23 -c:a aac -b:a 128k -movflags +faststart out.mp4`
+ *
+ * `?v=` se sube cada vez que se reemplaza el archivo: WhatsApp guarda en caché
+ * lo que descarga de una URL y seguiría mandando el video viejo.
  */
-export const MENU_VIDEO_URL = 'https://demorestaurantagente.vercel.app/tutorialPedido.mp4';
+export const MENU_VIDEO_URL = 'https://demorestaurantagente.vercel.app/tutorialPedido.mp4?v=2';
 
 /**
  * URL de la tienda. Es una constante y NO se deriva de `APP_BASE_URL` a
