@@ -474,12 +474,23 @@ export function orderReviewKeptText(
 }
 
 /**
- * Imagen de portada del CTA del menú (Fase 6D.2E). Asset local versionado y
- * público (mismo patrón que `PAYMENT_QR_URL`). DEBE ser JPEG/PNG: WhatsApp Cloud
- * NO admite WebP en mensajes tipo imagen (solo stickers). Fuente única: si cambia
- * el dominio del deployment, cambiar aquí.
+ * Imagen de portada del CTA del menú (Fase 6D.2E). Ya no se envía: desde el
+ * 13-10-2026 la cabecera es `MENU_VIDEO_URL`. Queda por si se vuelve a la imagen.
+ * DEBE ser JPEG/PNG: WhatsApp Cloud NO admite WebP en mensajes tipo imagen.
  */
 export const MENU_COVER_URL = 'https://sarco-restaurant.vercel.app/menu/menu-cover.jpeg';
+
+/**
+ * Video de la cabecera del botón "Ver menú" (13-10-2026): el tutorial de cómo
+ * hacer el pedido, en `public/tutorialPedido.mp4`.
+ *
+ * WhatsApp lo descarga desde esta URL, así que tiene que ser pública y https:
+ * por eso es una constante y no sale de `APP_BASE_URL`, que en local vale
+ * `http://localhost:3000`. Formato que exige WhatsApp: MP4 con video H.264 y
+ * audio AAC (una sola pista), hasta 16 MB. Si cambia el dominio del agente,
+ * cambiar aquí.
+ */
+export const MENU_VIDEO_URL = 'https://demorestaurantagente.vercel.app/tutorialPedido.mp4';
 
 /**
  * URL de la tienda. Es una constante y NO se deriva de `APP_BASE_URL` a
@@ -493,15 +504,15 @@ export const MENU_URL = 'https://sarco-restaurant.vercel.app/menu';
  * Payload del mensaje interactivo CTA URL con el botón "Ver menú".
  *
  * Fase 5.2B: `url` puede ser dinámico (con sesión) o el valor constante.
- * Fase 6D.2E (Opción A): incluye un `header` de imagen (portada del menú) en el
- * MISMO mensaje interactivo — un solo envío, atómico. `coverImageUrl` es
- * inyectable (default `MENU_COVER_URL`); el `session_token` viaja SOLO en `url`,
+ * Fase 6D.2E (Opción A): incluye un `header` en el MISMO mensaje interactivo —
+ * un solo envío, atómico. Desde el 13-10-2026 es el video tutorial;
+ * `headerVideoUrl` es inyectable (default `MENU_VIDEO_URL`); el `session_token` viaja SOLO en `url`,
  * nunca en el body ni en el header.
  */
 export function buildMenuCtaPayload(
   toDigits: string,
   url: string = MENU_URL,
-  coverImageUrl: string = MENU_COVER_URL,
+  headerVideoUrl: string = MENU_VIDEO_URL,
   /**
    * Cuerpo del mensaje. Por defecto el de saludo, para que un llamador que aún
    * no distinga el motivo se comporte exactamente como antes.
@@ -522,9 +533,9 @@ export function buildMenuCtaPayload(
     interactive: {
       type: 'cta_url',
       header: {
-        type: 'image',
-        image: {
-          link: coverImageUrl,
+        type: 'video',
+        video: {
+          link: headerVideoUrl,
         },
       },
       body: {

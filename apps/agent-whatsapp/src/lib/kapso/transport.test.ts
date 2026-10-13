@@ -7,7 +7,7 @@ import {
   MENU_CTA_BODY_TEXT,
   MENU_CTA_BUTTON_TEXT,
   MENU_URL,
-  MENU_COVER_URL,
+  MENU_VIDEO_URL,
 } from './messages';
 
 const WEB_LOCATION_REQUEST_BODY_TEXT = buildWebLocationRequestBodyText('ORD-000042');
@@ -171,7 +171,7 @@ describe('createKapsoTransport.sendMenuCtaUrl (Fase 5.2A)', () => {
       type: 'interactive',
       interactive: {
         type: 'cta_url',
-        header: { type: 'image', image: { link: MENU_COVER_URL } },
+        header: { type: 'video', video: { link: MENU_VIDEO_URL } },
         body: { text: MENU_CTA_BODY_TEXT },
         action: {
           name: 'cta_url',
@@ -191,10 +191,10 @@ describe('createKapsoTransport.sendMenuCtaUrl (Fase 5.2A)', () => {
     );
     expect(MENU_CTA_BUTTON_TEXT).toBe('Ver menú');
     expect(MENU_URL).toBe('https://sarco-restaurant.vercel.app/menu');
-    expect(MENU_COVER_URL).toBe('https://sarco-restaurant.vercel.app/menu/menu-cover.jpeg');
+    expect(MENU_VIDEO_URL).toBe('https://demorestaurantagente.vercel.app/tutorialPedido.mp4');
   });
 
-  it('6D.2E: header image + el session_token viaja SOLO en la URL (no en body/header)', async () => {
+  it('6D.2E: header de video + el session_token viaja SOLO en la URL (no en body/header)', async () => {
     const captured: Captured[] = [];
     const client = createKapsoTransport({
       ...CONFIG,
@@ -205,9 +205,9 @@ describe('createKapsoTransport.sendMenuCtaUrl (Fase 5.2A)', () => {
     await client.sendMenuCtaUrl('59170000001', { menuUrl });
 
     const interactive = (captured[0].body as { interactive: Record<string, unknown> }).interactive;
-    // Opción A: un solo cta_url con header de imagen.
+    // Opción A: un solo cta_url con header de video (el tutorial del pedido).
     expect(interactive.type).toBe('cta_url');
-    expect(interactive.header).toEqual({ type: 'image', image: { link: MENU_COVER_URL } });
+    expect(interactive.header).toEqual({ type: 'video', video: { link: MENU_VIDEO_URL } });
     // El token está en la URL del botón…
     expect(JSON.stringify(interactive.action)).toContain('TOKEN_SECRETO_123');
     // …pero NUNCA en el body ni en el header.
