@@ -1,3 +1,4 @@
+import { ensureRestaurantProfile } from '@/lib/restaurant/profile-loader';
 import { handleDetailRequest, type DashboardHandlerDeps } from '@/lib/dashboard/orders-handler';
 import { createOrdersRepository } from '@/lib/dashboard/orders-repository';
 import { createSupabaseOrdersDataSource } from '@/lib/dashboard/data-source';
@@ -21,5 +22,7 @@ function deps(): DashboardHandlerDeps {
 }
 
 export async function GET(request: Request): Promise<Response> {
+  // El perfil del restaurante vigente para todo lo que se diga en esta petición.
+  await ensureRestaurantProfile();
   return handleDetailRequest(request, deps());
 }

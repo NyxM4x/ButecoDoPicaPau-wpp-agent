@@ -20,20 +20,8 @@
  */
 import type { CustomerStateSnapshot, OpenOrderSnapshot } from '@/lib/webhook/default-reply';
 import type { DeliveryType } from '@/types';
+import { POS_ROUTES, type CentralActiveOrder, type CentralCustomer } from './contract';
 import { toE164, type CentralRequestFn } from './orders';
-
-interface ActiveOrderContext {
-  orderId: string;
-  orderNumber: string;
-  status: string;
-  paymentMethod: string;
-  totalAmount: number;
-  subtotalAmount: number;
-  deliveryType: string;
-  cashConfirmed: boolean;
-  locationReceived: boolean;
-  proofReceived: boolean;
-}
 
 const EMPTY_STATE: CustomerStateSnapshot = {
   paused: false,
@@ -48,12 +36,12 @@ export async function findCentralCashOrderAwaitingConfirm(
 ): Promise<OpenOrderSnapshot | null> {
   if (!customerPhoneDigits) return null;
 
-  const customer = await deps.request<{ id: string }>('/customers/find-or-create', {
+  const customer = await deps.request<CentralCustomer>(POS_ROUTES.findOrCreateCustomer, {
     method: 'POST',
     body: { phone: toE164(customerPhoneDigits) },
   });
-  const active = await deps.request<ActiveOrderContext | null>(
-    `/customers/${customer.body.id}/active-order`,
+  const active = await deps.request<CentralActiveOrder | null>(
+    POS_ROUTES.activeOrder(customer.body.id),
   );
   const order = active.body;
   if (!order || !order.orderId) return null;
@@ -114,7 +102,11 @@ export async function decideCentralCashOrder(
   deps: { request: CentralRequestFn },
 ): Promise<{ ok: boolean }> {
   try {
-    await deps.request(`/orders/${input.orderId}/cash/${input.decision}`, { method: 'POST' });
+    const route =
+      input.decision === 'confirm'
+        ? POS_ROUTES.orderCashConfirm(input.orderId)
+        : POS_ROUTES.orderCashCancel(input.orderId);
+    await deps.request(route, { method: 'POST' });
     return { ok: true };
   } catch {
     return { ok: false };

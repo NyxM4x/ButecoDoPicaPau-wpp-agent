@@ -8,12 +8,9 @@ import { useServerClock } from '@/lib/menu/use-server-clock';
 import { unifiedTotals } from '@/lib/cart/promo-cart';
 import { evaluatePromotion, isPurchasable, type Promotion } from '@/lib/promotions/promotion';
 import { orderSectionsForMode, promoModeAt } from '@/lib/promotions/promo-mode';
-import {
-  categoryTabsFor,
-  filterMenuItems,
-  groupByCategory,
-  type CategoryFilter,
-} from '@/lib/menu/catalog';
+import { groupByCategory, productImage } from '@/lib/menu/catalog';
+import { groupVariants } from '@/lib/menu/variants';
+import { heroComponent } from '@/lib/promotions/promotion-display';
 import { submitOrder } from '@/lib/checkout/client';
 import { validateCheckoutForm, type CheckoutFormFields } from '@/lib/checkout/form';
 import {
@@ -26,11 +23,25 @@ import {
 } from '@/lib/checkout/state';
 import { CartButton } from './CartButton';
 import { CartPanel } from './CartPanel';
-import { CategoryTabs } from './CategoryTabs';
+import { CategoryTabs, type MenuSectionLink } from './CategoryTabs';
 import { CheckoutPanel } from './CheckoutPanel';
 import { OrderSuccess } from './OrderSuccess';
 import { ProductCard } from './ProductCard';
 import { PromoCard } from './PromoCard';
+import { ReservationSection } from './ReservationSection';
+
+/**
+ * La parrilla de una sección: 1 columna en el celular, 2 en tablet y 3 en
+ * pantalla ancha. Es `flex` y no `grid` para poder CENTRAR la última fila: una
+ * sección con un solo plato —la «Tabla», con sus seis carnes dentro— queda en
+ * el medio, no arrinconada a la izquierda junto a dos columnas vacías.
+ */
+const CARD_GRID =
+  'flex flex-wrap justify-center gap-x-8 gap-y-10 *:w-full sm:*:w-[calc(50%-1rem)] xl:*:w-[calc(33.333%-1.35rem)]';
+
+/** Los `id` de las dos secciones que no son una categoría del catálogo. */
+const COMBOS_SECTION = 'combos';
+const RESERVATIONS_SECTION = 'reservas';
 
 const NO_SESSION_NOTICE = 'Abre el menú desde WhatsApp para confirmar tu pedido.';
 /** Pedidos nuevos pausados por saturación (0038, 14-09-2026). */
@@ -77,7 +88,16 @@ export function MenuStore({
   whatsappChatUrl = null,
   cartSessionId = null,
   rules = null,
+  brand,
+  reservations = null,
 }: {
+  /** El nombre y el logo del local, para la barra fija. */
+  brand: { name: string; logoUrl: string | null };
+  /**
+   * La reserva de mesas, o `null` si el local no la ofrece. `chatUrl` es el
+   * chat de WhatsApp adonde va la reserva.
+   */
+  reservations?: { chatUrl: string | null } | null;
   /**
    * Qué se ofrece en el checkout cuando el catálogo viene del backend central.
    *
@@ -86,7 +106,13 @@ export function MenuStore({
    * el backend central cada local decide lo suyo en Configuración del POS.
    * Ausente = todo como siempre.
    */
-  rules?: { cashAllowed: boolean; pickupAllowed: boolean } | null;
+  rules?: {
+    cashAllowed: boolean;
+    pickupAllowed: boolean;
+    /** Ausentes = sí: es lo que el menú ofrecía antes de que existieran. */
+    deliveryAllowed?: boolean;
+    qrAllowed?: boolean;
+  } | null;
   /**
    * La sesión del menú con que se abrió la página (19-09-2026), o `null` sin
    * enlace. El carrito guardado en el navegador solo se recupera con el mismo
@@ -130,7 +156,22 @@ export function MenuStore({
     promotions: Record<string, number>;
   } | null;
 }) {
-  const [category, setCategory] = useState<CategoryFilter>('all');
+  /** La sección que se está viendo: la marca la barra. `null` = arriba del todo. */
+  const [activeSection, setActiveSection] = useState<string | null>(null);
+  /**
+   * ¿La barra ya quedó pegada arriba? Mientras la portada está a la vista, el
+   * nombre del local ya se lee ahí a lo grande, y repetirlo en la barra dos
+   * dedos más abajo sobra. Aparece cuando la portada se va.
+   */
+  const [barStuck, setBarStuck] = useState(false);
+  const barSentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const sentinel = barSentinelRef.current;
+    if (!sentinel || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(([entry]) => setBarStuck(!entry.isIntersecting));
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, []);
   const [cartOpen, setCartOpen] = useState(false);
 
   /**
@@ -175,6 +216,8 @@ export function MenuStore({
    */
   const cashRule = rules?.cashAllowed;
   const pickupRule = rules?.pickupAllowed;
+  const deliveryAllowed = rules?.deliveryAllowed ?? true;
+  const qrAllowed = rules?.qrAllowed ?? true;
   const modo = useMemo(
     () =>
       cashRule === undefined || pickupRule === undefined
@@ -265,15 +308,20 @@ export function MenuStore({
   const inFlight = useRef(false);
 
   const modoActivo = modo.active;
-  const tabs = useMemo(() => categoryTabsFor(items), [items]);
-  const groups = useMemo(
+  /**
+   * Las secciones de la carta: una por categoría, y dentro de cada una los
+   * platos con sus opciones ya juntas (las seis «Tabla - …» son un solo plato).
+   */
+  const sections = useMemo(
     () =>
-      // En noche de promoción las bebidas suben debajo de Promociones: son lo
+      // En noche de promoción las bebidas suben debajo de los combos: son lo
       // que acompaña al combo. A las 00:00 vuelve el orden de siempre.
-      orderSectionsForMode(groupByCategory(filterMenuItems(visibles, category)), {
-        active: modoActivo,
-      }),
-    [visibles, category, modoActivo],
+      orderSectionsForMode(groupByCategory(visibles), { active: modoActivo }).map((group, index) => ({
+        id: `seccion-${index + 1}`,
+        label: group.label,
+        entries: groupVariants(group.items),
+      })),
+    [visibles, modoActivo],
   );
 
   /**
@@ -290,8 +338,17 @@ export function MenuStore({
     if (!modo.pickupAllowed && f.delivery_type !== 'delivery') {
       f = { ...f, delivery_type: 'delivery' as const };
     }
+    // Lo mismo al revés, cuando lo que el local no ofrece es el envío o el QR.
+    // Con las dos opciones apagadas (un perfil mal cargado) gana lo de arriba:
+    // el POS rechaza el pedido y lo dice.
+    if (!deliveryAllowed && modo.pickupAllowed && f.delivery_type !== 'pickup') {
+      f = { ...f, delivery_type: 'pickup' as const };
+    }
+    if (!qrAllowed && modo.cashAllowed && f.payment_method !== 'cash') {
+      f = { ...f, payment_method: 'cash' as const };
+    }
     return f;
-  }, [checkout.fields, modo.cashAllowed, modo.pickupAllowed]);
+  }, [checkout.fields, modo.cashAllowed, modo.pickupAllowed, deliveryAllowed, qrAllowed]);
 
   const hasSession = sessionToken !== null;
   // El checkout solo está disponible con un enlace que aún no se haya bloqueado,
@@ -423,33 +480,110 @@ export function MenuStore({
     [promotions, ahora],
   );
 
-  const hasResults = groups.length > 0;
+  /** La foto de cada combo: la suya, o la de su producto principal. */
+  const promoImages = useMemo(() => {
+    const byCode = new Map(items.map((item) => [item.code, item]));
+    return new Map(
+      promotions.map((promotion) => {
+        const hero = heroComponent(promotion.components);
+        const item = hero ? byCode.get(hero.code) : undefined;
+        return [promotion.id, promotion.imageUrl ?? (item ? productImage(item).src : null)] as const;
+      }),
+    );
+  }, [items, promotions]);
+
+  /** Las pestañas de la barra, en el orden en que aparecen las secciones. */
+  const sectionLinks = useMemo<MenuSectionLink[]>(
+    () => [
+      ...(vendibles.length > 0 ? [{ id: COMBOS_SECTION, label: 'Combos' }] : []),
+      ...sections.map(({ id, label }) => ({ id, label })),
+      ...(reservations ? [{ id: RESERVATIONS_SECTION, label: 'Reservas' }] : []),
+    ],
+    [vendibles.length, sections, reservations],
+  );
+  const sectionIds = sectionLinks.map((link) => link.id).join(',');
+
+  /*
+   * Qué sección se está viendo. Una franja fina a un tercio de la pantalla hace
+   * de «línea de lectura»: la sección que la cruza es la actual. Lo resuelve el
+   * navegador (IntersectionObserver); no se escucha el scroll.
+   */
+  useEffect(() => {
+    if (sectionIds === '' || typeof IntersectionObserver === 'undefined') return;
+    const ids = sectionIds.split(',');
+    const crossing = new Set<string>();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) crossing.add(entry.target.id);
+          else crossing.delete(entry.target.id);
+        }
+        setActiveSection(ids.find((id) => crossing.has(id)) ?? null);
+      },
+      { rootMargin: '-32% 0px -66% 0px' },
+    );
+    for (const id of ids) {
+      const node = document.getElementById(id);
+      if (node) observer.observe(node);
+    }
+    return () => observer.disconnect();
+  }, [sectionIds]);
+
+  const goToSection = useCallback((id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  const hasResults = sections.length > 0;
   const checkoutOpen = checkout.step === 'form' || checkout.step === 'submitting' || checkout.step === 'failed';
   const showCartButton =
     cart.hydrated && unified.units > 0 && !cartOpen && !checkoutOpen && checkout.step !== 'success';
 
   return (
     <>
-      {/* Barra fija: fondo a todo el ancho, contenido centrado con el catálogo.
-          EXPERIMENTAL (rediseno-menu-fastfood): vidrio oscuro en vez del crema
-          de siempre, para no desentonar con el degradado de `page.tsx`. */}
+      {/* Deja de verse justo cuando la barra se pega arriba: así se sabe. */}
+      <div ref={barSentinelRef} className="h-px" aria-hidden />
+
+      {/* La barra fija: la marca y las secciones. El alto se publica en
+          `--menu-bar-h` para que cada sección se detenga justo debajo. */}
       <div
         ref={barRef}
-        className="sticky top-0 z-20 bg-donzarco-ink/85 px-4 pt-4 pb-3 shadow-lg shadow-black/20 backdrop-blur-md"
+        className="sticky top-0 z-20 border-b border-white/10 bg-menu-night/90 shadow-lg shadow-black/40 backdrop-blur-md"
       >
-        <div className="mx-auto max-w-5xl space-y-3">
-          <CategoryTabs tabs={tabs} active={category} onChange={setCategory} />
+        <div className="mx-auto flex max-w-5xl items-center pl-4 pt-[env(safe-area-inset-top)]">
+          {brand.logoUrl ? (
+            <a href="#" aria-label={`${brand.name}: volver arriba`} className="mr-3 flex shrink-0 items-center">
+              {/* El logo puede estar en cualquier dominio (lo configura cada
+                  local), y `next/image` exige declararlos uno por uno. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={brand.logoUrl} alt={brand.name} className="h-10 w-auto max-w-24 object-contain" />
+            </a>
+          ) : (
+            // Sin logo, el nombre: solo cuando la portada ya no lo está diciendo.
+            <a
+              href="#"
+              aria-label={`${brand.name}: volver arriba`}
+              tabIndex={barStuck ? undefined : -1}
+              aria-hidden={barStuck ? undefined : true}
+              className={`flex shrink-0 items-center overflow-hidden transition-all duration-300 ${
+                barStuck ? 'mr-3 max-w-28 opacity-100' : 'mr-0 max-w-0 opacity-0'
+              }`}
+            >
+              <span className="font-menu-dish w-28 shrink-0 text-xl leading-[0.9] font-extrabold text-menu-cream">
+                {brand.name}
+              </span>
+            </a>
+          )}
+          <CategoryTabs sections={sectionLinks} active={activeSection} onSelect={goToSection} />
         </div>
       </div>
 
-      <div className="mx-auto max-w-5xl space-y-6 px-4 pb-40">
-        {/* Antes del catálogo y solo si hay algo que ofrecer. Sin promociones
-            vendibles no se pinta ni el encabezado: una sección vacía titulada
-            "PROMOCIONES" promete algo que no existe. */}
+      <div className="mx-auto max-w-5xl px-4 pb-40">
+        {/* Antes del catálogo y solo si hay algo que ofrecer: una sección vacía
+            titulada «Combos» promete algo que no existe. */}
         {vendibles.length > 0 && (
-          <section aria-label="Promociones">
-            <SectionHeader label="Promociones" tone="promo" />
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <section id={COMBOS_SECTION} aria-label="Combos" className="scroll-mt-[var(--menu-bar-h)]">
+            <SectionTitle label="Combos" />
+            <div className={CARD_GRID}>
               {vendibles.map(({ promotion, pricing }) => (
                 <PromoCard
                   key={promotion.id}
@@ -457,6 +591,7 @@ export function MenuStore({
                   pricing={pricing}
                   quantity={promos.quantity(promotion.id)}
                   now={ahora}
+                  imageSrc={promoImages.get(promotion.id) ?? null}
                   onAdd={() => promos.add(promotion.id)}
                   onRemove={() => promos.remove(promotion.id)}
                 />
@@ -466,29 +601,43 @@ export function MenuStore({
         )}
 
         {hasResults ? (
-          groups.map((group) => (
-            <section key={group.key} aria-label={group.label}>
-              <SectionHeader label={group.label} />
-              {/* Móvil: 1 columna (igual que antes). Tablet: 2. Desktop amplio: 3. */}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {group.items.map((item) => (
+          sections.map((section) => (
+            <section
+              key={section.id}
+              id={section.id}
+              aria-label={section.label}
+              className="scroll-mt-[var(--menu-bar-h)]"
+            >
+              <SectionTitle label={section.label} />
+              <div className={CARD_GRID}>
+                {section.entries.map((entry) => (
                   <ProductCard
-                    key={item.code}
-                    item={item}
-                    quantity={cart.quantity(item.code)}
-                    onAdd={() => cart.add(item.code)}
-                    onRemove={() => cart.remove(item.code)}
+                    key={entry.key}
+                    title={entry.kind === 'family' ? entry.name : entry.item.name}
+                    options={entry.kind === 'family' ? entry.options : [{ label: entry.item.name, item: entry.item }]}
+                    quantityOf={cart.quantity}
+                    onAdd={cart.add}
+                    onRemove={cart.remove}
                   />
                 ))}
               </div>
             </section>
           ))
         ) : (
-          <p className="rounded-3xl bg-donzarco-ink/80 px-4 py-10 text-center text-sm text-white/80 ring-1 ring-white/15 backdrop-blur-sm">
-            {/* Sin buscador (17-09-2026) esto ya solo puede pasar si la
-                categoría elegida quedó sin nada que ofrecer. */}
-            Por ahora no hay nada en esta categoría. Elige otra.
+          <p className="mt-10 rounded-3xl bg-menu-surface/85 px-4 py-10 text-center text-sm text-white/80 ring-1 ring-white/15 backdrop-blur-sm">
+            Por ahora no hay nada en la carta.
           </p>
+        )}
+
+        {reservations && (
+          <section
+            id={RESERVATIONS_SECTION}
+            aria-label="Reservas"
+            className="scroll-mt-[var(--menu-bar-h)]"
+          >
+            <SectionTitle label="Reserva tu mesa" />
+            <ReservationSection chatUrl={reservations.chatUrl} />
+          </section>
         )}
       </div>
 
@@ -520,6 +669,8 @@ export function MenuStore({
         open={checkoutOpen}
         fields={fields}
         cashAllowed={modo.cashAllowed}
+        deliveryAllowed={deliveryAllowed}
+        qrAllowed={qrAllowed}
         pickupAllowed={modo.pickupAllowed}
         errors={checkout.errors}
         summary={cart.summary}
@@ -544,43 +695,22 @@ export function MenuStore({
 }
 
 /**
- * Encabezado de categoría, anclado mientras dura su sección (EXPERIMENTAL,
- * rediseno-menu-fastfood, 17-09-2026).
+ * El nombre de una sección de la carta, a lo grande.
  *
- * ── El arrastre y el empujón son de CSS, no de JavaScript ───────────────────
+ * No se queda fijo al desplazarse: de decir por dónde va uno se ocupa la barra,
+ * que marca la sección actual. Un título anclado encima de cada plato le
+ * quitaría a la foto el sitio que aquí es suyo.
  *
- * Antes era texto suelto que se perdía al primer deslizamiento: a media lista
- * uno ya no sabía si seguía en Platos o en Bebidas. Ahora cada encabezado es
- * `sticky` DENTRO de su propia `<section>`, y ahí está todo el truco:
- *
- *   - mientras se recorre su sección, se queda clavado bajo la barra;
- *   - cuando la sección se acaba, su propio borde inferior lo empuja hacia
- *     arriba, y el encabezado de la siguiente ocupa el lugar.
- *
- * No hace falta escuchar el scroll ni medir posiciones: el navegador lo hace
- * solo porque el contenedor que lo limita es su sección. Por eso importa que
- * ningún ancestro entre la sección y aquí tenga `overflow` distinto de
- * `visible` — eso rompería el anclaje sin decir nada (ver `page.tsx`, que
- * evita `overflow-hidden` en el `<main>` a propósito).
- *
- * `z-10` contra el `z-20` de la barra: al ser empujado, el encabezado pasa por
- * DEBAJO del vidrio del buscador en vez de encima.
+ * El tamaño sigue al ancho de la pantalla (`clamp`): «Especialidades» tiene que
+ * caber en una línea en el celular más angosto sin achicar «Jugos» en el resto.
  */
-function SectionHeader({ label, tone = 'catalogo' }: { label: string; tone?: 'catalogo' | 'promo' }) {
-  const fondo =
-    tone === 'promo'
-      ? 'from-donzarco-gold via-orange-500 to-red-600'
-      : 'from-red-700 via-red-600 to-orange-500';
-
+function SectionTitle({ label }: { label: string }) {
   return (
-    <h2
-      className={`sticky top-[var(--menu-bar-h)] z-10 -mx-4 mb-3 overflow-hidden bg-gradient-to-r px-4 py-2 shadow-lg shadow-black/30 ring-1 ring-black/20 ${fondo}`}
-    >
-      {/* La trama de puntos va en su propia capa para que el texto no la herede. */}
-      <span className="menu-halftone pointer-events-none absolute inset-0 opacity-40" aria-hidden />
-      <span className="font-display relative text-2xl tracking-wider text-yellow-300 italic uppercase drop-shadow-[0_2px_0_rgba(0,0,0,0.55)]">
+    <header className="pt-14 pb-7 text-center">
+      <h2 className="font-menu-title text-[clamp(1.75rem,9.2vw,3.5rem)] leading-none break-words text-menu-cream uppercase drop-shadow-[0_3px_0_rgba(0,0,0,0.65)]">
         {label}
-      </span>
-    </h2>
+      </h2>
+      <span className="mx-auto mt-4 block h-1 w-16 rounded-full bg-menu-accent" aria-hidden />
+    </header>
   );
 }

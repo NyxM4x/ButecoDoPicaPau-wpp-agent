@@ -6,7 +6,7 @@ import { canAccessKitchen, LOGIN_PATH } from '@/lib/dashboard/session-role';
 export const dynamic = 'force-dynamic';
 
 export const metadata = {
-  title: 'Cocina — Don Zarco Orders',
+  title: 'Cocina — Pedidos',
 };
 
 /**

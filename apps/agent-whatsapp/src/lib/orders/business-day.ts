@@ -23,15 +23,15 @@
  * hora antes, caerían en la jornada anterior sin que nadie entienda por qué. El
  * mediodía es la hora del día en la que con más seguridad no hay nadie pidiendo.
  *
- * ── Bolivia es UTC−4 y no tiene horario de verano ───────────────────────────
+ * ── La hora es la del NEGOCIO, no la del servidor ───────────────────────────
  *
- * Es una constante, no una consulta a `Intl`: la jornada de un pedido no puede
- * depender de la zona horaria configurada en el servidor que lo procese. Un
- * despliegue en otra región cambiaría la numeración de la noche entera.
+ * La jornada de un pedido no puede depender de la zona horaria configurada en
+ * el servidor que lo procese: un despliegue en otra región cambiaría la
+ * numeración de la noche entera. Sale de la zona del perfil del restaurante
+ * (`lib/restaurant/hours`); hasta el 2026-10-13 era el UTC−4 fijo de Bolivia.
  */
+import { utcOffsetMs } from '@/lib/restaurant/hours';
 
-/** Bolivia entera, todo el año. */
-export const BOLIVIA_UTC_OFFSET_MS = 4 * 60 * 60 * 1000;
 
 /** Hora local a la que cambia la jornada. */
 export const BUSINESS_DAY_CUTOVER_HOUR = 12;
@@ -46,7 +46,7 @@ const DAY_MS = 86_400_000;
  * cocinero lo preparó y con la que cuadra la caja.
  */
 export function businessDayOf(ms: number): string {
-  const local = new Date(ms - BOLIVIA_UTC_OFFSET_MS);
+  const local = new Date(ms - utcOffsetMs(ms));
   // Antes del corte todavía es la jornada de ayer: se retrocede un día entero
   // para que la fecha resultante sea la de la apertura.
   const ajustado =
@@ -65,7 +65,7 @@ export function businessDayStart(ms: number): number {
   const [y, m, d] = clave.split('-').map(Number);
   // La clave es una fecha local; su mediodía local se convierte a UTC sumando
   // el desfase.
-  return Date.UTC(y, m - 1, d, BUSINESS_DAY_CUTOVER_HOUR) + BOLIVIA_UTC_OFFSET_MS;
+  return Date.UTC(y, m - 1, d, BUSINESS_DAY_CUTOVER_HOUR) + utcOffsetMs(ms);
 }
 
 /**

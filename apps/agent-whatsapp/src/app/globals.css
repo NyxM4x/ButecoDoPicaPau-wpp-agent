@@ -10,32 +10,44 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  /* Genera `font-display`. EXPERIMENTAL (rediseno-menu-fastfood): solo la usa
-     `ProductCard` en /menu; nada más en el sitio la pide. */
-  --font-display: var(--font-bangers);
-  /* Genera `font-price`. Solo para cifras: en Bangers el 7 parece un 1 y los
-     totales llevan 7 todo el tiempo. Ver el comentario en `layout.tsx`. */
-  --font-price: var(--font-luckiest-guy);
+  /* La carta del menú (2026-10-13). Solo las usa `/menu`:
+     `font-menu-title` para el nombre de cada sección, `font-menu-dish` para el
+     de cada plato y `font-menu-body` para todo lo que se lee de corrido. */
+  --font-menu-title: var(--font-rye);
+  --font-menu-dish: var(--font-grenze);
+  --font-menu-body: var(--font-poppins);
 }
 
 /*
- * Paleta de marca Don Zarco (trancapecho cochabambino). Centralizada aquí para
- * evitar rojos distintos por la interfaz. SOLO se usa en el menú del cliente
- * (`/menu`); el dashboard no la utiliza. Genera utilidades Tailwind como
- * `bg-donzarco-red-dark`, `text-donzarco-red`, `ring-donzarco-red/20`, etc.
- *
- * Criterio: fondos y superficies en tonos pastel (crema/durazno) y acentos con
- * el rojo/naranja vivo del logo, para que botones y llamados a la acción
- * mantengan contraste suficiente sobre blanco.
+ * La carta del menú (2026-10-13): fondo casi negro, cálido, y un solo acento
+ * naranja. Genera `bg-menu-night`, `text-menu-accent`, `ring-menu-accent/40`…
+ * Cambiar de marca es cambiar estos valores: ningún componente escribe un
+ * color a mano.
  */
 @theme {
-  --color-donzarco-red: #e8481f;        /* rojo del logo — acento principal */
-  --color-donzarco-red-dark: #b32d0c;   /* rojo profundo — acciones/zonas */
-  --color-donzarco-red-hover: #cc3814;  /* hover del rojo oscuro */
-  --color-donzarco-red-active: #8d2208; /* active/pressed del rojo oscuro */
-  --color-donzarco-ink: #2b1108;        /* café casi negro — texto de marca */
-  --color-donzarco-surface: #fff5ef;    /* crema durazno pastel — fondo claro */
-  --color-donzarco-gold: #f9a825;       /* naranja/amarillo del aro — acento */
+  --color-menu-night: #0f0805;        /* el fondo */
+  --color-menu-ember: #3a1a0a;        /* el resplandor cálido detrás de los platos */
+  --color-menu-surface: #1d110a;      /* tarjetas y formularios */
+  --color-menu-accent: #f7941d;       /* naranja: nombres, precios, acciones */
+  --color-menu-accent-deep: #c2570c;  /* naranja oscuro: botones con texto blanco */
+  --color-menu-cream: #fdf1dd;        /* blanco cálido de los títulos */
+}
+
+/*
+ * Los colores de los paneles que ya existían (carrito, datos del pedido,
+ * pedido registrado). Conservan su nombre de cuando el menú era rojo y dorado
+ * —lo usan decenas de clases—, pero sus valores son ahora los de la carta: el
+ * «rojo» es el naranja oscuro de los botones. Los usan `/menu` y los botones
+ * del administrador de promociones del dashboard.
+ */
+@theme {
+  --color-donzarco-red: #f7941d;        /* acento */
+  --color-donzarco-red-dark: #c2570c;   /* acciones (texto blanco encima) */
+  --color-donzarco-red-hover: #a94a08;  /* hover de las acciones */
+  --color-donzarco-red-active: #8a3c06; /* active/pressed de las acciones */
+  --color-donzarco-ink: #1d110a;        /* café casi negro — texto y paneles oscuros */
+  --color-donzarco-surface: #fff7ec;    /* crema — fondo claro de los paneles */
+  --color-donzarco-gold: #f9a825;       /* dorado — acento sobre fondo oscuro */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -65,18 +77,75 @@ body {
 }
 
 /*
- * Trama de puntos tipo cómic para el encabezado de cada categoría
- * (EXPERIMENTAL, rediseno-menu-fastfood). Gradiente radial repetido: sin
- * archivo, sin petición de red.
+ * ── La carta del menú (2026-10-13) ──────────────────────────────────────────
+ *
+ * El fondo: un resplandor cálido arriba, que se apaga hacia los bordes. Va en
+ * una capa fija (`app/menu/page.tsx`), así que el menú se desliza por encima
+ * de un fondo quieto. Sin imágenes: no hay nada que pueda fallar al cargar.
  */
-.menu-halftone {
-  background-image: radial-gradient(rgba(0, 0, 0, 0.38) 1.5px, transparent 1.6px);
-  background-size: 8px 8px;
+.menu-backdrop {
+  background:
+    radial-gradient(120% 60% at 50% 0%, var(--color-menu-ember) 0%, transparent 62%),
+    radial-gradient(90% 50% at 100% 100%, rgba(58, 26, 10, 0.55) 0%, transparent 60%),
+    var(--color-menu-night);
+}
+
+/* La franja tejida del borde izquierdo: rombos de color, hechos con degradados. */
+.menu-weave {
+  background-color: #2a0f07;
+  background-image:
+    linear-gradient(135deg, var(--color-menu-accent) 25%, transparent 25%),
+    linear-gradient(225deg, var(--color-menu-accent) 25%, transparent 25%),
+    linear-gradient(45deg, #c2281c 25%, transparent 25%),
+    linear-gradient(315deg, #c2281c 25%, transparent 25%);
+  background-position: 5px 0, 5px 0, 0 0, 0 0;
+  background-size: 10px 10px;
+  box-shadow:
+    inset -2px 0 0 #f9a825,
+    inset 2px 0 0 #7a1810;
 }
 
 /*
- * La textura de puntos en SVG que había aquí (`.menu-pattern-overlay`) se
- * retiró el 17-09-2026: el fondo pasó a ser una ilustración propia
- * (`/menu/fondo-patron.webp`) que ya trae su propia trama, y superponer las dos
- * solo ensuciaba. Ver `app/menu/page.tsx`.
+ * La foto de cada plato entra creciendo, una sola vez, cuando llega a la
+ * pantalla (ver `components/menu/Reveal`). Es un gesto de entrada, no un
+ * efecto que siga al dedo: parte un poco más chica y termina en su tamaño.
  */
+.menu-reveal {
+  opacity: 0;
+  transform: scale(0.84) translateY(18px);
+  transition:
+    opacity 600ms ease-out,
+    transform 800ms cubic-bezier(0.2, 0.9, 0.25, 1.05);
+  will-change: opacity, transform;
+}
+.menu-reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* Al cambiar de opción en un plato, la foto nueva entra con el mismo gesto, más corto. */
+@keyframes menu-swap {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.menu-swap {
+  animation: menu-swap 380ms cubic-bezier(0.2, 0.9, 0.25, 1.05);
+}
+
+/* Quien pidió menos movimiento ve todo en su sitio desde el principio. */
+@media (prefers-reduced-motion: reduce) {
+  .menu-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .menu-swap {
+    animation: none;
+  }
+}

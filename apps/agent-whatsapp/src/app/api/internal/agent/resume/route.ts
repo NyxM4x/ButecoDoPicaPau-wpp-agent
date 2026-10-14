@@ -1,3 +1,4 @@
+import { ensureRestaurantProfile } from '@/lib/restaurant/profile-loader';
 import { getServerEnv } from '@/lib/env/env';
 import { log } from '@/lib/log';
 import { handleAgentResume } from '@/lib/agent/control/resume-handler';
@@ -22,6 +23,8 @@ export const dynamic = 'force-dynamic';
  * `@/lib/agent/control/resume-handler` y `@/lib/agent/control/resume`.
  */
 export async function POST(request: Request): Promise<Response> {
+  // El perfil del restaurante vigente para todo lo que se diga en esta petición.
+  await ensureRestaurantProfile();
   let internalToken: string | undefined;
   try {
     internalToken = getServerEnv().INTERNAL_API_TOKEN;

@@ -6,12 +6,13 @@ import { getKapsoClient } from '@/lib/kapso/client';
 import { menuCtaBodyText } from '@/lib/kapso/messages';
 import { createMenuDispatchDeps } from '@/lib/kapso/send-menu-cta';
 import { createMenuRepository } from '@/lib/menu/repository';
+import { isCentralEnabled, loadCentralCatalogForModel } from '@/lib/central';
 import { categoryLabel, productDescription } from '@/lib/menu/catalog';
 import { dispatchMenu, type MenuAutomationMemoryPort } from '@/lib/menu/dispatch';
 import { createGetMenuItemsTool, createSendMenuTool, promotionsForModel } from './tools/menu-tools';
 import { readCurrentPromoMode } from '@/lib/promotions/current-mode';
 import { readOrdersPaused } from '@/lib/delivery/settings';
-import { CASH_ENABLED } from '@/lib/orders/cash-enabled';
+import { isCashEnabled } from '@/lib/orders/cash-enabled';
 import { createPromotionsRepository } from '@/lib/promotions/repository';
 // El pedido vivo del cliente y la regla que dice si todavía se puede rearmar:
 // las MISMAS que usa la vía determinística, no una segunda copia.
@@ -32,7 +33,7 @@ import { pauseAgentForHandoff } from './control/handoff-pause';
 import { PAUSE_REASON_PAYMENT_REVIEWED } from './core/types';
 import { createOpenAiModel, OPENAI_DEFAULT_MODEL } from './openai/adapter';
 import { createKapsoMediaResolver } from '@/lib/kapso/media-resolver';
-import { DON_ZARCO_MAX_OUTPUT_TOKENS, systemPromptForMode } from './business/prompt';
+import { AGENT_MAX_OUTPUT_TOKENS, systemPromptForMode } from './business/prompt';
 import {
   parseAccessMode,
   parseTestPhones,
@@ -105,7 +106,7 @@ export function createAgentChannel(): AgentChannelPort {
           }),
           send: createKapsoSendPort(),
           config: readAgentEligibility(),
-          // El prompt viene del Business Adapter: el core no sabe de Don Zarco.
+          // El prompt viene del Business Adapter: el core no sabe de qué negocio habla.
           // Por turno desde el 14-09: en noche de promoción lleva el aviso de
           // que no hay recojo ni efectivo. `readCurrentPromoMode` nunca lanza.
           //
@@ -116,11 +117,11 @@ export function createAgentChannel(): AgentChannelPort {
             const modo = await readCurrentPromoMode();
             return systemPromptForMode({
               ...modo,
-              active: CASH_ENABLED && modo.active,
+              active: isCashEnabled() && modo.active,
               ordersPaused: await readOrdersPaused(),
             });
           })(),
-          maxOutputTokens: DON_ZARCO_MAX_OUTPUT_TOKENS,
+          maxOutputTokens: AGENT_MAX_OUTPUT_TOKENS,
           actions: createAgentActions(),
           // Vision (5C.5). Su ausencia sería el interruptor de apagado: sin
           // resolver, el turno no mira ninguna foto y avisa de que no pudo.
@@ -163,6 +164,13 @@ export function createAgentChannel(): AgentChannelPort {
 function createAgentActions(): AgentTool[] {
   const menu = createMenuRepository(getSupabaseAdmin());
 
+  // Con el POS conectado, el catálogo es el suyo: el mismo que enseña el menú
+  // web. La tabla `menu_items` del agente está vacía y no se consulta. Una sola
+  // lectura por turno, compartida por los productos y las promociones.
+  const central = isCentralEnabled();
+  let centralCatalog: ReturnType<typeof loadCentralCatalogForModel> | null = null;
+  const readCentralCatalog = () => (centralCatalog ??= loadCentralCatalogForModel());
+
   return [
     createSendMenuTool(
       {
@@ -201,6 +209,7 @@ function createAgentActions(): AgentTool[] {
     ),
     createGetMenuItemsTool({
       async listForModel() {
+        if (central) return (await readCentralCatalog()).items;
         const [items, modo] = await Promise.all([menu.listActive(), readCurrentPromoMode()]);
         // Proyección MÍNIMA: se descartan id, code, is_active, sort_order y
         // timestamps. Lo que no se entrega no se puede repetir por WhatsApp.
@@ -227,6 +236,7 @@ function createAgentActions(): AgentTool[] {
        */
       async listPromotionsForModel() {
         try {
+          if (central) return promotionsForModel((await readCentralCatalog()).promotions, Date.now());
           return promotionsForModel(await createPromotionsRepository().list(), Date.now());
         } catch (error) {
           log.error('agent.tools.promotions_failed', {

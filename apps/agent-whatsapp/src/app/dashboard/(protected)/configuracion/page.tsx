@@ -9,7 +9,7 @@ import { MenuAvailability } from '@/components/dashboard/MenuAvailability';
 export const dynamic = 'force-dynamic';
 
 export const metadata = {
-  title: 'Configuración — Don Zarco Orders',
+  title: 'Configuración — Pedidos',
 };
 
 /**

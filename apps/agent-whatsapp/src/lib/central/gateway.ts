@@ -13,17 +13,20 @@
  * "por si acaso", que haría que el backend lo diera por entregado.
  */
 import { safeCompare } from '@/lib/security/compare';
+import {
+  GATEWAY_ERROR,
+  GATEWAY_MAX_BUTTON_ID as MAX_BUTTON_ID,
+  GATEWAY_MAX_BUTTON_TITLE as MAX_BUTTON_TITLE,
+  GATEWAY_MAX_BUTTONS as MAX_BUTTONS,
+  STAFF_ACTION_PATTERN,
+  type GatewayAlertButton,
+  type GatewayMessageResult,
+  type GatewayReplyButton,
+} from './contract';
 
-/** Un botón de respuesta tal como lo manda el backend. */
-export interface GatewayReplyButton {
-  id: string;
-  title: string;
-}
+import { isPosImagePath } from './pos-image';
 
-/** Límites de WhatsApp para `interactive.type = 'button'`. */
-const MAX_BUTTONS = 3;
-const MAX_BUTTON_TITLE = 20;
-const MAX_BUTTON_ID = 256;
+export type { GatewayReplyButton };
 
 /**
  * Los botones del cuerpo, o `null` si no vino ninguno. `'invalid'` si vinieron
@@ -49,12 +52,24 @@ export interface GatewayDeps {
   /** `GATEWAY_AUTH_TOKEN`: el mismo valor que tiene configurado el backend. */
   authToken: string | undefined;
   sendText(to: string, text: string): Promise<GatewaySendResult>;
+  /** Imagen con dirección pública (https): WhatsApp la descarga por su cuenta. */
   sendImage(to: string, imageUrl: string, caption: string): Promise<GatewaySendResult>;
+  /**
+   * Imagen que el POS guarda bajo llave (`/orders/:id/qr-image`): el agente la
+   * descarga con su token y la sube a WhatsApp. Ver `pos-image.ts`.
+   */
+  sendPosImage(to: string, path: string, caption: string): Promise<GatewaySendResult>;
   /** Texto con botones de respuesta: el `id` del que toque vuelve por el webhook. */
   sendButtons(to: string, text: string, buttons: GatewayReplyButton[]): Promise<GatewaySendResult>;
   sendLocationRequest(to: string): Promise<GatewaySendResult>;
   /** `true` si Telegram aceptó el mensaje. */
   sendTelegram(text: string): Promise<boolean>;
+  /**
+   * Aviso con botones que el personal puede tocar. Devuelve el id del mensaje
+   * en Telegram, o `null` si no salió. Ausente = no hay webhook de Telegram
+   * configurado, y los botones se mandan como texto.
+   */
+  sendTelegramButtons?(text: string, buttons: GatewayAlertButton[]): Promise<string | null>;
 }
 
 function json(status: number, body: unknown): Response {
@@ -93,7 +108,7 @@ function nonEmpty(value: unknown): value is string {
  */
 function sendFailure(result: { error: string; status?: number }): Response {
   const permanent = result.error.startsWith('invalid_') && result.error !== 'invalid_response';
-  return json(permanent ? 422 : 502, { code: 'whatsapp_send_failed', message: result.error });
+  return json(permanent ? 422 : 502, { code: GATEWAY_ERROR.whatsappSendFailed, message: result.error });
 }
 
 /**
@@ -101,31 +116,44 @@ function sendFailure(result: { error: string; status?: number }): Response {
  * texto con botones de respuesta (el desglose del pedido en efectivo).
  */
 export async function handleGatewayMessage(request: Request, deps: GatewayDeps): Promise<Response> {
-  if (!authorized(request, deps)) return json(401, { code: 'unauthorized', message: 'Token inválido.' });
+  if (!authorized(request, deps)) return json(401, { code: GATEWAY_ERROR.unauthorized, message: 'Token inválido.' });
 
   const body = await readBody(request);
   if (!body || !nonEmpty(body.to) || !nonEmpty(body.text)) {
-    return json(400, { code: 'validation_error', message: 'Se requieren "to" y "text".' });
+    return json(400, { code: GATEWAY_ERROR.validation, message: 'Se requieren "to" y "text".' });
   }
 
   const buttons = readButtons(body.buttons);
   if (buttons === 'invalid') {
     return json(400, {
-      code: 'validation_error',
+      code: GATEWAY_ERROR.validation,
       message: `"buttons" admite de 1 a ${MAX_BUTTONS} botones con "id" y "title" (máximo ${MAX_BUTTON_TITLE} caracteres).`,
+    });
+  }
+
+  // Dos formas de imagen: una ruta del propio POS (protegida; es como manda el
+  // QR de pago) o una dirección pública. Cualquier otra cosa no se puede enviar.
+  const image = nonEmpty(body.imageUrl) ? body.imageUrl.trim() : null;
+  const fromPos = image !== null && isPosImagePath(image);
+  if (image !== null && !fromPos && !/^https:\/\//i.test(image)) {
+    return json(400, {
+      code: GATEWAY_ERROR.validation,
+      message: '"imageUrl" debe ser una ruta del POS (empieza con "/") o una dirección https.',
     });
   }
 
   const result = buttons
     ? await deps.sendButtons(body.to, body.text, buttons)
-    : nonEmpty(body.imageUrl)
-      ? await deps.sendImage(body.to, body.imageUrl, body.text)
-      : await deps.sendText(body.to, body.text);
+    : image === null
+      ? await deps.sendText(body.to, body.text)
+      : fromPos
+        ? await deps.sendPosImage(body.to, image, body.text)
+        : await deps.sendImage(body.to, image, body.text);
 
   if (!result.ok) return sendFailure(result);
   // El backend guarda este id para reconocer cuándo el cliente RESPONDE a este
   // mensaje (así asocia un comprobante al pedido correcto).
-  return json(200, { externalMessageId: result.wamid });
+  return json(200, { externalMessageId: result.wamid } satisfies GatewayMessageResult);
 }
 
 /** POST /gateway/whatsapp/location-requests — pide la ubicación para el delivery. */
@@ -133,11 +161,11 @@ export async function handleGatewayLocationRequest(
   request: Request,
   deps: GatewayDeps,
 ): Promise<Response> {
-  if (!authorized(request, deps)) return json(401, { code: 'unauthorized', message: 'Token inválido.' });
+  if (!authorized(request, deps)) return json(401, { code: GATEWAY_ERROR.unauthorized, message: 'Token inválido.' });
 
   const body = await readBody(request);
   if (!body || !nonEmpty(body.to)) {
-    return json(400, { code: 'validation_error', message: 'Se requiere "to".' });
+    return json(400, { code: GATEWAY_ERROR.validation, message: 'Se requiere "to".' });
   }
 
   const result = await deps.sendLocationRequest(body.to);
@@ -146,21 +174,50 @@ export async function handleGatewayLocationRequest(
 }
 
 /**
+ * Los botones, si TODOS se pueden tocar. Con uno solo que no, `null`: un aviso
+ * con la mitad de los botones vivos confunde más que uno sin ninguno.
+ */
+function readTappableButtons(value: unknown): GatewayAlertButton[] | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const buttons: GatewayAlertButton[] = [];
+  for (const raw of value) {
+    const button = raw as { label?: unknown; action?: unknown } | null;
+    if (!button || !nonEmpty(button.label) || !nonEmpty(button.action)) return null;
+    if (!STAFF_ACTION_PATTERN.test(button.action)) return null;
+    buttons.push({ label: button.label, action: button.action });
+  }
+  return buttons;
+}
+
+/**
  * POST /gateway/telegram/alerts — aviso al grupo del personal.
  *
- * Los botones llegan como etiqueta + acción. Aquí se envían como texto: quien
- * decide (aceptar un pedido que entró con la caja cerrada, por ejemplo) lo hace
- * desde el POS, que es donde esa acción queda registrada con su usuario.
+ * Los botones llegan como etiqueta + acción. Si TODAS las acciones son de las
+ * que el agente sabe ejecutar (`STAFF_ACTION_PATTERN`: Listo, Salió, Entregado)
+ * salen como botones de verdad, y el toque vuelve por `/api/telegram/webhook`.
+ *
+ * Las demás se envían como texto: quien decide (aceptar un pedido que entró con
+ * la caja cerrada, por ejemplo) lo hace desde el POS, que es donde esa acción
+ * queda registrada con su usuario.
  */
 export async function handleGatewayTelegramAlert(
   request: Request,
   deps: GatewayDeps,
 ): Promise<Response> {
-  if (!authorized(request, deps)) return json(401, { code: 'unauthorized', message: 'Token inválido.' });
+  if (!authorized(request, deps)) return json(401, { code: GATEWAY_ERROR.unauthorized, message: 'Token inválido.' });
 
   const body = await readBody(request);
   if (!body || !nonEmpty(body.text)) {
-    return json(400, { code: 'validation_error', message: 'Se requiere "text".' });
+    return json(400, { code: GATEWAY_ERROR.validation, message: 'Se requiere "text".' });
+  }
+
+  const tappable = readTappableButtons(body.buttons);
+  if (tappable && deps.sendTelegramButtons) {
+    const messageId = await deps.sendTelegramButtons(body.text, tappable);
+    if (!messageId) {
+      return json(502, { code: GATEWAY_ERROR.telegramSendFailed, message: 'Telegram no aceptó el mensaje.' });
+    }
+    return json(200, { externalMessageId: `tg-${messageId}` } satisfies GatewayMessageResult);
   }
 
   const labels = Array.isArray(body.buttons)
@@ -172,6 +229,8 @@ export async function handleGatewayTelegramAlert(
     labels.length > 0 ? `${body.text}\n\nResolver en el POS → Pedidos (${labels.join(' / ')}).` : body.text;
 
   const sent = await deps.sendTelegram(text);
-  if (!sent) return json(502, { code: 'telegram_send_failed', message: 'Telegram no aceptó el mensaje.' });
-  return json(200, { externalMessageId: `tg-${Date.now()}` });
+  if (!sent) {
+    return json(502, { code: GATEWAY_ERROR.telegramSendFailed, message: 'Telegram no aceptó el mensaje.' });
+  }
+  return json(200, { externalMessageId: `tg-${Date.now()}` } satisfies GatewayMessageResult);
 }

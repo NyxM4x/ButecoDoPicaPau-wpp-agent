@@ -1,3 +1,4 @@
+import { ensureRestaurantProfile } from '@/lib/restaurant/profile-loader';
 import { getServerEnv } from '@/lib/env/env';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { log } from '@/lib/log';
@@ -20,7 +21,7 @@ import { expandMapsLink } from '@/lib/delivery/maps-link-service';
 import { escalateIfStuck } from '@/lib/agent/handoff/stuck-customer-service';
 import { createSupabaseDueSelector, createSupabaseWebhookStore } from '@/lib/webhook/store';
 import { handleInboxTick, type InboxWorkerDeps } from '@/lib/webhook/inbox-worker';
-import { centralLocationPorts } from '@/lib/central/webhook-ports';
+import { centralLocationPorts } from '@/lib/central';
 
 // Requiere APIs de Node (service_role, POST a Kapso, OpenAI) — no Edge.
 export const runtime = 'nodejs';
@@ -41,6 +42,8 @@ export const maxDuration = 60;
  * worker de notificaciones. La ruta solo cablea dependencias.
  */
 export async function POST(request: Request): Promise<Response> {
+  // El perfil del restaurante vigente para todo lo que se diga en esta petición.
+  await ensureRestaurantProfile();
   let internalToken: string | undefined;
   try {
     internalToken = getServerEnv().INTERNAL_API_TOKEN;

@@ -1,9 +1,7 @@
 import { z } from 'zod';
-import {
-  businessHoursClock,
-  BUSINESS_ADDRESS,
-  BUSINESS_MAPS_URL,
-} from '@/lib/agent/business/facts';
+import { businessAddress, businessMapsUrl, businessSchedule } from '@/lib/agent/business/facts';
+import { publicAppUrl, restaurantProfile } from '@/lib/restaurant/profile';
+import { CASH_CANCEL_BUTTON_PREFIX, CASH_CONFIRM_BUTTON_PREFIX } from '@/lib/central/contract';
 import { formatBs } from '@/lib/orders/calculate';
 import { shortOrderNumber } from '@/lib/orders/order-number';
 import type { MenuSendReason } from '@/lib/menu/dispatch';
@@ -128,11 +126,12 @@ export function buildTextPayload(toDigits: string, text: string) {
 // ── Imagen (Fase 6D.1: QR de pago) ────────────────────────────────────────
 
 /**
- * URL pública del QR de pago fijo del restaurante. Es una constante (igual que
- * `MENU_URL`) y NO se deriva de `APP_BASE_URL` a propósito: WhatsApp exige una
- * URL pública https para la imagen, y en local `APP_BASE_URL` valdría
- * `http://localhost:3000`, inaccesible desde el teléfono. Fuente única: si
- * cambia el dominio del deployment, cambiar aquí.
+ * URL pública del QR de pago fijo del restaurante: `PAYMENT_QR_URL`, o
+ * `/payment/qr.jpeg` de este agente. WhatsApp exige una URL pública https para
+ * la imagen.
+ *
+ * Solo la usa el modo sin POS. Con el POS conectado, el QR lo genera y lo
+ * manda el POS por el gateway.
  *
  * ── El nombre del archivo lleva el año, y no es decorativo ──────────────────
  *
@@ -146,7 +145,9 @@ export function buildTextPayload(toDigits: string, text: string) {
  * Una URL que nunca ha existido no puede estar cacheada. Al renombrar el QR,
  * renombrar también aquí.
  */
-export const PAYMENT_QR_URL = 'https://sarco-restaurant.vercel.app/payment/qr-2026.jpeg';
+export function paymentQrUrl(): string {
+  return process.env.PAYMENT_QR_URL?.trim() || `${publicAppUrl()}/payment/qr.jpeg`;
+}
 
 /**
  * Texto para el cliente cuando su ubicación queda FUERA de la zona de delivery
@@ -186,6 +187,32 @@ export function buildImagePayload(toDigits: string, imageUrl: string, caption: s
   } as const;
 }
 
+/**
+ * Payload de un mensaje de imagen YA SUBIDA a la Media API (por su id).
+ *
+ * Es el camino de las imágenes privadas —el QR de pago que el POS guarda bajo
+ * llave—: los bytes viajaron en la subida y aquí no hace falta ninguna
+ * dirección pública. Mismas reglas de `caption` que `buildImagePayload`.
+ */
+export function buildImageByIdPayload(toDigits: string, mediaId: string, caption: string) {
+  if (mediaId.trim() === '') {
+    throw new Error('buildImageByIdPayload: mediaId must not be empty');
+  }
+  if (caption.trim() === '') {
+    throw new Error('buildImageByIdPayload: caption must not be empty');
+  }
+  return {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: toDigits,
+    type: 'image',
+    image: {
+      id: mediaId.trim(),
+      caption,
+    },
+  } as const;
+}
+
 // ── CTA URL "Ver menú" (Fase 5.2A) ───────────────────────────────────────
 
 /**
@@ -204,9 +231,12 @@ export function buildImagePayload(toDigits: string, imageUrl: string, caption: s
  * siguió diciendo 21:00 a cada cliente nuevo. Un dato duplicado "con cuidado" es
  * un dato que se va a desincronizar; lo único que lo evita es que haya uno solo.
  */
-export const MENU_CTA_BODY_TEXT =
-  `Hola, soy Don Zarco 👋 Atendemos todos los días de ${businessHoursClock()}. ` +
-  'Toca el botón para ver el menú, elegir lo que quieras y mandar tu pedido desde ahí mismo.';
+export function menuCtaWelcomeText(): string {
+  const profile = restaurantProfile();
+  // El saludo propio del local, si lo escribió, reemplaza la presentación.
+  const saludo = profile.greeting ?? `Hola, soy ${profile.name} 👋 Atendemos ${businessSchedule(profile)}.`;
+  return `${saludo} Toca el botón para ver el menú, elegir lo que quieras y mandar tu pedido desde ahí mismo.`;
+}
 
 /**
  * El cuerpo del CTA, según POR QUÉ se manda el menú.
@@ -274,8 +304,7 @@ export function menuCtaBodyText(
         if (options.cashAllowed === false && options.promoActive !== true) {
           return (
             `${CASH_POLICY_TEXT}\n\n` +
-            'Armá tu pedido en el botón 👇 y pagalo con el QR que te mandamos por ' +
-            'acá. El envío se lo seguís pagando al repartidor cuando llega.'
+            'Armá tu pedido en el botón 👇 y pagalo con el QR que te mandamos por acá.'
           );
         }
         if (options.cashAllowed === false) {
@@ -313,7 +342,7 @@ export function menuCtaBodyText(
       // saludo completo en lugar de escribir una variante: es el mismo mensaje,
       // y tener dos que digan lo mismo es tener dos que se desincronicen.
       case 'greeting':
-        return MENU_CTA_BODY_TEXT;
+        return menuCtaWelcomeText();
     }
   }
 
@@ -333,7 +362,7 @@ export function menuCtaBodyText(
       );
     // Pidió el menú por su nombre, o es la prueba interna: el saludo completo.
     default:
-      return MENU_CTA_BODY_TEXT;
+      return menuCtaWelcomeText();
   }
 }
 
@@ -473,20 +502,16 @@ export function orderReviewKeptText(
   return `Listo, tu pedido ${shortOrderNumber(orderNumber)} queda así 🙌 ${cierre}`;
 }
 
-/**
- * Imagen de portada del CTA del menú (Fase 6D.2E). Ya no se envía: desde el
- * 13-10-2026 la cabecera es `MENU_VIDEO_URL`. Queda por si se vuelve a la imagen.
- * DEBE ser JPEG/PNG: WhatsApp Cloud NO admite WebP en mensajes tipo imagen.
- */
-export const MENU_COVER_URL = 'https://sarco-restaurant.vercel.app/menu/menu-cover.jpeg';
+/** Cabecera del botón "Ver menú": un video o una imagen. */
+export type MenuCtaHeader = { type: 'video' | 'image'; link: string };
 
 /**
- * Video de la cabecera del botón "Ver menú" (13-10-2026): el tutorial de cómo
- * hacer el pedido, en `public/tutorialPedido.mp4`.
+ * La cabecera del botón "Ver menú", según lo que tenga el perfil del
+ * restaurante: el video (el tutorial de cómo hacer el pedido), si no la imagen
+ * de portada, y si no ninguna —el botón se manda igual, solo con el texto—.
  *
- * WhatsApp lo descarga desde esta URL, así que tiene que ser pública y https:
- * por eso es una constante y no sale de `APP_BASE_URL`, que en local vale
- * `http://localhost:3000`. Si cambia el dominio del agente, cambiar aquí.
+ * WhatsApp descarga el archivo desde esa URL, así que tiene que ser pública y
+ * https. La imagen DEBE ser JPEG o PNG: WhatsApp no admite WebP ahí.
  *
  * Formato: MP4, H.264 perfil **Baseline** sin B-frames y audio AAC-LC, hasta
  * 16 MB. WhatsApp acepta el perfil High al enviarlo, pero después WhatsApp Web
@@ -494,37 +519,39 @@ export const MENU_COVER_URL = 'https://sarco-restaurant.vercel.app/menu/menu-cov
  * Conversión: `ffmpeg -i in.mp4 -c:v libx264 -profile:v baseline -level 3.1
  * -pix_fmt yuv420p -r 30 -crf 23 -c:a aac -b:a 128k -movflags +faststart out.mp4`
  *
- * `?v=` se sube cada vez que se reemplaza el archivo: WhatsApp guarda en caché
- * lo que descarga de una URL y seguiría mandando el video viejo.
+ * Al reemplazar el archivo hay que cambiarle la URL (un `?v=` basta): WhatsApp
+ * guarda en caché lo que descarga y seguiría mandando el video viejo.
  */
-export const MENU_VIDEO_URL = 'https://demorestaurantagente.vercel.app/tutorialPedido.mp4?v=2';
+export function menuCtaHeader(): MenuCtaHeader | null {
+  const { menuVideoUrl, menuImageUrl } = restaurantProfile();
+  if (menuVideoUrl) return { type: 'video', link: menuVideoUrl };
+  if (menuImageUrl) return { type: 'image', link: menuImageUrl };
+  return null;
+}
 
-/**
- * URL de la tienda. Es una constante y NO se deriva de `APP_BASE_URL` a
- * propósito: WhatsApp exige una URL pública https, y en local `APP_BASE_URL`
- * vale `http://localhost:3000`, que abriría un enlace roto en el teléfono.
- * Si cambia el dominio del deployment, cambiar aquí.
- */
-export const MENU_URL = 'https://sarco-restaurant.vercel.app/menu';
+/** URL de la tienda, sin sesión: el menú de este agente. */
+export function menuUrl(): string {
+  return `${publicAppUrl()}/menu`;
+}
 
 /**
  * Payload del mensaje interactivo CTA URL con el botón "Ver menú".
  *
  * Fase 5.2B: `url` puede ser dinámico (con sesión) o el valor constante.
  * Fase 6D.2E (Opción A): incluye un `header` en el MISMO mensaje interactivo —
- * un solo envío, atómico. Desde el 13-10-2026 es el video tutorial;
- * `headerVideoUrl` es inyectable (default `MENU_VIDEO_URL`); el `session_token` viaja SOLO en `url`,
- * nunca en el body ni en el header.
+ * un solo envío, atómico. `header` es inyectable (por defecto, el del perfil:
+ * ver `menuCtaHeader`); el `session_token` viaja SOLO en `url`, nunca en el
+ * body ni en el header.
  */
 export function buildMenuCtaPayload(
   toDigits: string,
-  url: string = MENU_URL,
-  headerVideoUrl: string = MENU_VIDEO_URL,
+  url: string = menuUrl(),
+  header: MenuCtaHeader | null = menuCtaHeader(),
   /**
    * Cuerpo del mensaje. Por defecto el de saludo, para que un llamador que aún
    * no distinga el motivo se comporte exactamente como antes.
    */
-  bodyText: string = MENU_CTA_BODY_TEXT,
+  bodyText: string = menuCtaWelcomeText(),
   /**
    * Etiqueta del botón. Por defecto "Ver menú": la única razón para cambiarla
    * es que el enlace haga otra cosa, como el de 0035, que abre el pedido para
@@ -539,12 +566,14 @@ export function buildMenuCtaPayload(
     type: 'interactive',
     interactive: {
       type: 'cta_url',
-      header: {
-        type: 'video',
-        video: {
-          link: headerVideoUrl,
-        },
-      },
+      ...(header
+        ? {
+            header:
+              header.type === 'video'
+                ? { type: 'video' as const, video: { link: header.link } }
+                : { type: 'image' as const, image: { link: header.link } },
+          }
+        : {}),
       body: {
         text: bodyText,
       },
@@ -619,8 +648,8 @@ export function proofReminderText(
  * es un cliente, y nadie sigue pidiendo después de leer que el problema es él.
  */
 export const CASH_POLICY_TEXT =
-  'Desde ahora los pedidos se pagan solo por QR. Tuvimos muchos problemas con ' +
-  'los pagos en efectivo, y así nos aseguramos de que cada pedido llegue bien.';
+  'Por ahora los pedidos se pagan solo por QR: así nos aseguramos de que cada ' +
+  'pedido llegue bien.';
 
 /**
  * "¿Puedo pagar en efectivo?" / "No tengo QR", con un pedido por QR sin pagar.
@@ -903,6 +932,11 @@ export const kapsoSendResponseSchema = z.object({
 
 export type KapsoSendResponse = z.infer<typeof kapsoSendResponseSchema>;
 
+/** Respuesta de la Media API al subir un archivo: solo interesa su `id`. */
+export const kapsoMediaUploadResponseSchema = z.object({
+  id: z.string().trim().min(1),
+});
+
 
 // ── Dónde queda el local (09-09-2026) ────────────────────────────────────────
 
@@ -947,10 +981,9 @@ export function localAddressText(
    */
   options: { pickupAllowed?: boolean } = {},
 ): string {
-  const donde =
-    BUSINESS_ADDRESS === null
-      ? 'Estamos acá 📍'
-      : `Estamos ${BUSINESS_ADDRESS} 📍`;
+  const direccion = businessAddress();
+  const mapa = businessMapsUrl();
+  const donde = direccion === null ? 'Estamos acá 📍' : `Estamos ${direccion} 📍`;
 
   const sinRecojo =
     options.pickupAllowed === false
@@ -958,8 +991,8 @@ export function localAddressText(
       : '';
 
   return (
-    `${donde}\n${BUSINESS_MAPS_URL}\n\n` +
-    `Es nuestro único local, y atendemos todos los días de ${businessHoursClock()}.` +
+    `${donde}\n${mapa ? `${mapa}\n` : ''}\n` +
+    `Es nuestro único local, y atendemos ${businessSchedule()}.` +
     sinRecojo
   );
 }
@@ -988,8 +1021,7 @@ export function localAddressText(
  * pregunta "¿de qué pedido me habla?" tiene que tener respuesta en el propio
  * mensaje. Sin el número habría que suponerlo, y se supondría el pedido de hoy.
  */
-export const CASH_CONFIRM_BUTTON_PREFIX = 'cash_confirm:';
-export const CASH_CANCEL_BUTTON_PREFIX = 'cash_cancel:';
+export { CASH_CONFIRM_BUTTON_PREFIX, CASH_CANCEL_BUTTON_PREFIX };
 
 export const CASH_CONFIRM_BUTTON_TITLE = '✅ CONFIRMAR';
 export const CASH_CANCEL_BUTTON_TITLE = '❌ CANCELAR';

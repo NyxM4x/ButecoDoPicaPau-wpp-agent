@@ -1,41 +1,35 @@
 'use client';
 
+import Image from 'next/image';
+import { useState } from 'react';
 import { formatMoney } from '@/lib/dashboard/format';
 import type { Promotion, PromotionPricing } from '@/lib/promotions/promotion';
-import {
-  composeSummary,
-  expiryLabel,
-  resolvePromotionImage,
-} from '@/lib/promotions/promotion-display';
-import { ProductImage } from './ProductImage';
+import { expiryLabel } from '@/lib/promotions/promotion-display';
 import { QuantityControl } from './QuantityControl';
 
 /**
- * Tarjeta de promoción. Misma altura y mismo lenguaje que `ProductCard`, con
- * tres cosas propias: la etiqueta PROMO, el precio tachado y el ahorro.
+ * Un combo: varios productos juntos a un precio menor que por separado.
  *
- * ── Una sola línea de composición, no tres cosas a la vez ───────────────────
+ * Sirve igual para el combo fijo de la carta y para la promoción con fecha: la
+ * única diferencia a la vista es la línea de «hasta cuándo», que solo sale si
+ * el combo vence.
  *
- * Se muestra la composición resumida —"2× Lomito + 2× Soda Peque"— y NADA más:
- * ni la descripción administrativa, ni la lista vertical de componentes.
- * Enseñar las tres duplica la misma información y estira la tarjeta hasta que
- * en un celular caben dos promociones por pantalla.
+ * ── Qué trae, renglón por renglón ───────────────────────────────────────────
  *
- * El texto se recorta a dos líneas por CSS, pero viaja entero en el DOM: quien
- * use un lector de pantalla oye el combo completo. Recortarlo en origen sería
- * quitarle el dato, no ahorrarle espacio.
+ * Un combo se compra por lo que incluye, así que eso va entero y en lista: no
+ * en una frase recortada a dos líneas donde el tercer producto se pierde.
  *
- * ── El borde no es decoración ───────────────────────────────────────────────
+ * ── El marco ────────────────────────────────────────────────────────────────
  *
- * La promoción va con un aro naranja permanente porque compite por atención con
- * el catálogo entero que tiene debajo. El aro ROJO sigue significando lo mismo
- * que en los productos: "esto está en tu carrito".
+ * El borde naranja tenue dice «esto es un combo»; el borde naranja lleno,
+ * «esto está en tu carrito».
  */
 export function PromoCard({
   promotion,
   pricing,
   quantity,
   now,
+  imageSrc = null,
   onAdd,
   onRemove,
 }: {
@@ -43,103 +37,89 @@ export function PromoCard({
   pricing: PromotionPricing;
   quantity: number;
   now: number;
+  /** La foto del combo, o la de su producto principal. `null` = sin foto. */
+  imageSrc?: string | null;
   onAdd: () => void;
   onRemove: () => void;
 }) {
+  const [brokenPhoto, setBrokenPhoto] = useState(false);
   const enCarrito = quantity > 0;
-  const composicion = composeSummary(promotion.components);
   const vence = expiryLabel(promotion.endsAt, now);
-  const imagen = resolvePromotionImage(promotion.imageUrl, promotion.components);
-
-  // La foto sale del componente protagonista salvo que la promoción tenga la
-  // suya. El placeholder solo aparece si no hay ninguna de las dos.
-  const item =
-    imagen.kind === 'component'
-      ? { code: imagen.code, category: imagen.category, name: promotion.name }
-      : { code: '', category: 'plato' as const, name: promotion.name };
+  const photo = imageSrc !== null && !brokenPhoto ? imageSrc : null;
 
   return (
-    /*
-     * EXPERIMENTAL (rediseno-menu-fastfood, 17-09-2026): fondo oscuro, como la
-     * tarjeta del producto, pero MÁS oscuro (tinta → rojo profundo) en vez del
-     * rojo vivo. La tipografía es la misma a propósito —display dorada para el
-     * nombre, amarilla para el precio—: lo que distingue al combo es el marco,
-     * no un idioma tipográfico aparte.
-     *
-     * El aro cambió de significado con el fondo oscuro: el dorado permanente
-     * sigue siendo "esto es una promoción", pero "esto está en tu carrito" ya
-     * no puede ser el rojo de siempre (invisible sobre rojo profundo). Pasa a
-     * blanco, que es lo único que contrasta contra ambos.
-     */
     <article
-      className={`flex gap-3 rounded-3xl bg-gradient-to-br from-donzarco-ink to-red-950 p-3 shadow-lg shadow-black/40 ring-2 transition-shadow hover:shadow-xl ${
-        enCarrito ? 'ring-white' : 'ring-donzarco-gold/80'
+      className={`relative z-0 flex flex-col rounded-3xl border bg-menu-surface/85 p-4 shadow-lg shadow-black/40 backdrop-blur-sm transition-colors ${
+        enCarrito ? 'border-menu-accent' : 'border-menu-accent/30'
       }`}
     >
-      <div className="relative shrink-0">
-        <ProductImage
-          item={item}
-          src={imagen.kind === 'url' ? imagen.url : undefined}
-          alt={promotion.name}
-          className="h-24 w-24 rounded-2xl ring-2 ring-donzarco-gold/40"
-          sizes="(max-width: 640px) 30vw, 120px"
-        />
-        <span className="absolute left-1 top-1 rounded-full bg-donzarco-gold px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-donzarco-ink shadow-sm">
-          Promo
-        </span>
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-[0.68rem] font-bold tracking-[0.2em] text-menu-accent uppercase">Combo</p>
+          <h3 className="font-menu-dish mt-1 line-clamp-2 text-[2rem] leading-[0.95] font-extrabold text-menu-cream">
+            {promotion.name}
+          </h3>
+        </div>
+        {photo ? (
+          <div className="relative -mt-1 h-20 w-28 shrink-0">
+            <Image
+              src={photo}
+              alt=""
+              fill
+              sizes="112px"
+              unoptimized={photo.startsWith('/api/')}
+              className="object-contain drop-shadow-[0_10px_10px_rgba(0,0,0,0.6)]"
+              onError={() => setBrokenPhoto(true)}
+            />
+          </div>
+        ) : null}
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <h3 className="font-display line-clamp-2 text-lg leading-tight tracking-wide text-donzarco-gold uppercase drop-shadow-[0_2px_0_rgba(0,0,0,0.5)]">
-          {promotion.name}
-        </h3>
+      <ul className="font-menu-body mt-3 space-y-1 text-sm leading-snug text-white/85">
+        {promotion.components.map((component) => (
+          <li key={component.menuItemId} className="flex gap-2">
+            <span className="font-semibold text-menu-accent tabular-nums">{component.quantity}×</span>
+            <span className="min-w-0">{component.name}</span>
+          </li>
+        ))}
+      </ul>
 
-        {/* `title` conserva el texto completo para el puntero; el DOM lo tiene
-            entero para los lectores de pantalla aunque el CSS lo recorte. */}
-        <p className="mt-1 line-clamp-2 text-xs leading-snug text-white/70" title={composicion}>
-          {composicion}
-        </p>
+      {/* Sin vencimiento no se pinta nada: ni etiqueta, ni hueco reservado. */}
+      {vence !== null && <p className="mt-2 text-xs font-medium text-amber-300">{vence}</p>}
 
-        {/* Sin vencimiento no se pinta nada: ni etiqueta, ni hueco reservado. */}
-        {vence !== null && <p className="mt-1 text-xs font-medium text-amber-300">{vence}</p>}
-
-        <div className="mt-auto flex items-end justify-between gap-2 border-t border-white/10 pt-2">
-          <div className="min-w-0">
-            <p className="flex items-baseline gap-1.5">
-              <span className="text-xs text-white/40 line-through tabular-nums">
-                {formatMoney(pricing.normalPrice)}
-              </span>
-              {/* La plata no va en la display: en Bangers el 7 parece un 1.
-                  Ver `ProductCard`. */}
-              <span className="font-price text-xl tracking-wide text-yellow-400 tabular-nums">
-                {formatMoney(pricing.promoPrice)}
-              </span>
-            </p>
-            <p className="text-xs font-semibold text-emerald-300 tabular-nums">
-              Ahorras {formatMoney(pricing.savings)}
-            </p>
-          </div>
-
-          {enCarrito ? (
-            <QuantityControl
-              name={promotion.name}
-              quantity={quantity}
-              onAdd={onAdd}
-              onRemove={onRemove}
-              size="sm"
-              tone="inverse"
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={onAdd}
-              aria-label={`Agregar la promoción ${promotion.name} al carrito`}
-              className="shrink-0 rounded-full bg-donzarco-gold px-5 py-2.5 text-sm font-bold text-donzarco-ink shadow-lg shadow-black/30 transition-transform active:scale-95"
-            >
-              Agregar
-            </button>
-          )}
+      <div className="mt-4 flex items-end justify-between gap-2 border-t border-white/10 pt-3">
+        <div className="min-w-0">
+          <p className="flex items-baseline gap-2">
+            <span className="font-menu-body text-[1.7rem] leading-none font-bold text-white tabular-nums">
+              {formatMoney(pricing.promoPrice)}
+            </span>
+            <span className="text-sm text-white/45 line-through tabular-nums">
+              {formatMoney(pricing.normalPrice)}
+            </span>
+          </p>
+          <p className="mt-1 text-xs font-semibold text-emerald-300 tabular-nums">
+            Ahorras {formatMoney(pricing.savings)}
+          </p>
         </div>
+
+        {enCarrito ? (
+          <QuantityControl
+            name={promotion.name}
+            quantity={quantity}
+            onAdd={onAdd}
+            onRemove={onRemove}
+            tone="inverse"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={onAdd}
+            aria-label={`Agregar el combo ${promotion.name} al carrito`}
+            className="shrink-0 rounded-full bg-menu-accent px-5 py-3 text-sm font-bold text-menu-night shadow-lg shadow-black/30 transition-transform active:scale-95"
+          >
+            Agregar
+          </button>
+        )}
       </div>
     </article>
   );

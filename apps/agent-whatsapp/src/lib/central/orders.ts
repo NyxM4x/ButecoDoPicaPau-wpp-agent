@@ -18,7 +18,19 @@ import type {
   CreateOrderWebRow,
 } from '@/lib/orders/web-checkout';
 import type { OrderStatus, PaymentMethod } from '@/types';
-import type { CentralProduct } from './catalog';
+import {
+  IDEMPOTENCY_HEADER,
+  POS_ERROR,
+  POS_ROUTES,
+  type CentralCreateOrderBody,
+  type CentralCustomer,
+  type CentralFindOrCreateCustomerBody,
+  type CentralOrder,
+  type CentralPendingOrderRequest,
+  type CentralProduct,
+} from './contract';
+
+export type { CentralOrder };
 
 /** Lo mínimo de `centralRequest` que hace falta aquí. */
 export type CentralRequestFn = <T>(
@@ -42,21 +54,6 @@ function isCentralError(error: unknown): error is CentralErrorLike {
   );
 }
 
-/** El pedido tal como lo devuelve `POST /orders` (solo lo que se lee). */
-export interface CentralOrder {
-  id: string;
-  orderNumber: string;
-  customerName: string;
-  deliveryType: string;
-  paymentMethod: string;
-  status: string;
-  subtotalAmount: number;
-  deliveryBaseAmount: number;
-  deliverySurchargeAmount: number;
-  totalAmount: number;
-  createdAt: string;
-}
-
 export interface CentralOrderDeps {
   request: CentralRequestFn;
   /**
@@ -74,6 +71,8 @@ export const CENTRAL_CLOSED = 'central_closed';
 export const CENTRAL_PAUSED = 'central_paused';
 export const CENTRAL_PENDING_REVIEW = 'central_pending_review';
 export const CENTRAL_PICKUP_DISABLED = 'central_pickup_disabled';
+export const CENTRAL_DELIVERY_DISABLED = 'central_delivery_disabled';
+export const CENTRAL_PAYMENT_METHOD_DISABLED = 'central_payment_method_disabled';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -125,9 +124,9 @@ function failure(errorCode: string, errorMessage: string | null = null): CreateO
 /** Traduce un error del backend al código que `mapRpcError` ya sabe explicar. */
 function mapCentralError(error: CentralErrorLike): CreateOrderWebOutcome {
   switch (error.code) {
-    case 'product_unavailable':
+    case POS_ERROR.productUnavailable:
       return failure('P1002');
-    case 'promotion_unavailable': {
+    case POS_ERROR.promotionUnavailable: {
       const details = (error.details ?? {}) as { promotionId?: unknown; reason?: unknown };
       const id = typeof details.promotionId === 'string' && UUID.test(details.promotionId) ? details.promotionId : null;
       const reason = typeof details.reason === 'string' ? details.reason : 'not_found';
@@ -135,14 +134,18 @@ function mapCentralError(error: CentralErrorLike): CreateOrderWebOutcome {
       // error genérico, que es lo que hacía un P1004 ilegible.
       return failure('P1004', id ? `promotion_rejected:${reason}:${id}` : null);
     }
-    case 'idempotency_key_reused':
+    case POS_ERROR.idempotencyKeyReused:
       return failure('P1003');
-    case 'closed':
+    case POS_ERROR.closed:
       return failure(CENTRAL_CLOSED);
-    case 'orders_paused':
+    case POS_ERROR.ordersPaused:
       return failure(CENTRAL_PAUSED);
-    case 'pickup_disabled':
+    case POS_ERROR.pickupDisabled:
       return failure(CENTRAL_PICKUP_DISABLED);
+    case POS_ERROR.deliveryDisabled:
+      return failure(CENTRAL_DELIVERY_DISABLED);
+    case POS_ERROR.paymentMethodDisabled:
+      return failure(CENTRAL_PAYMENT_METHOD_DISABLED);
     default:
       // 400 del backend = el cuerpo no pasó su validación.
       if (error.status === 400) return failure('22023');
@@ -167,7 +170,7 @@ export async function createCentralWebOrder(
   try {
     // El carrito habla en `code`; el backend, en id. Se resuelve contra el
     // catálogo vigente: un código que ya no está es un producto que ya no se vende.
-    const products = await deps.request<CentralProduct[]>('/products');
+    const products = await deps.request<CentralProduct[]>(POS_ROUTES.products);
     const idByCode = new Map(products.body.map((product) => [product.code, product.id]));
     const items: Array<{ productId: string; quantity: number }> = [];
     for (const line of params.p_items_json) {
@@ -176,30 +179,35 @@ export async function createCentralWebOrder(
       items.push({ productId, quantity: line.quantity });
     }
 
-    const customer = await deps.request<{ id: string }>('/customers/find-or-create', {
+    const customerBody: CentralFindOrCreateCustomerBody = {
+      phone: toE164(phone),
+      name: params.p_customer_name,
+    };
+    const customer = await deps.request<CentralCustomer>(POS_ROUTES.findOrCreateCustomer, {
       method: 'POST',
-      body: { phone: toE164(phone), name: params.p_customer_name },
+      body: customerBody,
     });
 
-    const response = await deps.request<CentralOrder | { requestId?: string }>('/orders', {
+    const orderBody: CentralCreateOrderBody = {
+      customerId: customer.body.id,
+      channel: 'whatsapp',
+      customerName: params.p_customer_name,
+      deliveryType: params.p_delivery_type,
+      paymentMethod: params.p_payment_method,
+      ...(params.p_notes ? { notes: params.p_notes } : {}),
+      items,
+      promotions: params.p_promotions_json.map((promotion) => ({
+        promotionId: promotion.promotion_id,
+        quantity: promotion.quantity,
+        // El backend exige el testigo; sin él se manda 0, que nunca coincide
+        // y hace que el cliente recargue para ver la promoción vigente.
+        revision: promotion.revision ?? 0,
+      })),
+    };
+    const response = await deps.request<CentralOrder | CentralPendingOrderRequest>(POS_ROUTES.orders, {
       method: 'POST',
-      headers: { 'idempotency-key': idempotencyKeyFor(params.p_menu_session_id) },
-      body: {
-        customerId: customer.body.id,
-        channel: 'whatsapp',
-        customerName: params.p_customer_name,
-        deliveryType: params.p_delivery_type,
-        paymentMethod: params.p_payment_method,
-        ...(params.p_notes ? { notes: params.p_notes } : {}),
-        items,
-        promotions: params.p_promotions_json.map((promotion) => ({
-          promotionId: promotion.promotion_id,
-          quantity: promotion.quantity,
-          // El backend exige el testigo; sin él se manda 0, que nunca coincide
-          // y hace que el cliente recargue para ver la promoción vigente.
-          revision: promotion.revision ?? 0,
-        })),
-      },
+      headers: { [IDEMPOTENCY_HEADER]: idempotencyKeyFor(params.p_menu_session_id) },
+      body: orderBody,
     });
 
     // 202: no hay caja abierta. El backend no crea el pedido: deja una

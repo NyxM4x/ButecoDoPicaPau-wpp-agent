@@ -1,3 +1,4 @@
+import { ensureRestaurantProfile } from '@/lib/restaurant/profile-loader';
 import { handleKitchenBoardRequest, type KitchenHandlerDeps } from '@/lib/kitchen/board-handler';
 import { createKitchenRepository } from '@/lib/kitchen/tickets-repository';
 import { createSupabaseKitchenDataSource } from '@/lib/kitchen/data-source';
@@ -19,5 +20,7 @@ function deps(): KitchenHandlerDeps {
 }
 
 export async function GET(request: Request): Promise<Response> {
+  // El perfil del restaurante vigente para todo lo que se diga en esta petición.
+  await ensureRestaurantProfile();
   return handleKitchenBoardRequest(request, deps());
 }

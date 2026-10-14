@@ -7,7 +7,7 @@ import { DashboardShell } from '@/components/dashboard/DashboardShell';
 export const dynamic = 'force-dynamic';
 
 export const metadata = {
-  title: 'Panel — Don Zarco Orders',
+  title: 'Panel — Pedidos',
 };
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {

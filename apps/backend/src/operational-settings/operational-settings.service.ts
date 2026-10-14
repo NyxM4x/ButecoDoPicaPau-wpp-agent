@@ -3,6 +3,7 @@ import { Kysely } from 'kysely';
 import { KYSELY } from '../database/database.module';
 import { Database } from '../database/types';
 import { UpdateOperationalSettingsDto } from './dto/update-operational-settings.dto';
+import { RestaurantProfileResponse, toRestaurantProfile } from './restaurant-profile';
 
 export interface OperationalSettingsResponse {
   rainSurchargeEnabled: boolean;
@@ -15,6 +16,9 @@ export interface OperationalSettingsResponse {
   ordersPaused: boolean;
   pickupEnabled: boolean;
   restaurantName: string;
+  /** `false` = modo «sin POS»: sin caja, con el pedido completo al personal por Telegram. */
+  requiresCashRegister: boolean;
+  autoCompleteMinutes: number | null;
 }
 
 /**
@@ -30,6 +34,11 @@ export class OperationalSettingsService {
   async get(): Promise<OperationalSettingsResponse> {
     const row = await this.getRow();
     return toResponse(row);
+  }
+
+  /** `GET /restaurant/profile`: el perfil que el agente dice del local. */
+  async getProfile(): Promise<RestaurantProfileResponse> {
+    return toRestaurantProfile(await this.getRow());
   }
 
   /** Fila cruda tal como está en BD — para consumo interno de otros módulos (delivery, orders). */
@@ -66,6 +75,13 @@ export class OperationalSettingsService {
         ...(dto.ordersPaused !== undefined ? { orders_paused: dto.ordersPaused } : {}),
         ...(dto.pickupEnabled !== undefined ? { pickup_enabled: dto.pickupEnabled } : {}),
         ...(dto.restaurantName !== undefined ? { restaurant_name: dto.restaurantName.trim() } : {}),
+        ...(typeof dto.requiresCashRegister === 'boolean'
+          ? { requires_cash_register: dto.requiresCashRegister }
+          : {}),
+        ...(dto.autoCompleteMinutes !== undefined
+          ? { auto_complete_minutes: dto.autoCompleteMinutes }
+          : {}),
+        ...profileUpdate(dto),
         updated_at: new Date(),
       })
       .where('id', '=', true)
@@ -73,6 +89,44 @@ export class OperationalSettingsService {
       .executeTakeFirstOrThrow();
     return toResponse(row);
   }
+}
+
+/** Texto opcional: vacío o `null` borra el dato; `undefined` no lo toca. */
+function nullableText(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined;
+  return value?.trim() || null;
+}
+
+/**
+ * Los campos del perfil del restaurante que vienen en el PATCH.
+ *
+ * Los opcionales aceptan `null` para borrarse. Los obligatorios (zona horaria,
+ * idioma, moneda) ignoran un `null`: la columna no lo admite y un PATCH no
+ * debe poder dejar al agente sin moneda.
+ */
+function profileUpdate(dto: UpdateOperationalSettingsDto) {
+  const optional = {
+    restaurant_description: nullableText(dto.restaurantDescription),
+    restaurant_phone: nullableText(dto.restaurantPhone),
+    restaurant_address: nullableText(dto.restaurantAddress),
+    restaurant_maps_url: nullableText(dto.restaurantMapsUrl),
+    hours_text: nullableText(dto.hoursText),
+    greeting_message: nullableText(dto.greetingMessage),
+    farewell_message: nullableText(dto.farewellMessage),
+    menu_video_url: nullableText(dto.menuVideoUrl),
+    menu_image_url: nullableText(dto.menuImageUrl),
+  };
+  return {
+    ...Object.fromEntries(Object.entries(optional).filter(([, value]) => value !== undefined)),
+    ...(dto.restaurantTimezone ? { restaurant_timezone: dto.restaurantTimezone } : {}),
+    ...(dto.restaurantLocale ? { restaurant_locale: dto.restaurantLocale } : {}),
+    ...(dto.currencyCode ? { currency_code: dto.currencyCode.toUpperCase() } : {}),
+    ...(dto.currencySymbol?.trim() ? { currency_symbol: dto.currencySymbol.trim() } : {}),
+    ...(typeof dto.deliveryEnabled === 'boolean' ? { delivery_enabled: dto.deliveryEnabled } : {}),
+    ...(dto.enabledPaymentMethods
+      ? { enabled_payment_methods: [...new Set(dto.enabledPaymentMethods)] }
+      : {}),
+  };
 }
 
 function toResponse(row: {
@@ -85,6 +139,8 @@ function toResponse(row: {
   orders_paused: boolean;
   pickup_enabled: boolean;
   restaurant_name: string;
+  requires_cash_register: boolean;
+  auto_complete_minutes: number | null;
 }): OperationalSettingsResponse {
   return {
     rainSurchargeEnabled: row.rain_surcharge_enabled,
@@ -96,5 +152,7 @@ function toResponse(row: {
     ordersPaused: row.orders_paused,
     pickupEnabled: row.pickup_enabled,
     restaurantName: row.restaurant_name,
+    requiresCashRegister: row.requires_cash_register,
+    autoCompleteMinutes: row.auto_complete_minutes,
   };
 }

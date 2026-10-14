@@ -2,21 +2,54 @@
  * Formateo de presentacion — modulo PURO (seguro en cliente). Sin datos tecnicos.
  * Solo transforma la PRESENTACION: nunca modifica los datos almacenados ni los
  * contratos internos (la moneda en base sigue siendo 'BOB').
+ *
+ * El idioma, la zona horaria y la moneda salen del perfil del restaurante.
  */
+import { restaurantProfile } from '@/lib/restaurant/profile';
 
-const MONEY = new Intl.NumberFormat('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** Los formateadores de `Intl` son caros de crear: uno por configuración. */
+const formatters = new Map<string, Intl.NumberFormat | Intl.DateTimeFormat>();
 
-/** Simbolo visual por codigo de moneda. 'BOB' se muestra como 'Bs'. */
+function moneyFormat(): Intl.NumberFormat {
+  const { locale } = restaurantProfile();
+  const key = `money|${locale}`;
+  let format = formatters.get(key) as Intl.NumberFormat | undefined;
+  if (!format) {
+    format = new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    formatters.set(key, format);
+  }
+  return format;
+}
+
+/**
+ * Fechas en la zona DEL LOCAL. Sin `timeZone` explícito se usaría la del
+ * navegador: el mismo instante se leería distinto según dónde esté quien mira.
+ */
+function dateFormat(kind: string, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  const { locale, timezone } = restaurantProfile();
+  const key = `${kind}|${locale}|${timezone}`;
+  let format = formatters.get(key) as Intl.DateTimeFormat | undefined;
+  if (!format) {
+    format = new Intl.DateTimeFormat(locale, { ...options, timeZone: timezone });
+    formatters.set(key, format);
+  }
+  return format;
+}
+
+/** Simbolo visual de una moneda que no es la del local. 'BOB' se muestra como 'Bs'. */
 const CURRENCY_SYMBOL: Record<string, string> = { BOB: 'Bs' };
 
-export function currencySymbol(currency = 'BOB'): string {
+/** El símbolo de la moneda del local, o el de otra moneda si se pide una. */
+export function currencySymbol(currency?: string): string {
+  const own = restaurantProfile().currency;
+  if (currency === undefined || currency === own.code) return own.symbol;
   return CURRENCY_SYMBOL[currency] ?? currency;
 }
 
 /** Formatter monetario centralizado: `Bs 86,00`. Solo presentacion. */
-export function formatMoney(amount: number, currency = 'BOB'): string {
+export function formatMoney(amount: number, currency?: string): string {
   const value = Number.isFinite(amount) ? amount : 0;
-  return `${currencySymbol(currency)} ${MONEY.format(value)}`;
+  return `${currencySymbol(currency)} ${moneyFormat().format(value)}`;
 }
 
 /**
@@ -55,38 +88,13 @@ export function formatPhone(phone: string | null | undefined): string | null {
   return trimmed;
 }
 
-const TIME = new Intl.DateTimeFormat('es-BO', {
-  hour: '2-digit',
-  minute: '2-digit',
-  timeZone: 'America/La_Paz',
-});
-const DATE = new Intl.DateTimeFormat('es-BO', {
-  day: '2-digit',
-  month: 'short',
-  timeZone: 'America/La_Paz',
-});
-const DATE_LONG = new Intl.DateTimeFormat('es-BO', {
-  weekday: 'long',
-  day: 'numeric',
-  month: 'long',
-  year: 'numeric',
-  timeZone: 'America/La_Paz',
-});
-
-/**
- * Fecha Y hora, en la zona del local.
- *
- * Sin `timeZone` explícito, `toLocaleString` usa la del navegador: el mismo
- * instante se leería distinto según dónde esté quien mira el panel, y en un
- * negocio que cierra a las 04:00 esa diferencia confunde de verdad.
- */
-const DATE_TIME = new Intl.DateTimeFormat('es-BO', {
-  day: '2-digit',
-  month: 'short',
-  hour: '2-digit',
-  minute: '2-digit',
-  timeZone: 'America/La_Paz',
-});
+const TIME = () => dateFormat('time', { hour: '2-digit', minute: '2-digit' });
+const DATE = () => dateFormat('date', { day: '2-digit', month: 'short' });
+const DATE_LONG = () =>
+  dateFormat('date-long', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+/** Fecha Y hora: en un negocio que cierra de madrugada, la zona importa. */
+const DATE_TIME = () =>
+  dateFormat('date-time', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 function parse(iso: string): Date | null {
   const t = Date.parse(iso);
@@ -95,21 +103,21 @@ function parse(iso: string): Date | null {
 
 export function formatTime(iso: string): string {
   const d = parse(iso);
-  return d ? TIME.format(d) : '--:--';
+  return d ? TIME().format(d) : '--:--';
 }
 
 export function formatDate(iso: string): string {
   const d = parse(iso);
-  return d ? DATE.format(d) : '';
+  return d ? DATE().format(d) : '';
 }
 
 export function formatDateTime(iso: string): string {
   const d = parse(iso);
-  return d ? DATE_TIME.format(d) : '';
+  return d ? DATE_TIME().format(d) : '';
 }
 
 export function formatLongDate(nowMs: number): string {
-  return DATE_LONG.format(new Date(nowMs));
+  return DATE_LONG().format(new Date(nowMs));
 }
 
 export function deliveryTypeLabel(t: string): string {

@@ -8,6 +8,7 @@ import { BankQrController } from './bank-qr.controller';
 import { QrCheckoutService } from './qr-checkout.service';
 import { QrPaymentsService } from './qr-payments.service';
 import { QrPaymentsPollCron } from './qr-payments-poll.cron';
+import { QrOrdersMaintenanceCron } from './qr-orders-maintenance.cron';
 
 @Module({
   imports: [
@@ -18,7 +19,7 @@ import { QrPaymentsPollCron } from './qr-payments-poll.cron';
     NotificationsOutModule,
   ],
   controllers: [BankQrController],
-  providers: [QrPaymentsService, QrCheckoutService, QrPaymentsPollCron],
+  providers: [QrPaymentsService, QrCheckoutService, QrPaymentsPollCron, QrOrdersMaintenanceCron],
   exports: [QrPaymentsService, QrCheckoutService],
 })
 export class BankQrModule {}

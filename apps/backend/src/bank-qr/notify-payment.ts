@@ -1,11 +1,9 @@
 /**
- * Payload de `notifyPaymentQR` (manual API Market Baneco v1.0.0, sección 6.5
+ * Payload de `notifyPaymentQR` (manual API Market Baneco v1.3.0, sección 7.5
  * + Anexo 1). El manual declara el request como un elemento `Payment` de tipo
- * `PaymentQR`, pero no muestra un JSON de ejemplo — a diferencia del resto de
- * los servicios — así que no está claro si el banco manda `{"Payment": {...}}`,
- * `{"payment": {...}}` o el objeto plano. Se aceptan las tres formas: el qrId
- * es lo único que se usa, y equivocarse acá significa perder la notificación
- * de un pago real.
+ * `PaymentQR` y lo muestra en su ejemplo como `{"payment": {...}}`. Se aceptan
+ * las dos formas y también el objeto plano: el qrId es lo único que se usa, y
+ * equivocarse acá significa perder la notificación de un pago real.
  */
 export interface PaymentQR {
   qrId: string;

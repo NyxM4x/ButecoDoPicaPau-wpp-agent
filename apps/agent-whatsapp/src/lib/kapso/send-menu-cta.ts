@@ -8,7 +8,7 @@ import { createMenuDeliveryStore } from '@/lib/menu/delivery-repository';
 import { dispatchMenu, type MenuDispatchDeps } from '@/lib/menu/dispatch';
 import { createMenuAutomationMemory } from '@/lib/agent/service';
 import { readCurrentPromoMode } from '@/lib/promotions/current-mode';
-import { CASH_ENABLED } from '@/lib/orders/cash-enabled';
+import { isCashEnabled } from '@/lib/orders/cash-enabled';
 import type { SendMenuCta } from '@/lib/webhook/kapso';
 
 /**
@@ -100,7 +100,7 @@ export function createMenuDispatchDeps(): MenuDispatchDeps {
         const modo =
           bodyText === undefined && ctaContext === 'cash' ? await readCurrentPromoMode() : null;
         const cashAllowed = modo?.cashAllowed ?? true;
-        const promoActive = CASH_ENABLED && (modo?.active ?? false);
+        const promoActive = isCashEnabled() && (modo?.active ?? false);
 
         return getKapsoClient().sendMenuCtaUrl(customerPhone, {
           phoneNumberId: from,

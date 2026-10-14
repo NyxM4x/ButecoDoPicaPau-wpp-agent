@@ -5,7 +5,7 @@ import {
   createOpenAiModel,
   OPENAI_DEFAULT_MODEL,
 } from '@/lib/agent/openai/adapter';
-import { DON_ZARCO_MAX_OUTPUT_TOKENS, DON_ZARCO_SYSTEM_PROMPT } from '@/lib/agent/business/prompt';
+import { AGENT_MAX_OUTPUT_TOKENS, baseSystemPrompt } from '@/lib/agent/business/prompt';
 
 /**
  * EVAL DE REDACCIÓN — qué DICE el agente, no qué elige.
@@ -454,7 +454,7 @@ async function redactar(caso: Caso): Promise<Resultado> {
   // El MISMO armado que `run.ts`: prompt, contexto de trabajo, entrante y —si
   // el turno tuvo acción— la llamada y su resultado.
   const messages: AgentModelInput[] = [
-    { role: 'system', content: DON_ZARCO_SYSTEM_PROMPT },
+    { role: 'system', content: baseSystemPrompt() },
     ...buildWorkingContext(caso.historial ?? []),
     { role: 'user', content: caso.inbound },
   ];
@@ -472,7 +472,7 @@ async function redactar(caso: Caso): Promise<Resultado> {
   }
 
   const respuesta = await openai.complete(messages, {
-    maxOutputTokens: DON_ZARCO_MAX_OUTPUT_TOKENS,
+    maxOutputTokens: AGENT_MAX_OUTPUT_TOKENS,
     // Sin herramientas: esta es la ronda de redacción, igual que el paso 9.
     toolChoice: 'none',
   });

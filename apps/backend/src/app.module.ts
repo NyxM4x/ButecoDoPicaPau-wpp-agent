@@ -20,9 +20,11 @@ import { AuthModule } from './auth/auth.module';
 import { CashRegisterModule } from './cash-register/cash-register.module';
 import { ReportsModule } from './reports/reports.module';
 import { HealthController } from './health/health.controller';
+import { AgentWakeCron } from './agent-wake/agent-wake.cron';
 
 @Module({
   controllers: [HealthController],
+  providers: [AgentWakeCron],
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
     ScheduleModule.forRoot(),

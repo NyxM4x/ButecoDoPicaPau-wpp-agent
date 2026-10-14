@@ -6,6 +6,8 @@
  * coordenadas, wamid, external_message_id, claim_token, order_id, payloads ni SQL.
  */
 
+import { restaurantProfile } from '@/lib/restaurant/profile';
+
 export type AlertNotificationType = 'order_received' | 'confirmation' | 'location_request';
 export type AlertReviewKind = 'manual_review' | 'terminal';
 
@@ -66,7 +68,7 @@ function sanitizeLine(value: string): string {
 function formatTime(now: number): string {
   try {
     return new Intl.DateTimeFormat('es-BO', {
-      timeZone: 'America/La_Paz',
+      timeZone: restaurantProfile().timezone,
       dateStyle: 'short',
       timeStyle: 'short',
     }).format(new Date(now));

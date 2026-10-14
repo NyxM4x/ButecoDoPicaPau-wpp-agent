@@ -1,5 +1,6 @@
 import type { DeliveryType } from '@/types';
 import { formatBs } from '@/lib/orders/calculate';
+import { restaurantProfile } from '@/lib/restaurant/profile';
 // La MISMA promesa que recibe quien paga por QR al aceptarse su comprobante,
 // importada y no recopiada. Ver `orderConfirmedByCashText`.
 import { PAYMENT_ACCEPTED_NEXT } from '@/lib/payment-proof/notify-text';
@@ -246,7 +247,7 @@ function cashOrderPendingText(): string {
     '  Escribí *CANCELAR* si ya no lo querés',
     '',
     '⚠️ *ADVERTENCIA:* si el delivery llega con tu pedido y no lo recibís, tu ' +
-      'número queda BLOQUEADO y no vas a poder volver a pedir en Don Zarco.',
+      `número queda BLOQUEADO y no vas a poder volver a pedir en ${restaurantProfile().name}.`,
   ].join('\n');
 }
 
@@ -270,7 +271,7 @@ function cashOrderPendingText(): string {
 function cashOrderPendingWithButtonsText(): string {
   return [
     '⚠️ *ADVERTENCIA:* si el delivery llega con tu pedido y no lo recibís, tu ' +
-      'número queda BLOQUEADO y no vas a poder volver a pedir en Don Zarco.',
+      `número queda BLOQUEADO y no vas a poder volver a pedir en ${restaurantProfile().name}.`,
     '',
     '¿Confirmás tu pedido? 👇',
   ].join('\n');

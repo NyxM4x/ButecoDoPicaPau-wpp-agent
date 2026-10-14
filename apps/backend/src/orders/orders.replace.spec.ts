@@ -128,7 +128,12 @@ describe('OrdersService.replace', () => {
       {} as Kysely<Database>,
       idempotency,
       {
-        getRow: jest.fn().mockResolvedValue({ orders_paused: false, pickup_enabled: true }),
+        getRow: jest.fn().mockResolvedValue({
+          orders_paused: false,
+          pickup_enabled: true,
+          delivery_enabled: true,
+          enabled_payment_methods: ['cash', 'qr'],
+        }),
       } as never,
       {} as never,
       {} as never,
@@ -204,7 +209,12 @@ describe('OrdersService.replace', () => {
       {} as Kysely<Database>,
       idempotency,
       {
-        getRow: jest.fn().mockResolvedValue({ orders_paused: false, pickup_enabled: true }),
+        getRow: jest.fn().mockResolvedValue({
+          orders_paused: false,
+          pickup_enabled: true,
+          delivery_enabled: true,
+          enabled_payment_methods: ['cash', 'qr'],
+        }),
       } as never,
       {} as never,
       {} as never,

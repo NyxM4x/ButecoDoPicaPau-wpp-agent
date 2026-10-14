@@ -1,3 +1,4 @@
+import { ensureRestaurantProfile } from '@/lib/restaurant/profile-loader';
 import { getServerEnv } from '@/lib/env/env';
 import { log } from '@/lib/log';
 import { handleNotificationRetry } from '@/lib/orders/notifications/retry-handler';
@@ -27,6 +28,8 @@ export const maxDuration = 60;
  * `@/lib/orders/notifications/retry-handler`.
  */
 export async function POST(request: Request): Promise<Response> {
+  // El perfil del restaurante vigente para todo lo que se diga en esta petición.
+  await ensureRestaurantProfile();
   let internalToken: string | undefined;
   try {
     internalToken = getServerEnv().INTERNAL_API_TOKEN;

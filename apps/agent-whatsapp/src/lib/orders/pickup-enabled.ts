@@ -30,4 +30,8 @@
  * como siempre: el panel, la comanda y los avisos no preguntan por esto. Esto
  * solo decide si se puede crear uno nuevo.
  */
-export const PICKUP_ENABLED = false;
+import { restaurantProfile } from '@/lib/restaurant/profile';
+
+export function isPickupEnabled(): boolean {
+  return restaurantProfile().pickupEnabled;
+}

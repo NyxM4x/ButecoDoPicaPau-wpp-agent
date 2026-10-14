@@ -199,6 +199,30 @@ export class CashRegisterService {
    * suelta como una transacción ajena, para poder llamarse dentro de la
    * transacción de quien pide el id.
    */
+  /**
+   * La caja a la que se atribuye un cobro que entra AHORA.
+   *
+   * Con caja obligatoria es `assertOpenSessionId`: sin caja abierta, no se
+   * cobra. En modo «sin POS» (`requires_cash_register = false`) el cobro se
+   * acepta igual: va a la caja abierta si la hay, y si no queda sin caja
+   * (`null`), que es lo que corresponde a un local que no lleva caja aquí.
+   */
+  async sessionIdForPayment(db: Kysely<Database> | Transaction<Database>): Promise<string | null> {
+    const settings = await db
+      .selectFrom('operational_settings')
+      .select('requires_cash_register')
+      .where('id', '=', true)
+      .executeTakeFirst();
+    if (settings?.requires_cash_register !== false) return this.assertOpenSessionId(db);
+
+    const open = await db
+      .selectFrom('cash_register_sessions')
+      .select('id')
+      .where('status', '=', 'open')
+      .executeTakeFirst();
+    return open?.id ?? null;
+  }
+
   async assertOpenSessionId(db: Kysely<Database> | Transaction<Database>): Promise<string> {
     const open = await db
       .selectFrom('cash_register_sessions')

@@ -30,6 +30,8 @@
  * pago a Mapbox para producir un adorno que nadie podía usar.
  */
 
+import { restaurantProfile } from '@/lib/restaurant/profile';
+
 /** Línea de producto ya resuelta (nombre real del pedido, no del catálogo). */
 export interface DeliveryNoticeItem {
   name: string;
@@ -242,12 +244,12 @@ export function buildDeliveryNotice(input: DeliveryNoticeInput): string {
     // El total se calcula aquí y no se recibe: sumar dos cifras que ya están en
     // el mensaje no puede dar una tercera distinta de la que el cliente vio.
     lines.push('<b>QUIERE EFECTIVO</b>');
-    lines.push(`Productos: Bs ${formatBs(input.subtotalAmount)}`);
-    lines.push(`Envío: Bs ${formatBs(input.deliveryAmount)}${distancia}`);
-    lines.push(`TOTAL A COBRAR: Bs ${formatBs(input.subtotalAmount + input.deliveryAmount)}`);
+    lines.push(`Productos: ${restaurantProfile().currency.symbol} ${formatBs(input.subtotalAmount)}`);
+    lines.push(`Envío: ${restaurantProfile().currency.symbol} ${formatBs(input.deliveryAmount)}${distancia}`);
+    lines.push(`TOTAL A COBRAR: ${restaurantProfile().currency.symbol} ${formatBs(input.subtotalAmount + input.deliveryAmount)}`);
     lines.push('');
   } else {
-    lines.push(`Envío: Bs ${formatBs(input.deliveryAmount)}${distancia}`);
+    lines.push(`Envío: ${restaurantProfile().currency.symbol} ${formatBs(input.deliveryAmount)}${distancia}`);
     lines.push('');
 
     // Lo que se busca con la vista al llegar a la puerta. `null` no escribe nada.
@@ -353,5 +355,5 @@ function collectLine(collect: DeliveryNoticeCollect | null): string | null {
   if (collect === null) return null;
   if (collect.kind === 'pagado') return 'ENVÍO PAGADO';
   if (collect.kind === 'envio') return 'COBRAR ENVÍO';
-  return `COBRAR TODO: Bs ${formatBs(collect.amount)}`;
+  return `COBRAR TODO: ${restaurantProfile().currency.symbol} ${formatBs(collect.amount)}`;
 }

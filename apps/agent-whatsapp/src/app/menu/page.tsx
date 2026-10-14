@@ -7,8 +7,8 @@ import type { Promotion } from '@/lib/promotions/promotion';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { readOrdersPaused } from '@/lib/delivery/settings';
 import { getServerEnv } from '@/lib/env/env';
-import { isCentralEnabled } from '@/lib/central/client';
-import { loadCentralCatalog } from '@/lib/central/catalog-service';
+import { isCentralEnabled, loadCentralCatalog } from '@/lib/central';
+import { ensureRestaurantProfile } from '@/lib/restaurant/profile-loader';
 import { log } from '@/lib/log';
 import { businessChatUrl } from '@/lib/menu/whatsapp-chat';
 import { createMenuSessionRepository } from '@/lib/menu/session-repository';
@@ -19,13 +19,16 @@ import { ReplacingOrderBanner } from '@/components/menu/ReplacingOrderBanner';
 import { MenuStore } from '@/components/menu/MenuStore';
 import { ServiceNoticeBanner } from '@/components/menu/ServiceNoticeBanner';
 
-export const metadata: Metadata = {
-  title: 'Don Zarco — Menú',
-  description: 'Menú de Don Zarco: platos, bebidas y extras. Pide por WhatsApp.',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { name } = await ensureRestaurantProfile();
+  return {
+    title: `${name} — Menú`,
+    description: `Menú de ${name}. Arma tu pedido y termínalo por WhatsApp.`,
+  };
+}
 
 export const viewport: Viewport = {
-  themeColor: '#0b3d2e',
+  themeColor: '#0f0805',
 };
 
 /**
@@ -105,7 +108,14 @@ export default async function MenuPage(props: {
   /** Solo con el backend central: el nombre que se puso en Configuración del POS. */
   let restaurantName: string | null = null;
   let ordersPaused = false;
-  let rules: { cashAllowed: boolean; pickupAllowed: boolean } | null = null;
+  let rules: {
+    cashAllowed: boolean;
+    pickupAllowed: boolean;
+    deliveryAllowed: boolean;
+    qrAllowed: boolean;
+  } | null = null;
+  // Nombre, logo y horario: lo que el menú dice del local. Nunca lanza.
+  const profile = await ensureRestaurantProfile();
 
   // ── Backend central ───────────────────────────────────────────────────────
   //
@@ -121,8 +131,13 @@ export default async function MenuPage(props: {
       promotions = catalog.promotions;
       restaurantName = catalog.restaurantName;
       ordersPaused = catalog.ordersPaused;
-      // El efectivo todavía no tiene interruptor en el backend: se ofrece.
-      rules = { cashAllowed: true, pickupAllowed: catalog.pickupEnabled };
+      // Qué se ofrece lo dice el perfil del POS, que es quien lo hace cumplir.
+      rules = {
+        cashAllowed: catalog.paymentMethods.includes('cash'),
+        pickupAllowed: catalog.pickupEnabled,
+        deliveryAllowed: catalog.deliveryEnabled,
+        qrAllowed: catalog.paymentMethods.includes('qr'),
+      };
     } catch (error) {
       log.error('menu.page.centralCatalog', {
         error: error instanceof Error ? error.message : 'unknown',
@@ -176,35 +191,49 @@ export default async function MenuPage(props: {
     whatsappChatUrl = null;
   }
 
+  // La reserva de mesas se ofrece si el local la encendió Y hay un chat adonde
+  // mandarla. En desarrollo se muestra igual sin el número, con el botón
+  // apagado, para poder ver la sección mientras se arma el entorno.
+  const reservations =
+    profile.reservationsEnabled && (whatsappChatUrl !== null || process.env.NODE_ENV !== 'production')
+      ? { chatUrl: whatsappChatUrl }
+      : null;
+
   return (
-    // ── Fondo inmersivo (EXPERIMENTAL, rediseno-menu-fastfood, 17-09-2026) ──
+    // ── El fondo de la carta ─────────────────────────────────────────────────
     //
-    // El patrón NO se desplaza con el contenido: va en una capa `fixed`, así que
-    // el catálogo se desliza POR ENCIMA de un fondo quieto. Es el efecto que se
-    // buscaba al scrollear, y de paso evita el problema de repetir una imagen
-    // con degradado (las costuras se ven en cada repetición).
-    //
-    // El degradado del `<main>` queda debajo como respaldo: si la imagen no
-    // carga —datos móviles flojos—, el fondo sigue siendo cálido y no blanco.
+    // El fondo NO se desplaza con el contenido: va en una capa `fixed`, así que
+    // la carta se desliza POR ENCIMA de un fondo quieto. Está hecho con
+    // degradados (`.menu-backdrop`, en `globals.css`): no hay imagen que pueda
+    // fallar al cargar con datos móviles flojos.
     //
     // `isolate` mantiene el apilado dentro de este `<main>`: sin él, la capa de
     // z-0 podría irse detrás del fondo del `<body>` y no verse nunca.
-    <main className="relative isolate flex-1 bg-gradient-to-br from-orange-400 via-orange-500 to-yellow-500 text-white">
-      <div
-        className="pointer-events-none fixed inset-0 z-0 bg-[url('/menu/fondo-patron.webp')] bg-cover bg-center"
-        aria-hidden
-      />
+    <main className="font-menu-body relative isolate flex-1 bg-menu-night text-white">
+      <div className="menu-backdrop pointer-events-none fixed inset-0 z-0" aria-hidden />
+      {/* La franja tejida del borde: decoración. En el celular es un hilo que
+          cabe en el margen de la página; con más pantalla, se ensancha. */}
+      <div className="menu-weave pointer-events-none fixed inset-y-0 left-0 z-0 w-2.5 sm:w-3.5" aria-hidden />
+      {/* Sin JavaScript las fotos no reciben el aviso de entrar: se muestran de una. */}
+      <noscript>
+        <style>{'.menu-reveal{opacity:1;transform:none}'}</style>
+      </noscript>
       <div className="relative z-10">
-        <MenuHeader restaurantName={restaurantName} />
+        <MenuHeader
+          restaurantName={restaurantName ?? profile.name}
+          tagline={profile.description}
+          address={profile.address}
+          mapsUrl={profile.mapsUrl}
+        />
         {ordersPaused && (
           <div role="status" className="bg-red-600 px-4 py-3 text-center text-sm font-semibold text-white">
             Estamos con demasiados pedidos y pausamos los nuevos por un rato. Vuelve a intentarlo en
             unos minutos. Si ya hiciste tu pedido, sigue en curso.
           </div>
         )}
-        {/* El aviso de horario es el de Don Zarco, escrito en el código. Con
-            el backend central quien decide si se atiende es la caja del POS. */}
-        {!central && <ServiceNoticeBanner serverNow={serverNow} />}
+        {/* El aviso de horario sale del horario del perfil. Es un aviso: quien
+            decide si un pedido se toma es el POS al crearlo. */}
+        <ServiceNoticeBanner serverNow={serverNow} />
         {replacingOrder && <ReplacingOrderBanner orderNumber={replacingOrder.orderNumber} />}
 
         {items === null ? (
@@ -230,6 +259,8 @@ export default async function MenuPage(props: {
             sessionToken={sessionToken}
             cartSessionId={cartSessionId}
             whatsappChatUrl={whatsappChatUrl}
+            brand={{ name: restaurantName ?? profile.name, logoUrl: profile.logoUrl }}
+            reservations={reservations}
             // 0035: cuando el enlace viene a cambiar un pedido, el carrito se
             // siembra con lo que ya había dentro.
             replacingOrder={
@@ -249,14 +280,14 @@ export default async function MenuPage(props: {
 /** Sesión expirada o inválida. */
 function MenuSessionExpired() {
   return (
-    // Trae su propio degradado: esta rama devuelve ANTES del `<main>` de arriba,
-    // así que sin esto sería la única pantalla de /menu con el fondo viejo.
-    <div className="flex-1 bg-gradient-to-br from-orange-400 via-orange-500 to-yellow-500 px-4 py-16">
-      <div className="mx-auto max-w-sm rounded-3xl bg-donzarco-ink/85 px-6 py-10 text-center ring-1 ring-white/15 backdrop-blur-sm">
+    // Trae su propio fondo: esta rama devuelve ANTES del `<main>` de arriba,
+    // así que sin esto sería la única pantalla de /menu con otro fondo.
+    <div className="menu-backdrop font-menu-body flex-1 px-4 py-16 text-white">
+      <div className="mx-auto max-w-sm rounded-3xl bg-menu-surface/85 px-6 py-10 text-center ring-1 ring-white/15 backdrop-blur-sm">
         <span className="text-4xl" aria-hidden>
           ⏱️
         </span>
-        <h2 className="font-display mt-4 text-2xl tracking-wide text-donzarco-gold uppercase">
+        <h2 className="font-menu-dish mt-4 text-3xl leading-none font-extrabold text-menu-accent">
           Enlace expirado
         </h2>
         <p className="mt-2 text-sm leading-relaxed text-white/75">
@@ -271,11 +302,11 @@ function MenuSessionExpired() {
 function MenuUnavailable({ title, body }: { title: string; body: string }) {
   return (
     <div className="px-4 py-16">
-      <div className="mx-auto max-w-sm rounded-3xl bg-donzarco-ink/85 px-6 py-10 text-center ring-1 ring-white/15 backdrop-blur-sm">
+      <div className="mx-auto max-w-sm rounded-3xl bg-menu-surface/85 px-6 py-10 text-center ring-1 ring-white/15 backdrop-blur-sm">
         <span className="text-4xl" aria-hidden>
-          🍔
+          🍽️
         </span>
-        <h2 className="font-display mt-4 text-2xl tracking-wide text-donzarco-gold uppercase">
+        <h2 className="font-menu-dish mt-4 text-3xl leading-none font-extrabold text-menu-accent">
           {title}
         </h2>
         <p className="mt-2 text-sm leading-relaxed text-white/75">{body}</p>

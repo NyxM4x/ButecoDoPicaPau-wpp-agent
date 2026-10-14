@@ -1,3 +1,4 @@
+import { ensureRestaurantProfile } from '@/lib/restaurant/profile-loader';
 import { after } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { createMenuSessionRepository } from '@/lib/menu/session-repository';
@@ -19,8 +20,7 @@ import {
 } from '@/lib/orders/order-replacement';
 import { readCurrentPromoMode } from '@/lib/promotions/current-mode';
 import { readOrdersPaused } from '@/lib/delivery/settings';
-import { centralRequest, isCentralEnabled } from '@/lib/central/client';
-import { createCentralWebOrder } from '@/lib/central/orders';
+import { centralRequest, createCentralWebOrder, isCentralEnabled } from '@/lib/central';
 
 // Requiere APIs de Node (crypto, service_role) — no Edge. Siempre dinámico.
 export const runtime = 'nodejs';
@@ -148,5 +148,7 @@ function buildCentralDeps(supabase: ReturnType<typeof getSupabaseAdmin>): WebChe
 }
 
 export async function POST(request: Request): Promise<Response> {
+  // El perfil del restaurante vigente para todo lo que se diga en esta petición.
+  await ensureRestaurantProfile();
   return handleCreateWebOrder(request, buildDeps());
 }

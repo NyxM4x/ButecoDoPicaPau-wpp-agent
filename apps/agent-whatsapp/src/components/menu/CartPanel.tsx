@@ -128,10 +128,10 @@ export function CartPanel({
         // del menú —fondo oscuro cálido, títulos en la display, dorado para lo
         // que es plata—. La DISPOSICIÓN no cambia: hoja inferior en móvil,
         // drawer lateral desde `lg:`.
-        className="relative flex max-h-[85vh] flex-col rounded-t-3xl bg-gradient-to-b from-red-950 to-donzarco-ink shadow-xl lg:h-full lg:max-h-none lg:w-[520px] lg:max-w-[92vw] lg:rounded-none lg:rounded-l-3xl"
+        className="relative flex max-h-[85vh] flex-col rounded-t-3xl bg-gradient-to-b from-menu-surface to-menu-night shadow-xl ring-1 ring-white/10 lg:h-full lg:max-h-none lg:w-[520px] lg:max-w-[92vw] lg:rounded-none lg:rounded-l-3xl"
       >
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
-          <h2 className="font-display text-2xl tracking-wide text-donzarco-gold uppercase">
+          <h2 className="font-menu-dish text-3xl leading-none font-extrabold text-menu-accent">
             Tu pedido
           </h2>
           <button
@@ -275,7 +275,7 @@ export function CartPanel({
             {/* La plata no va en la display: en Bangers el 7 parece un 1, y un
                 total de Bs 71 leído como Bs 11 es una discusión en la puerta.
                 Ver `ProductCard`. */}
-            <span className="font-price text-2xl tracking-wide text-yellow-400 tabular-nums">
+            <span className="font-menu-body text-2xl font-bold text-menu-accent tabular-nums">
               {formatMoney(totales.total)}
             </span>
           </div>

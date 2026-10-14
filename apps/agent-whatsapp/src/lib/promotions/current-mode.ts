@@ -2,7 +2,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { log } from '@/lib/log';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
-import { NORMAL_MODE, promoModeAt, type PromoMode } from './promo-mode';
+import { normalMode, promoModeAt, type PromoMode } from './promo-mode';
 import { createPromotionsRepository } from './repository';
 
 /**
@@ -26,6 +26,6 @@ export async function readCurrentPromoMode(
     log.error('promotions.current_mode_failed', {
       error: error instanceof Error ? error.message : 'unknown',
     });
-    return NORMAL_MODE;
+    return normalMode();
   }
 }

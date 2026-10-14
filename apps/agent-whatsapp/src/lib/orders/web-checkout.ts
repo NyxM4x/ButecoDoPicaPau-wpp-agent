@@ -5,8 +5,8 @@ import {
   parsePromotionRejection,
   promotionRejectionMessage,
 } from '@/lib/promotions/rejection';
-import { NORMAL_MODE, type PromoMode } from '@/lib/promotions/promo-mode';
-import { PICKUP_ENABLED } from './pickup-enabled';
+import { normalMode, type PromoMode } from '@/lib/promotions/promo-mode';
+import { isPickupEnabled } from './pickup-enabled';
 import { calculateCheckoutFingerprint } from './fingerprint';
 import { createWebOrderSchema } from './web-schema';
 import type { DeliveryType, OrderStatus, PaymentMethod } from '@/types';
@@ -227,6 +227,14 @@ const CLOSED_MESSAGE = 'En este momento estamos cerrados. Vuelve a intentarlo en
  */
 const PENDING_REVIEW_MESSAGE =
   'Recibimos tu pedido, pero el local todavía no abrió caja. Lo estamos revisando y te avisamos por WhatsApp en unos minutos; no hace falta que lo envíes de nuevo.';
+/**
+ * Backend central: el local apagó el envío o esa forma de pago. Como el recojo,
+ * van como error del CAMPO: quien lo lee tiene una pestaña de antes del cambio.
+ */
+const DELIVERY_UNAVAILABLE_MESSAGE =
+  'Por ahora no hacemos envíos: los pedidos son para retirar en el local. Elige Retiro y confirma de nuevo.';
+const PAYMENT_METHOD_UNAVAILABLE_MESSAGE =
+  'Esa forma de pago no está disponible ahora. Elige otra y confirma de nuevo.';
 /** Pedidos nuevos pausados por saturación (0038). Mismo texto que el menú. */
 const ORDERS_PAUSED_MESSAGE =
   'Estamos con demasiados pedidos y pausamos los nuevos por un rato. Vuelve a intentarlo en unos minutos.';
@@ -257,6 +265,18 @@ function mapRpcError(errorCode: string | null, errorMessage?: string | null): Re
         error: 'validation_error',
         message: PICKUP_UNAVAILABLE_MESSAGE,
         issues: [{ field: 'delivery_type', message: PICKUP_UNAVAILABLE_MESSAGE }],
+      });
+    case 'central_delivery_disabled':
+      return jsonResponse(422, {
+        error: 'validation_error',
+        message: DELIVERY_UNAVAILABLE_MESSAGE,
+        issues: [{ field: 'delivery_type', message: DELIVERY_UNAVAILABLE_MESSAGE }],
+      });
+    case 'central_payment_method_disabled':
+      return jsonResponse(422, {
+        error: 'validation_error',
+        message: PAYMENT_METHOD_UNAVAILABLE_MESSAGE,
+        issues: [{ field: 'payment_method', message: PAYMENT_METHOD_UNAVAILABLE_MESSAGE }],
       });
     case 'P1004': {
       // Una promoción dejó de ser vendible entre que el cliente la vio y pulsó
@@ -435,7 +455,7 @@ export async function handleCreateWebOrder(
   //       conteste, así que tampoco puede caerse con ellas: aquí llega el
   //       cliente con la pestaña vieja —la nueva ni le ofrece el botón— y
   //       cualquier POST hecho a mano. Ver `orders/pickup-enabled`.
-  if (body.delivery_type === 'pickup' && !(deps.isPickupEnabled?.() ?? PICKUP_ENABLED)) {
+  if (body.delivery_type === 'pickup' && !(deps.isPickupEnabled?.() ?? isPickupEnabled())) {
     log.warn('store.orders.pickup_disabled');
     return jsonResponse(422, {
       error: 'validation_error',
@@ -459,7 +479,7 @@ export async function handleCreateWebOrder(
       log.error('store.orders.promo_mode_failed', {
         reason: error instanceof Error ? error.message : 'unknown',
       });
-      modo = NORMAL_MODE;
+      modo = normalMode();
     }
 
     if (body.payment_method === 'cash' && !modo.cashAllowed) {

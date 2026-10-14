@@ -32,10 +32,12 @@ export interface CashReviewInput {
   deliveryAmount: number;
   deliveryDistanceMeters: number | null;
   totalAmount: number;
+  /** Símbolo de la moneda del restaurante. Ausente = `Bs`, como siempre. */
+  currencySymbol?: string;
 }
 
-function bs(amount: number): string {
-  return `Bs ${amount.toFixed(2)}`;
+function money(amount: number, symbol = 'Bs'): string {
+  return `${symbol} ${amount.toFixed(2)}`;
 }
 
 function distance(meters: number | null): string {
@@ -51,6 +53,7 @@ export function cashReviewButtons(orderNumber: string): WhatsappReplyButton[] {
 }
 
 export function cashReviewText(input: CashReviewInput): string {
+  const bs = (amount: number) => money(amount, input.currencySymbol);
   const isDelivery = input.deliveryType === 'delivery';
   const head = [`Tu pedido ${input.orderNumber} quedó así 👇`, ''];
   const tail = [
@@ -88,7 +91,8 @@ export function cashConfirmedText(input: {
   orderNumber: string;
   deliveryType: string;
   totalAmount: number;
+  currencySymbol?: string;
 }): string {
   const when = input.deliveryType === 'delivery' ? 'al recibirlo' : 'al retirarlo';
-  return `¡Listo! Tu pedido ${input.orderNumber} está confirmado y ya pasa a cocina 🙌 Pagás ${bs(input.totalAmount)} en efectivo ${when}.`;
+  return `¡Listo! Tu pedido ${input.orderNumber} está confirmado y ya pasa a cocina 🙌 Pagás ${money(input.totalAmount, input.currencySymbol)} en efectivo ${when}.`;
 }

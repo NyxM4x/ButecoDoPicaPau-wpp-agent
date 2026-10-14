@@ -1,3 +1,4 @@
+import { ensureRestaurantProfile } from '@/lib/restaurant/profile-loader';
 import { after, NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getServerEnv } from '@/lib/env/env';
@@ -37,7 +38,7 @@ import {
   processWebhookEvent,
   type HandleKapsoWebhookParams,
 } from '@/lib/webhook/kapso';
-import { centralCashPorts, centralLocationPorts } from '@/lib/central/webhook-ports';
+import { centralCashPorts, centralLocationPorts } from '@/lib/central';
 
 // Requiere APIs de Node (crypto, service_role) — no Edge. Siempre dinámico.
 export const runtime = 'nodejs';
@@ -64,6 +65,8 @@ export const maxDuration = 60;
  * antes de que estuviera escrita.
  */
 export async function POST(request: Request): Promise<Response> {
+  // El perfil del restaurante vigente para todo lo que se diga en esta petición.
+  await ensureRestaurantProfile();
   const env = getServerEnv();
 
   // El body crudo es necesario para validar el HMAC de la firma.

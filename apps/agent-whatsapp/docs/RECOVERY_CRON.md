@@ -1,5 +1,12 @@
 # RECOVERY CRON — quién despierta a los workers de recuperación
 
+> **Documento heredado de la demo. Buteco NO usa Cloudflare.** Desde el
+> 2026-10-13 las cuatro rutas de recuperación las despierta el backend cada
+> minuto (`apps/backend/src/agent-wake`, variable `AGENT_INTERNAL_TOKEN`). La
+> carpeta `cloudflare/recovery-cron/` se retiró del repositorio. Lo que sigue
+> queda como historia: explica por qué existen las cuatro rutas y qué hace cada
+> una, que no cambió.
+
 > **Desde el 14-09-2026 hay UN solo Worker: `sarco-recovery-cron`**
 > (`cloudflare/recovery-cron/`). Cada minuto hace los cuatro `POST` en
 > paralelo, cada uno con su propio timeout. Reemplaza a los cuatro Workers que

@@ -363,6 +363,27 @@ export interface OperationalSettingsTable {
   pickup_enabled: Generated<boolean>;
   /** Nombre comercial: lo muestran el POS y el ticket. */
   restaurant_name: Generated<string>;
+  // Perfil del restaurante (migración 33): lo que el agente dice del local.
+  restaurant_description: string | null;
+  restaurant_phone: string | null;
+  restaurant_address: string | null;
+  restaurant_maps_url: string | null;
+  restaurant_timezone: Generated<string>;
+  restaurant_locale: Generated<string>;
+  currency_code: Generated<string>;
+  currency_symbol: Generated<string>;
+  hours_text: string | null;
+  delivery_enabled: Generated<boolean>;
+  enabled_payment_methods: Generated<OrderPaymentMethod[]>;
+  greeting_message: string | null;
+  farewell_message: string | null;
+  menu_video_url: string | null;
+  menu_image_url: string | null;
+  // Modo «sin POS» (migración 34).
+  /** `false` = no hay caja ni pantallas: el horario decide y el personal recibe los pedidos por Telegram. */
+  requires_cash_register: Generated<boolean>;
+  /** Minutos tras los cuales un pedido firme se cierra solo como entregado. NULL = nunca. */
+  auto_complete_minutes: number | null;
   updated_at: Timestamp;
 }
 

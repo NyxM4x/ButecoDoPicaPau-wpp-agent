@@ -13,6 +13,11 @@ export interface AppConfig {
     baseUrl: string;
     authToken: string;
   };
+  /** El despertador del agente: sus rutas internas, llamadas cada minuto. */
+  agentWake: {
+    /** El `INTERNAL_API_TOKEN` del agente. Vacío = el despertador no corre. */
+    token: string;
+  };
   jwt: {
     secret: string;
     expiresIn: string;
@@ -37,6 +42,10 @@ export interface AppConfig {
     aesKey: string;
     account: string;
   };
+}
+
+function stripTrailingSlashes(raw: string | undefined): string {
+  return (raw ?? '').trim().replace(/\/+$/, '');
 }
 
 function parseServiceAuthTokens(raw: string | undefined): Record<string, string> {
@@ -72,6 +81,9 @@ export default (): AppConfig => ({
     baseUrl: process.env.GATEWAY_BASE_URL ?? '',
     authToken: process.env.GATEWAY_AUTH_TOKEN ?? '',
   },
+  agentWake: {
+    token: process.env.AGENT_INTERNAL_TOKEN ?? '',
+  },
   jwt: {
     secret: process.env.JWT_SECRET ?? '',
     expiresIn: process.env.JWT_EXPIRES_IN ?? '8h',
@@ -87,10 +99,11 @@ export default (): AppConfig => ({
     endpoint: process.env.PAYMENT_PROOFS_S3_ENDPOINT ?? '',
   },
   baneco: {
-    baseUrl: process.env.BANECO_BASE_URL ?? '',
-    username: process.env.BANECO_USERNAME ?? '',
+    // El banco entrega la dirección con barra final (`…/ApiGateway/`).
+    baseUrl: stripTrailingSlashes(process.env.BANECO_BASE_URL),
+    username: (process.env.BANECO_USERNAME ?? '').trim(),
     password: process.env.BANECO_PASSWORD ?? '',
-    aesKey: process.env.BANECO_AES_KEY ?? '',
-    account: process.env.BANECO_ACCOUNT ?? '',
+    aesKey: (process.env.BANECO_AES_KEY ?? '').trim(),
+    account: (process.env.BANECO_ACCOUNT ?? '').trim(),
   },
 });

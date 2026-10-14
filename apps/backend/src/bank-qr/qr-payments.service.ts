@@ -8,6 +8,12 @@ import { BanecoClientService } from '../baneco/baneco-client.service';
 import { PaymentAttemptsService } from '../payment-attempts/payment-attempts.service';
 import { NotificationsOutService } from '../notifications-out/notifications-out.service';
 import { decideUnappliedPayment } from './unapplied-payment';
+import {
+  decideQrExpiry,
+  QR_GENERATION_GRACE_MS,
+  QR_PAYMENT_WINDOW_MS,
+  QrExpiryDecision,
+} from './qr-expiry';
 
 export interface QrChargeResponse {
   orderId: string;
@@ -27,6 +33,16 @@ export interface UnappliedPaymentResponse {
   amount: number;
   paidDetectedAt: string | null;
   orderPaymentStatus: string;
+}
+
+/** Cuántos pedidos por QR revisa el barrido de vencidos en cada pasada. */
+const EXPIRY_BATCH_SIZE = 20;
+
+export interface QrExpirySweepResult {
+  /** Tuvieron su QR y no lo pagaron a tiempo. */
+  unpaid: number;
+  /** Nunca se les pudo generar el QR. */
+  neverGenerated: number;
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -105,7 +121,10 @@ export class QrPaymentsService {
       if (existingCharge) return toResponse(existingCharge, orderId);
     }
 
-    const dueDate = dateInBolivia(new Date());
+    // El banco solo acepta una fecha, y el QR vale hasta que termina ese día.
+    // Se pide la del momento en que vence el plazo de pago: con la de hoy, un
+    // pedido de las 23:50 recibiría un QR que muere a los diez minutos.
+    const dueDate = dateInBolivia(new Date(Date.now() + QR_PAYMENT_WINDOW_MS));
     let generated;
     try {
       generated = await this.baneco.generateQR({
@@ -361,6 +380,203 @@ export class QrPaymentsService {
       .set({ status, updated_at: new Date() })
       .where('id', '=', chargeId)
       .execute();
+  }
+
+  /**
+   * Modo «sin POS»: cancela los pedidos por QR que nadie pagó.
+   *
+   * Con un POS, un QR sin pagar lo resuelve el cajero (lo regenera, o cobra
+   * de otra forma). Sin pantallas nadie lo va a cerrar, y el pedido quedaría
+   * abierto para siempre. Los plazos están en `qr-expiry.ts`.
+   *
+   * Nunca cancela un pedido que pudo haberse pagado: antes de cancelar le
+   * pregunta al banco y anula el QR allá. Si el banco no contesta, el pedido
+   * queda como está y se vuelve a intentar en la pasada siguiente.
+   */
+  async expireUnpaidOrders(now = new Date()): Promise<QrExpirySweepResult> {
+    const result: QrExpirySweepResult = { unpaid: 0, neverGenerated: 0 };
+    const settings = await this.db
+      .selectFrom('operational_settings')
+      .select('requires_cash_register')
+      .where('id', '=', true)
+      .executeTakeFirst();
+    if (settings?.requires_cash_register !== false) return result;
+
+    const candidates = await this.db
+      .selectFrom('orders')
+      .select(['id', 'order_number', 'customer_id', 'customer_name', 'confirmed_at'])
+      .where('payment_method', '=', 'qr')
+      .where('status', '=', 'confirmed')
+      .where('payment_status', '=', 'unpaid')
+      .where('confirmed_at', 'is not', null)
+      // El plazo más corto de los dos; el de cada pedido lo decide `decideQrExpiry`.
+      .where('confirmed_at', '<', new Date(now.getTime() - QR_GENERATION_GRACE_MS))
+      .orderBy('confirmed_at', 'asc')
+      .limit(EXPIRY_BATCH_SIZE)
+      .execute();
+
+    for (const order of candidates) {
+      try {
+        const outcome = await this.expireOrderIfDue(order, now);
+        if (outcome === 'expire_unpaid') result.unpaid += 1;
+        if (outcome === 'expire_never_generated') result.neverGenerated += 1;
+      } catch (error) {
+        this.logger.warn(
+          `No se pudo revisar el vencimiento del QR de ${order.id}: ${(error as Error).message}`,
+        );
+      }
+    }
+    return result;
+  }
+
+  /** Devuelve por qué se canceló el pedido, o `null` si quedó como estaba. */
+  private async expireOrderIfDue(
+    order: {
+      id: string;
+      order_number: string;
+      customer_id: string | null;
+      customer_name: string;
+      confirmed_at: Date | string | null;
+    },
+    now: Date,
+  ): Promise<Extract<QrExpiryDecision, 'expire_unpaid' | 'expire_never_generated'> | null> {
+    if (!order.confirmed_at) return null;
+    const charges = await this.db
+      .selectFrom('bank_qr_charges')
+      .select(['id', 'qr_id', 'status', 'created_at'])
+      .where('order_id', '=', order.id)
+      .execute();
+
+    const decision = decideQrExpiry({
+      now,
+      confirmedAt: new Date(order.confirmed_at),
+      charges: charges.map((charge) => ({
+        status: charge.status,
+        createdAt: new Date(charge.created_at),
+      })),
+    });
+    if (decision === 'wait' || decision === 'hold') return null;
+
+    for (const charge of charges.filter((c) => c.status === 'pending')) {
+      if (!(await this.retireUnpaidCharge(charge.id, charge.qr_id))) return null;
+    }
+
+    const cancelled = await this.db.transaction().execute(async (trx) => {
+      // CAS: si en el medio el pedido se pagó o alguien lo movió, no se toca.
+      const row = await trx
+        .updateTable('orders')
+        .set({ status: 'cancelled', status_updated_by: 'expiry_qr_unpaid', updated_at: now })
+        .where('id', '=', order.id)
+        .where('status', '=', 'confirmed')
+        .where('payment_status', '=', 'unpaid')
+        .returning('id')
+        .executeTakeFirst();
+      if (!row) return false;
+      // El intento de pago se cierra sin pasar por `decide()`, que le diría al
+      // cliente que su comprobante fue rechazado: aquí no mandó ninguno.
+      await trx
+        .updateTable('payment_attempts')
+        .set({ review_status: 'rejected', reviewed_at: now, updated_at: now })
+        .where('order_id', '=', order.id)
+        .where('review_status', '=', 'pending_review')
+        .execute();
+      return true;
+    });
+    if (!cancelled) return null;
+
+    await this.notifyQrExpired(order, decision);
+    return decision;
+  }
+
+  /**
+   * Saca de circulación un QR vencido, asegurándose primero de que no esté
+   * pagado. `true` = ya nadie puede pagarlo y el pedido se puede cancelar.
+   */
+  private async retireUnpaidCharge(chargeId: string, qrId: string): Promise<boolean> {
+    let status;
+    try {
+      status = await this.baneco.statusQR(qrId);
+    } catch (error) {
+      this.logger.warn(`statusQR falló al vencer ${qrId}: ${(error as Error).message}`);
+      return false;
+    }
+
+    if (status.statusQrCode === 1) {
+      // Pagó justo al final: se aplica el pago en vez de cancelar.
+      await this.resolveCharge(qrId);
+      return false;
+    }
+
+    if (status.statusQrCode === 0) {
+      try {
+        await this.baneco.cancelQR(qrId);
+      } catch (error) {
+        // Si el pago entró entre la consulta y la anulación, el banco rechaza
+        // anular: la pasada siguiente lo encuentra pagado.
+        this.logger.warn(`cancelQR falló al vencer ${qrId}: ${(error as Error).message}`);
+        return false;
+      }
+    }
+
+    await this.db
+      .updateTable('bank_qr_charges')
+      .set({
+        status: status.statusQrCode === 9 ? 'cancelled' : 'expired',
+        raw_status_response: JSON.stringify(status.raw),
+        updated_at: new Date(),
+      })
+      .where('id', '=', chargeId)
+      .where('status', '=', 'pending')
+      .execute();
+    return true;
+  }
+
+  private async notifyQrExpired(
+    order: { id: string; order_number: string; customer_id: string | null; customer_name: string },
+    reason: 'expire_unpaid' | 'expire_never_generated',
+  ): Promise<void> {
+    if (order.customer_id) {
+      try {
+        await this.notifications.notifyNow({
+          channel: 'whatsapp',
+          kind: 'qr_expired_customer_notice',
+          targetRef: order.id,
+          payload: {
+            customerId: order.customer_id,
+            text:
+              reason === 'expire_unpaid'
+                ? `Tu pedido ${order.order_number} se canceló porque no recibimos el pago por QR a tiempo. Si todavía lo quieres, vuelve a pedirlo desde el menú.`
+                : `No pudimos generar el QR de pago de tu pedido ${order.order_number} y lo cancelamos. Disculpa la molestia: puedes volver a pedirlo en unos minutos.`,
+          },
+        });
+      } catch (error) {
+        this.logger.warn(
+          `No se pudo avisar el vencimiento del QR de ${order.id}: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    if (reason !== 'expire_never_generated') return;
+    // El personal no ve este pedido en ningún lado: sin este aviso, un banco
+    // caído cancela pedidos en silencio.
+    try {
+      await this.notifications.notifyNow({
+        channel: 'telegram',
+        kind: 'qr_generation_failed_alert',
+        targetRef: order.id,
+        payload: {
+          chatRef: 'staff-group',
+          text:
+            `No se pudo generar el QR de pago del pedido ${order.order_number}` +
+            ` (${order.customer_name || 'sin nombre'}) y se canceló.` +
+            ' Si se repite, el banco no está respondiendo o le faltan credenciales al backend.',
+        },
+      });
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo avisar al personal del QR fallido de ${order.id}: ${(error as Error).message}`,
+      );
+    }
   }
 
   /** Cola de pagos cobrados que ninguna caja recibió — la pantalla donde se decide qué hacer con cada uno. */

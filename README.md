@@ -10,8 +10,10 @@ está enlazado a aquel repositorio y no recibe ni envía cambios de él. Lo que
 se construya aquí debe servir para cualquier restaurante, y Buteco es el
 primero.
 
-> **Estado:** el código todavía es el de la demo y dice «Don Zarco» en muchos
-> sitios. Nada está publicado. El plan está en [`docs/plan.md`](docs/plan.md).
+> **Estado (2026-10-13):** hechas las fases 1 a 3 y parte de la 4. El agente ya
+> no tiene escrito ningún restaurante: el nombre, el horario, la moneda y lo que
+> se puede pedir salen del perfil del POS. Nada está publicado. El plan y lo que
+> sigue están en [`docs/plan.md`](docs/plan.md).
 
 ## Decisiones (2026-10-13)
 
@@ -20,7 +22,10 @@ primero.
 | Repositorio | Propio e independiente, con el historial de la demo como punto de partida. |
 | Agente | **Uno por restaurante**: un despliegue en Vercel con sus variables (número de WhatsApp, token del POS, datos del local). |
 | POS | **Todavía no hay.** El backend de este repo hace de POS provisional, sin pantallas: el personal recibe los pedidos por Telegram o WhatsApp. |
-| POS futuro | Un POS **multi-tenant**, aparte. El agente se conectará a él cambiando `CENTRAL_API_BASE_URL` y `CENTRAL_API_TOKEN`, siempre que cumpla el contrato que se escribe en la [Fase 1](docs/plan.md#fase-1--contrato-del-pos). El restaurante se identifica por el token, nunca por un parámetro. |
+| POS futuro | Un POS **multi-tenant**, aparte, con **el mismo esquema del backend central** de este repo. El agente se conectará a él cambiando `CENTRAL_API_BASE_URL` y `CENTRAL_API_TOKEN`, siempre que cumpla [el contrato](docs/pos-contract.md). El restaurante se identifica por el token, nunca por un parámetro. |
+| Servicios | Railway (backend), Vercel (agente), Supabase, Kapso, Telegram. **Sin Cloudflare**: al agente lo despierta el backend. |
+| Personal | Recibe cada pedido en Telegram con botones **Listo / Salió / Entregado**, que le avisan al cliente por WhatsApp. |
+| Pago por QR | Con la API del banco del cliente, que se integra más adelante. Mientras tanto, efectivo. |
 
 ## Cómo encaja
 
@@ -51,6 +56,9 @@ Esa carpeta es la frontera: nada fuera de ella debe saber qué POS hay detrás.
 Documentos:
 
 - [`docs/plan.md`](docs/plan.md): **por dónde vamos y qué sigue.** Empezar aquí.
+- [`docs/pos-contract.md`](docs/pos-contract.md): **el contrato del POS**, lo
+  que se le entrega a quien construya el POS multi-tenant. Se comprueba con
+  `node scripts/check-pos-contract.mjs`.
 - `docs/implementation-progress.md`, `docs/deploy.md`: bitácora y publicación
   **de la demo**, hasta el 2026-10-13. Sirven de historia y de guía técnica.
 - `docs/canonical-contract-proposal.md`, `docs/data-mapping.md`: base del
@@ -69,13 +77,23 @@ git clone https://github.com/NyxM4x/ButecoDoPicaPau-wpp-agent.git buteco-do-pica
 
 ## Trabajar en local
 
-Igual que en la demo (Node 20+, PostgreSQL para la base local):
+Node 20+ y PostgreSQL instalado (se usan sus binarios, no su servicio). Los
+puertos son propios de Buteco, para convivir con la demo en la misma PC:
+
+| Qué | Puerto |
+|---|---|
+| Base local (`buteco_dev`, datos en `.local/`) | 54330 |
+| Backend | 3200 |
+| Agente | 3300 |
 
 ```powershell
 .\scripts\dev-db.ps1 start
 cd apps\backend;          npm ci; npm run migrate:local; npm run start:local
-cd apps\agent-whatsapp;   npm ci; npm run dev
+cd apps\agent-whatsapp;   npm ci; npx next dev -p 3300
+node scripts\check-pos-contract.mjs     # comprueba el backend local contra el contrato
 ```
+
+`apps/backend/.env.dev` y `apps/agent-whatsapp/.env.local` no están en git.
 
 Las variables (`.env.local`, `.env.dev`…) **no se copian de la demo**: Buteco
 tiene su propio número de WhatsApp, su base y sus tokens. Las claves están en

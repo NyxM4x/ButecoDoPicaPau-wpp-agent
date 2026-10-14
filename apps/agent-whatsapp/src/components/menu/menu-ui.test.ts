@@ -22,24 +22,27 @@ describe('6B.1R — moneda Bs en la presentación del menú', () => {
     }
   });
 
-  it('ninguna cifra de plata usa la tipografía de impacto (18-09-2026)', () => {
-    // En Bangers el 7 es casi un 1: la porción de papa a Bs 7 se leía "Bs 1".
-    // No es de ese precio, es del glifo, y los totales llevan 7 todo el tiempo
-    // —un pedido de Bs 71 leído como Bs 11 es una discusión en la puerta—.
-    // La plata va en la sans, gruesa y con `tabular-nums`.
+  it('ninguna cifra de plata usa una tipografía de adorno (18-09-2026)', () => {
+    // Nació con Bangers, donde el 7 es casi un 1: la porción de papa a Bs 7 se
+    // leía "Bs 1", y un pedido de Bs 71 leído como Bs 11 es una discusión en la
+    // puerta. La regla sobrevive al cambio de carta: la plata va en la letra de
+    // leer (`font-menu-body`), nunca en la de los nombres o los títulos.
     for (const c of ['ProductCard', 'PromoCard', 'CartPanel']) {
       const lineas = comp(c)
         .split('\n')
-        .filter((l) => l.includes('font-display') && /formatMoney|tabular-nums/.test(l));
-      expect(lineas, `${c}: plata en font-display`).toEqual([]);
+        .filter((l) => /font-menu-(dish|title)|font-display/.test(l) && /formatMoney|tabular-nums/.test(l));
+      expect(lineas, `${c}: plata en una letra de adorno`).toEqual([]);
     }
+    expect(comp('ProductCard')).toMatch(/font-menu-body[^"]*tabular-nums/);
   });
 });
 
 describe('6B.1R — ProductCard', () => {
   it('muestra nombre, precio y acción de agregar', () => {
     const s = comp('ProductCard');
-    expect(s).toContain('{item.name}');
+    // El título es el nombre del plato: el del producto, o lo que tienen en
+    // común sus opciones («Tabla»). Lo arma `MenuStore`.
+    expect(s).toContain('{title}');
     expect(s).toContain('formatMoney(item.price)');
     expect(s).toContain('Agregar');
     expect(s).toContain('aria-label={`Agregar ${item.name} al carrito`}');
@@ -47,14 +50,35 @@ describe('6B.1R — ProductCard', () => {
 
   it('controla nombres y descripciones largas con line-clamp', () => {
     const s = comp('ProductCard');
-    // EXPERIMENTAL (rediseno-menu-fastfood, 17-09-2026): el nombre pasó de
-    // `font-semibold` a `font-display` (Bangers), la tipografía de alto
-    // impacto del rediseño. Lo que este test protege sigue siendo lo mismo:
-    // que el nombre se recorte a dos líneas.
-    expect(s).toMatch(/line-clamp-2[^"]*font-display|font-display[^"]*line-clamp-2/); // nombre
-    // `text-xs` y no `text-sm`: la tarjeta "out of bounds" deja el nombre y el
-    // precio más grandes, y la descripción baja de tamaño para que quepan.
-    expect(s).toMatch(/line-clamp-2 text-xs/); // descripción
+    // El nombre se recorta a dos líneas, en la letra de los platos.
+    expect(s).toMatch(/font-menu-dish line-clamp-2/);
+    // La descripción tiene más aire que antes (la tarjeta ocupa el ancho), pero
+    // sigue con tope: una descripción de un párrafo no empuja el precio fuera.
+    expect(s).toMatch(/line-clamp-4 text-sm/);
+  });
+
+  it('un plato con opciones las ofrece como una elección única, accesible', () => {
+    const s = comp('ProductCard');
+    expect(s).toContain('role="radiogroup"');
+    expect(s).toContain('role="radio"');
+    expect(s).toContain('aria-checked={selected}');
+    // La opción agotada se ve, tachada, pero no se puede elegir.
+    expect(s).toContain('disabled={!o.item.is_active}');
+    // Sin nada que elegir no hay selector: un plato normal no lleva un botón solo.
+    expect(s).toMatch(/hasChoice \? \(\s*<fieldset/);
+    // Lo que se agrega es la opción ELEGIDA, con su código y su nombre completo.
+    expect(s).toContain('onAdd(item.code)');
+  });
+
+  it('la foto entra creciendo una sola vez, y respeta a quien pidió menos movimiento', () => {
+    expect(comp('ProductCard')).toContain('<Reveal');
+    const reveal = comp('Reveal');
+    expect(reveal).toContain('IntersectionObserver');
+    expect(reveal).toContain('observer.disconnect()'); // una sola vez
+    const css = src('../../app/globals.css');
+    expect(css).toMatch(/prefers-reduced-motion: reduce[\s\S]*\.menu-reveal\s*{[\s\S]*transform: none/);
+    // Sin JavaScript nadie avisa que la foto llegó: la página la muestra de una.
+    expect(src('../../app/menu/page.tsx')).toContain('<noscript>');
   });
 
   it('un producto agotado no ofrece CTA activo', () => {
@@ -147,17 +171,28 @@ describe('6B.1R — header sin datos inventados', () => {
     ]) {
       expect(s, fake).not.toContain(fake);
     }
-    expect(s).toContain('Don Zarco'); // sí conserva la marca
+    // La marca ya no está escrita aquí: llega del perfil del restaurante.
+    expect(s).toContain('{restaurantName}');
+    // (los colores del tema se llaman `donzarco-*`: son clases, no la marca)
+    expect(s.replace(/donzarco-[a-z-]+/g, '')).not.toMatch(/zarco/i);
   });
 });
 
-describe('6B.1R — categorías reales en la barra', () => {
-  it('CategoryTabs se alimenta del catálogo real (sin etiquetas hardcodeadas falsas)', () => {
+describe('6B.1R — secciones reales en la barra', () => {
+  it('CategoryTabs se alimenta del catálogo real (sin etiquetas escritas a mano)', () => {
     const s = comp('CategoryTabs');
-    expect(s).toContain('CATEGORY_TABS');
-    for (const fake of ['Combos', 'Papas', 'Promos']) {
+    expect(s).toContain('sections.map');
+    expect(s).toContain('{section.label}');
+    for (const fake of ['Combos', 'Papas', 'Promos', 'Tablas', 'Bebidas']) {
       expect(s, fake).not.toContain(`>${fake}<`);
     }
+  });
+
+  it('las secciones salen de las categorías del POS; «Combos» y «Reservas» solo si existen', () => {
+    const s = comp('MenuStore');
+    expect(s).toContain('...(vendibles.length > 0 ? [{ id: COMBOS_SECTION');
+    expect(s).toContain('...sections.map(({ id, label }) => ({ id, label }))');
+    expect(s).toContain('...(reservations ? [{ id: RESERVATIONS_SECTION');
   });
 });
 
@@ -176,11 +211,24 @@ describe('6B.1R — accesibilidad básica', () => {
     }
   });
 
-  it('las pestañas de categoría exponen semántica de tablist', () => {
+  it('la barra de secciones es navegación: enlaces a cada sección, con la actual marcada', () => {
+    // Ya no filtra el catálogo (eso era un `tablist`): lleva a cada sección de
+    // una sola página, así que es un `<nav>` de enlaces.
     const s = comp('CategoryTabs');
-    expect(s).toContain('role="tablist"');
-    expect(s).toContain('role="tab"');
-    expect(s).toContain('aria-selected');
+    expect(s).toContain('<nav');
+    expect(s).toContain('aria-label="Secciones del menú"');
+    expect(s).toContain('href={`#${section.id}`}');
+    expect(s).toContain("aria-current={selected ? 'location' : undefined}");
+  });
+
+  it('el formulario de reserva rotula cada campo y anuncia sus errores', () => {
+    const s = comp('ReservationSection');
+    for (const id of ['reserva-dia', 'reserva-hora', 'reserva-nombre', 'reserva-nota']) {
+      expect(s, id).toContain(`htmlFor="${id}"`);
+      expect(s, id).toContain(`id="${id}"`);
+    }
+    expect(s).toContain('aria-invalid');
+    expect(s).toContain('aria-label="Una persona más"');
   });
 });
 
@@ -235,6 +283,9 @@ describe('6B.1R — seguridad: el servidor sigue siendo autoridad de precio', ()
       'CategoryTabs',
       'QuantityControl',
       'SearchBar',
+      'PromoCard',
+      'ReservationSection',
+      'Reveal',
     ]) {
       const s = comp(c);
       expect(s, c).not.toContain('SERVICE_ROLE');
@@ -273,11 +324,13 @@ describe('6B.2A — CartPanel responsive (bottom-sheet móvil / drawer desktop)'
 });
 
 describe('6B.2A — catálogo responsive (grid)', () => {
-  it('móvil = 1 columna, tablet = 2, desktop amplio = 3', () => {
+  it('móvil = 1 columna, tablet = 2, desktop amplio = 3, con la última fila centrada', () => {
     const s = comp('MenuStore');
-    expect(s).toContain('grid-cols-1');
-    expect(s).toContain('sm:grid-cols-2');
-    expect(s).toContain('xl:grid-cols-3');
+    expect(s).toContain('*:w-full');
+    expect(s).toContain('sm:*:w-[calc(50%-1rem)]');
+    expect(s).toContain('xl:*:w-[calc(33.333%-1.35rem)]');
+    // Una sección con un solo plato queda en el medio, no arrinconada.
+    expect(s).toMatch(/CARD_GRID =\s*'flex flex-wrap justify-center/);
   });
 
   it('mantiene un ancho máximo razonable centrado', () => {
@@ -296,11 +349,9 @@ describe('6B.2A — catálogo responsive (grid)', () => {
 describe('6B.2A — sticky y sesión intactos', () => {
   it('la barra de búsqueda + categorías sigue sticky con fondo propio', () => {
     const s = comp('MenuStore');
-    // EXPERIMENTAL (rediseno-menu-fastfood, 17-09-2026): el fondo crema de
-    // siempre pasó a un vidrio oscuro (`bg-donzarco-ink/85`), para no chocar
-    // con el degradado inmersivo de `page.tsx`. Sigue siendo sticky y con
-    // fondo propio, que es lo que este test protege.
-    expect(s).toMatch(/sticky top-0[^"]*bg-donzarco-ink\/85/);
+    // Un vidrio oscuro del color de la carta. Sigue siendo sticky y con fondo
+    // propio, que es lo que este test protege.
+    expect(s).toMatch(/sticky top-0[^"]*bg-menu-night\/90/);
     // El buscador se retiró el 17-09-2026 (el catálogo son 15 productos en
     // tres categorías: se recorre antes de terminar de escribir). Lo que la
     // barra conserva —y este test protege— son las categorías.
@@ -354,7 +405,7 @@ describe('07-09 — agotados: se ven en la vitrina, no entran al carrito', () =>
   it('la parrilla y el carrito SÍ ven la lista entera: hay que pintarlo y nombrarlo', () => {
     const s = comp('MenuStore');
     // Sin esto el agotado no se pintaría en gris: volvería a desaparecer.
-    expect(s).toContain('groupByCategory(filterMenuItems(visibles, category))');
+    expect(s).toContain('groupByCategory(visibles)');
     // Y `visibles` solo quita lo que va en combo (14-09), NUNCA lo agotado: si
     // filtrara por `is_active`, el gris volvería a desaparecer por la puerta de atrás.
     const visibles = s.slice(s.indexOf('const visibles = useMemo'), s.indexOf('const aLaVenta'));
@@ -374,26 +425,22 @@ describe('07-09 — agotados: se ven en la vitrina, no entran al carrito', () =>
 });
 
 /**
- * ENCABEZADOS DE CATEGORÍA ANCLADOS (EXPERIMENTAL, rediseno-menu-fastfood,
- * 17-09-2026).
+ * LAS SECCIONES Y LA BARRA (2026-10-13).
  *
- * El arrastre —cada título se queda bajo la barra hasta que el siguiente lo
- * empuja— es de CSS puro, y por eso se rompe en silencio: no hay error, no hay
- * excepción, simplemente el título deja de quedarse quieto. Estos tests fijan
- * las tres condiciones que lo sostienen.
+ * La carta es una sola página. La barra fija lleva a cada sección y marca la
+ * que se está viendo; cada sección tiene que detenerse justo DEBAJO de la
+ * barra, no tapada por ella. Como casi todo aquí es CSS, se rompe en silencio:
+ * no hay error, el título simplemente queda escondido. Estos tests fijan lo que
+ * lo sostiene.
  */
-describe('17-09 — encabezados de categoría anclados', () => {
-  it('cada encabezado es sticky, y NO a top-0: iría tapado por la barra', () => {
+describe('secciones de la carta y barra fija', () => {
+  it('cada sección se detiene debajo de la barra, no tapada por ella', () => {
     const s = comp('MenuStore');
-    expect(s).toContain('sticky top-[var(--menu-bar-h)]');
+    expect((s.match(/scroll-mt-\[var\(--menu-bar-h\)\]/g) ?? []).length).toBeGreaterThanOrEqual(3);
   });
 
-  it('el encabezado pasa por DEBAJO de la barra, no por encima', () => {
-    const s = comp('MenuStore');
-    // La barra es z-20; el encabezado tiene que quedarse por debajo al ser
-    // empujado, o se montaría sobre el buscador.
-    expect(s).toMatch(/sticky top-0 z-20/); // la barra
-    expect(s).toMatch(/sticky top-\[var\(--menu-bar-h\)\] z-10/); // el encabezado
+  it('la barra queda por encima del contenido', () => {
+    expect(comp('MenuStore')).toMatch(/sticky top-0 z-20/);
   });
 
   it('`--menu-bar-h` se mide del DOM, no es un número mágico escrito a mano', () => {
@@ -404,27 +451,66 @@ describe('17-09 — encabezados de categoría anclados', () => {
     expect(s).toContain('ResizeObserver');
   });
 
-  it('la tarjeta encierra su apilado: la foto no puede montarse sobre el título', () => {
-    // La foto flotante lleva `z-10` para montarse sobre SU tarjeta. El
-    // encabezado también es `z-10`. Sin un plano propio en la tarjeta, ambos
-    // compiten en el mismo nivel y gana la foto por ir después en el
-    // documento: al desplazarse, las fotos tapaban el título de la categoría.
-    const s = comp('ProductCard');
-    expect(s).toMatch(/<article\s+className={`relative z-0 /);
+  it('la sección actual la decide el navegador, sin escuchar el scroll', () => {
+    const s = stripComments(comp('MenuStore'));
+    expect(s).toContain('IntersectionObserver');
+    expect(s).not.toMatch(/addEventListener\(\s*'scroll'/);
   });
 
-  it('ningún ancestro del encabezado recorta con overflow: rompería el anclaje', () => {
-    // `position: sticky` deja de funcionar si CUALQUIER ancestro tiene overflow
-    // distinto de `visible`. El fondo inmersivo de `page.tsx` es el candidato
-    // natural a llevarse un `overflow-hidden` "para recortar la textura": este
-    // test existe para que ese día se entere alguien.
-    const page = src('../../app/menu/page.tsx');
-    expect(page).not.toContain('overflow-hidden');
+  it('mover la pestaña marcada no corta el desplazamiento de la página', () => {
+    // `scrollIntoView` sobre la pestaña cancela, en Chrome, el desplazamiento
+    // suave que el propio toque acaba de iniciar.
+    const s = stripComments(comp('CategoryTabs'));
+    expect(s).toContain('nav.scrollTo(');
+    expect(s).not.toContain('scrollIntoView');
+  });
 
-    const store = comp('MenuStore');
-    // El contenedor del catálogo y las secciones tampoco.
-    const catalogo = store.slice(store.indexOf('max-w-5xl space-y-6'), store.indexOf('</section>'));
-    expect(catalogo).not.toContain('overflow-hidden');
+  it('la tarjeta encierra su apilado: la foto no puede montarse sobre la barra', () => {
+    const s = comp('ProductCard');
+    expect(s).toMatch(/<article className={`relative z-0 /);
+  });
+
+  it('ningún ancestro de la barra recorta con overflow: rompería el anclaje', () => {
+    // `position: sticky` deja de funcionar si CUALQUIER ancestro tiene overflow
+    // distinto de `visible`. El fondo de `page.tsx` es el candidato natural a
+    // llevarse un `overflow-hidden` «para recortar»: este test existe para que
+    // ese día se entere alguien.
+    expect(src('../../app/menu/page.tsx')).not.toContain('overflow-hidden');
+  });
+});
+
+/**
+ * UN PLATO CON OPCIONES ES UNA TARJETA, NO SEIS (2026-10-13).
+ */
+describe('platos con opciones y combos', () => {
+  it('MenuStore junta las opciones de un mismo plato antes de pintar', () => {
+    const s = comp('MenuStore');
+    expect(s).toContain('entries: groupVariants(group.items)');
+    expect(s).toContain("title={entry.kind === 'family' ? entry.name : entry.item.name}");
+  });
+
+  it('el carrito sigue siendo por producto: cada opción es su propia línea', () => {
+    const s = comp('MenuStore');
+    expect(s).toContain('quantityOf={cart.quantity}');
+    expect(s).toContain('onAdd={cart.add}');
+  });
+
+  it('un combo enseña TODO lo que trae, no una frase recortada', () => {
+    const s = comp('PromoCard');
+    expect(s).toContain('promotion.components.map');
+    expect(s).not.toContain('composeSummary');
+    expect(s).toContain('Agregar el combo');
+  });
+
+  it('la reserva solo se ofrece si el local la encendió y hay adónde mandarla', () => {
+    const page = src('../../app/menu/page.tsx');
+    expect(page).toContain('profile.reservationsEnabled');
+    expect(page).toMatch(/whatsappChatUrl !== null \|\| process\.env\.NODE_ENV !== 'production'/);
+    expect(comp('MenuStore')).toMatch(/\{reservations && \(/);
+    // El formulario no guarda nada por su cuenta: abre el chat con el mensaje.
+    const form = comp('ReservationSection');
+    expect(form).not.toMatch(/\bfetch\(/);
+    expect(form).toContain('reservationUrl(chatUrl, reservationMessage(fields, profile.locale))');
   });
 });
 

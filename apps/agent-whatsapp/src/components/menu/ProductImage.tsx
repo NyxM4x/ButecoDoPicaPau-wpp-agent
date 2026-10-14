@@ -5,10 +5,15 @@ import { useState } from 'react';
 import type { MenuItem } from '@/types';
 import { productImage } from '@/lib/menu/catalog';
 
+/**
+ * El fondo detrás de la foto (o del emoji, si no hay foto). Oscuro y cálido,
+ * como la carta: las fotos de los platos son recortes sin fondo, y sobre un
+ * color claro se verían pegadas en una etiqueta.
+ */
 const TONES: Record<MenuItem['category'], string> = {
-  plato: 'from-amber-100 to-amber-300',
-  bebida: 'from-sky-100 to-sky-300',
-  extra: 'from-orange-100 to-orange-300',
+  plato: 'from-menu-ember to-menu-night',
+  bebida: 'from-menu-ember to-menu-night',
+  extra: 'from-menu-ember to-menu-night',
 };
 
 /**

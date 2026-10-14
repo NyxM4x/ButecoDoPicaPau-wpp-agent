@@ -1,5 +1,4 @@
-import { handleGatewayTelegramAlert } from '@/lib/central/gateway';
-import { buildGatewayDeps } from '@/lib/central/gateway-deps';
+import { buildGatewayDeps, handleGatewayTelegramAlert } from '@/lib/central';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

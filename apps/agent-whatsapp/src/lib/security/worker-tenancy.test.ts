@@ -1,175 +1,92 @@
-import { describe, it, expect } from 'vitest';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { join, sep } from 'node:path';
+import { describe, expect, it } from 'vitest';
 
 /**
- * PRUEBA ARQUITECTONICA DEL REPOSITORIO — los Workers despiertan a SARCO.
+ * PRUEBA ARQUITECTÓNICA DEL REPOSITORIO — quién despierta al agente.
  *
- * ── Por que vive bajo `src/` y no dentro de cada Worker ─────────────────────
+ * El agente corre en Vercel y solo trabaja cuando lo llaman. Cuatro rutas
+ * internas reintentan lo que quedó pendiente, y alguien tiene que llamarlas
+ * cada minuto.
  *
- * Cada paquete de `cloudflare/` ya tiene su propio guardian, y esta bien que lo
- * tenga: viaja con el desplegable. Pero esos guardianes solo corren si alguien
- * se acuerda de ejecutar `npm test` DENTRO de cada carpeta, y el gate que se
- * ejecuta siempre —en CI, antes de un push, cuando alguien toca cualquier
- * cosa— es el `npm test` de la raiz, cuyo vitest solo mira `src/**`.
+ * ── Por qué ya no hay ningún Worker ─────────────────────────────────────────
  *
- * Un guardian que hay que acordarse de invocar no es un guardian.
+ * En la demo de la que nació este repositorio las llamaba un Worker de
+ * Cloudflare, en una cuenta compartida con otros restaurantes del mismo
+ * operador. Esa cuenta no es de este proyecto, y un `wrangler deploy` desde
+ * aquí podía pisar el Worker de otro (dos proyectos con el mismo `name` son el
+ * mismo Worker). Desde el 2026-10-13 las despierta el propio backend
+ * (`apps/backend/src/agent-wake`): este proyecto no usa Cloudflare.
  *
- * ── Que impide, exactamente ─────────────────────────────────────────────────
- *
- * El repositorio llego a `a3bd210` con DOS Workers completos cuyo
- * `WORKER_TICK_URL` apuntaba a `la-fija-orders.vercel.app`: otro despliegue
- * REAL del mismo operador, vivo en la misma cuenta de Vercel. Un
- * `wrangler deploy` no habria fallado. Habria publicado un Cron que cada minuto
- * llama al endpoint interno de otro restaurante con el Bearer de este, y en los
- * logs se habria visto como un tick sano.
- *
- * Esta prueba DESCUBRE los Workers recorriendo `cloudflare/`, asi que tambien
- * cubre el tercero que alguien anada manana sin leer esto.
+ * Esta prueba impide las dos formas de romper eso: que alguien vuelva a meter
+ * la configuración de un Worker, y que el backend despierte una ruta que el
+ * agente no tiene.
  */
 
-const RAIZ_WORKERS = fileURLToPath(new URL('../../../cloudflare', import.meta.url));
+const AGENT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const REPO_ROOT = path.resolve(AGENT_ROOT, '..', '..');
+const IGNORED_DIRS = new Set(['node_modules', '.next', '.git', '.local', 'dist', 'storage']);
 
-/** Hosts de OTROS despliegues del operador. Ninguno puede aparecer. */
-const HOSTS_AJENOS: readonly string[] = ['la-fija-orders', 'la-fija-restaurant', 'la-fija'];
-
-/** El unico destino admitido por los despertadores de este repositorio. */
-const HOST_SARCO = 'sarco-restaurant.vercel.app';
-
-/**
- * Ficheros que `wrangler` LEE o EMPAQUETA. El README queda fuera a proposito:
- * documenta, no se ejecuta, y un guardian que falla por un ejemplo en prosa
- * acaba desactivado.
- */
-function configuracionEjecutable(dirWorker: string): string[] {
-  const out: string[] = [];
-  for (const rel of ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml', 'package.json', '.dev.vars.example']) {
-    const ruta = join(dirWorker, rel);
-    if (existsSync(ruta)) out.push(ruta);
-  }
-  const src = join(dirWorker, 'src');
-  if (existsSync(src)) out.push(...ficherosDe(src));
-  return out;
+/** Todos los archivos del repositorio, sin lo generado ni lo instalado. */
+function repoFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    if (IGNORED_DIRS.has(name)) return [];
+    const full = path.join(dir, name);
+    return statSync(full).isDirectory() ? repoFiles(full) : [full];
+  });
 }
 
-function ficherosDe(dir: string): string[] {
-  const out: string[] = [];
-  for (const entrada of readdirSync(dir)) {
-    if (entrada === 'node_modules') continue;
-    const ruta = join(dir, entrada);
-    if (statSync(ruta).isDirectory()) out.push(...ficherosDe(ruta));
-    else out.push(ruta);
-  }
-  return out;
-}
+describe('este proyecto no usa Cloudflare', () => {
+  const files = repoFiles(REPO_ROOT);
+  const relative = (file: string) => path.relative(REPO_ROOT, file).replace(/\\/g, '/');
 
-/** Todo subdirectorio de `cloudflare/` con un manifiesto de Wrangler. */
-const WORKERS: readonly string[] = existsSync(RAIZ_WORKERS)
-  ? readdirSync(RAIZ_WORKERS)
-      .map((n) => join(RAIZ_WORKERS, n))
-      .filter((d) => statSync(d).isDirectory())
-      .filter((d) =>
-        ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'].some((m) => existsSync(join(d, m))),
-      )
-  : [];
-
-const corto = (ruta: string): string => ruta.split(sep).slice(-2).join('/');
-
-describe('los Cloudflare Workers del repositorio', () => {
-  it('se descubre al menos el despertador de Sarco', () => {
-    // Si esta lista se vacia, el resto de la suite pasaria sin comprobar nada.
-    expect(WORKERS.length).toBeGreaterThanOrEqual(1);
+  it('no hay configuración de ningún Worker en el repositorio', () => {
+    const workers = files.filter((file) => /(^|[\\/])wrangler\.(jsonc?|toml)$/.test(file)).map(relative);
+    expect(workers).toEqual([]);
   });
 
-  /**
-   * UN solo Cron Trigger en todo el repositorio (14-09-2026).
-   *
-   * El plan Free de Cloudflare admite cinco por CUENTA, y la cuenta la comparte
-   * otro restaurante que ya usa tres. Con cuatro Workers, dos de Sarco se
-   * quedaron sin cron y un comprobante pagado quedo trabado sin que nadie lo
-   * retomara. Cada expresion cuenta, este en el Worker que este.
-   *
-   * Si algun dia hace falta un segundo cron, que sea una decision a la vista
-   * —cambiando este numero y contando los lugares libres de la cuenta—, no algo
-   * que se descubre cuando `wrangler deploy` lo rechaza.
-   */
-  it('entre todos declaran UN solo Cron Trigger', () => {
-    let total = 0;
-    for (const dirWorker of WORKERS) {
-      const manifiesto = join(dirWorker, 'wrangler.jsonc');
-      if (!existsSync(manifiesto)) continue;
-      const raw = readFileSync(manifiesto, 'utf8');
-      for (const [, lista] of raw.matchAll(/"crons"\s*:\s*\[([^\]]*)\]/g)) {
-        total += (lista.match(/"[^"]*"/g) ?? []).length;
-      }
+  it('no queda ninguna carpeta `cloudflare/`', () => {
+    const inside = files.filter((file) => /[\\/]cloudflare[\\/]/.test(file)).map(relative);
+    expect(inside).toEqual([]);
+  });
+
+  it('ningún package.json depende de `wrangler`', () => {
+    const offenders = files
+      .filter((file) => path.basename(file) === 'package.json')
+      .filter((file) => {
+        const pkg = JSON.parse(readFileSync(file, 'utf8')) as Record<string, Record<string, string> | undefined>;
+        return ['dependencies', 'devDependencies'].some((key) => pkg[key] && 'wrangler' in pkg[key]!);
+      })
+      .map(relative);
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('el backend despierta rutas que el agente sí tiene', () => {
+  const wakeSource = path.join(REPO_ROOT, 'apps', 'backend', 'src', 'agent-wake', 'agent-wake.ts');
+
+  /** Las rutas que llama el despertador, leídas de su código. */
+  function wokenPaths(): string[] {
+    const source = readFileSync(wakeSource, 'utf8');
+    return [...source.matchAll(/path:\s*'(\/internal\/[^']+)'/g)].map((match) => match[1]);
+  }
+
+  it('son exactamente las cuatro de recuperación', () => {
+    expect(wokenPaths().sort()).toEqual([
+      '/internal/order-notifications/worker/tick',
+      '/internal/orders/expiry/worker/tick',
+      '/internal/telegram-alerts/worker/tick',
+      '/internal/webhook-events/worker/tick',
+    ]);
+  });
+
+  it('cada una existe en la app, y responde a POST', () => {
+    for (const wokenPath of wokenPaths()) {
+      // El gateway del agente es `<agente>/api`: `/internal/x` es `src/app/api/internal/x/route.ts`.
+      const route = path.join(AGENT_ROOT, 'src', 'app', 'api', ...wokenPath.split('/').filter(Boolean), 'route.ts');
+      expect(existsSync(route), `${wokenPath} no existe en la app`).toBe(true);
+      expect(readFileSync(route, 'utf8'), wokenPath).toMatch(/export async function POST\(/);
     }
-    expect(total).toBe(1);
   });
-
-  /**
-   * Toda ruta `worker/tick` de la app tiene quien la despierte.
-   *
-   * El barrido de efectivo estuvo tres dias escrito, probado y sin que nadie lo
-   * llamara. Con un solo Worker para todo, el riesgo es el mismo con otra
-   * forma: una ruta nueva que nadie anade a su lista. Esta prueba corre con el
-   * `npm test` de la raiz, que es el que se ejecuta siempre.
-   */
-  it('ninguna ruta `worker/tick` de la app se queda sin despertador', () => {
-    const app = fileURLToPath(new URL('../../app', import.meta.url));
-    const rutas = ficherosDe(join(app, 'api', 'internal'))
-      .filter((f) => f.endsWith(`${sep}worker${sep}tick${sep}route.ts`))
-      .map((f) => '/' + f.slice(app.length + 1).split(sep).slice(0, -1).join('/'));
-    expect(rutas.length).toBeGreaterThanOrEqual(4);
-
-    const fuentes = WORKERS.flatMap((d) =>
-      existsSync(join(d, 'src')) ? ficherosDe(join(d, 'src')) : [],
-    )
-      .map((f) => readFileSync(f, 'utf8'))
-      .join('\n');
-
-    const sinDespertador = rutas.filter((ruta) => !fuentes.includes(`'${ruta}'`));
-    expect(sinDespertador).toEqual([]);
-  });
-
-  for (const dirWorker of WORKERS) {
-    const nombreDir = dirWorker.split(sep).pop()!;
-
-    describe(nombreDir, () => {
-      const ejecutables = configuracionEjecutable(dirWorker);
-
-      it('declara al menos un fichero de configuracion ejecutable', () => {
-        expect(ejecutables.length).toBeGreaterThan(0);
-      });
-
-      it('ninguna configuracion ejecutable menciona otro despliegue', () => {
-        const culpables: string[] = [];
-        for (const ruta of ejecutables) {
-          const contenido = readFileSync(ruta, 'utf8').toLowerCase();
-          for (const ajeno of HOSTS_AJENOS) {
-            if (contenido.includes(ajeno)) culpables.push(`${corto(ruta)} → ${ajeno}`);
-          }
-        }
-        expect(culpables).toEqual([]);
-      });
-
-      it('el nombre desplegable lleva el prefijo `sarco-`', () => {
-        // Sin prefijo, dos restaurantes en la misma cuenta de Cloudflare son el
-        // MISMO Worker: el segundo deploy sobrescribe al primero en silencio.
-        const manifiesto = join(dirWorker, 'wrangler.jsonc');
-        const raw = readFileSync(manifiesto, 'utf8');
-        const nombre = /"name"\s*:\s*"([^"]+)"/.exec(raw)?.[1] ?? '';
-        expect(nombre).toMatch(/^sarco-/);
-      });
-
-      it('toda URL absoluta de la configuracion apunta al dominio de Sarco', () => {
-        for (const ruta of ejecutables) {
-          const urls = readFileSync(ruta, 'utf8').match(/https?:\/\/[^"'\s]+/g) ?? [];
-          for (const url of urls) {
-            expect(`${corto(ruta)} → ${url}`).toContain(HOST_SARCO);
-          }
-        }
-      });
-    });
-  }
 });

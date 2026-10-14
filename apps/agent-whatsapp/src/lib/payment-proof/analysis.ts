@@ -58,6 +58,7 @@
  * convertiría cada recorte a medias en una acusación de fraude, y ese es
  * exactamente el aviso que se aprende a ignorar.
  */
+import { utcOffsetMs } from '@/lib/restaurant/hours';
 import {
   matchesAccount,
   matchesBank,
@@ -225,13 +226,6 @@ export interface ProofJudgement {
 }
 
 /**
- * Bolivia entera va en UTC−4 todo el año, sin horario de verano. Es una
- * constante y no una consulta a `Intl` a propósito: un desfase de zona no puede
- * depender de la configuración de la máquina que ejecute esto.
- */
-const BOLIVIA_UTC_OFFSET_MS = 4 * 60 * 60 * 1000;
-
-/**
  * Cuánto puede separarse la hora del comprobante de su llegada antes de
  * sospechar. Seis horas es holgado a propósito: el caso normal son minutos, y lo
  * que se busca es el comprobante de anteayer reenviado, no un reloj mal puesto.
@@ -250,7 +244,7 @@ export function parseBolivianLocalTime(value: string | null): number | null {
   if (!m) return null;
   const utc = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
   if (Number.isNaN(utc)) return null;
-  return utc + BOLIVIA_UTC_OFFSET_MS;
+  return utc + utcOffsetMs(utc);
 }
 
 /**

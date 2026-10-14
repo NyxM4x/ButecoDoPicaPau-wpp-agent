@@ -6,7 +6,7 @@ import { LoginForm } from '@/components/dashboard/LoginForm';
 export const dynamic = 'force-dynamic';
 
 export const metadata = {
-  title: 'Ingresar — Don Zarco Orders',
+  title: 'Ingresar — Pedidos',
 };
 
 export default async function LoginPage() {

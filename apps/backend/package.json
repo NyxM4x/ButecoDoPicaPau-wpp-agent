@@ -12,6 +12,7 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "start:local": "nest build && node --env-file=.env.dev dist/main",
+    "baneco:check": "nest build && node --env-file=.env.dev scripts/check-baneco.mjs",
     "lint": "eslint \"{src,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",

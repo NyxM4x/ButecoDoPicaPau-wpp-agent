@@ -6,7 +6,7 @@ import {
   OPENAI_DEFAULT_MODEL,
   OPENAI_RESPONSES_URL,
 } from '@/lib/agent/openai/adapter';
-import { DON_ZARCO_MAX_OUTPUT_TOKENS, DON_ZARCO_SYSTEM_PROMPT } from '@/lib/agent/business/prompt';
+import { AGENT_MAX_OUTPUT_TOKENS, baseSystemPrompt } from '@/lib/agent/business/prompt';
 import { createAnswerDirectlyAction } from '@/lib/agent/tools/answer-directly';
 import { createGetMenuItemsTool, createSendMenuTool } from '@/lib/agent/tools/menu-tools';
 import { createRequestHumanAction, REQUEST_HUMAN } from '@/lib/agent/tools/request-human';
@@ -454,12 +454,12 @@ async function seleccionar(caso: Caso): Promise<Resultado> {
   const openai = createOpenAiModel({ apiKey, model, fetchImpl: contandoTokens });
 
   const messages: AgentModelInput[] = [
-    { role: 'system', content: DON_ZARCO_SYSTEM_PROMPT },
+    { role: 'system', content: baseSystemPrompt() },
     ...buildSelectionContext(caso.historial ?? [], { inboundText: caso.inbound }),
   ];
 
   const respuesta = await openai.complete(messages, {
-    maxOutputTokens: DON_ZARCO_MAX_OUTPUT_TOKENS,
+    maxOutputTokens: AGENT_MAX_OUTPUT_TOKENS,
     tools: definicionesReales(),
     toolChoice: 'required',
     parallelToolCalls: false,

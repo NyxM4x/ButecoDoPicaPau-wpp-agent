@@ -29,6 +29,9 @@ import { ReplaceOrderDto } from './dto/replace-order.dto';
 import { AttachLocationDto } from './dto/attach-location.dto';
 import { KitchenNoteDto } from './dto/kitchen-note.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { StaffActionDto } from './dto/staff-action.dto';
+import { STAFF_ACTIONS, StaffAction } from '../staff-notice/staff-actions';
+import { NotFoundDomainError } from '../common/exceptions/domain-exception';
 
 @Controller()
 export class OrdersController {
@@ -146,6 +149,25 @@ export class OrdersController {
   @UseGuards(ServiceOrStaffAuthGuard)
   cancelCash(@Param('id', ParseUUIDPipe) id: string) {
     return this.orders.cancelCash(id);
+  }
+
+  /**
+   * Un toque en los botones del aviso de Telegram (modo «sin POS»). Lo llama el
+   * agente con su token de servicio: `:action` es `ready`, `out` o `delivered`.
+   * Devuelve el aviso actualizado, que el agente pone en lugar del anterior.
+   */
+  @Post('orders/:id/staff/:action')
+  @UseGuards(ServiceAuthGuard)
+  @HttpCode(200)
+  staffAction(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('action') action: string,
+    @Body() dto: StaffActionDto,
+  ) {
+    if (!(STAFF_ACTIONS as readonly string[]).includes(action)) {
+      throw new NotFoundDomainError('staff_action', action);
+    }
+    return this.orders.staffAction(id, action as StaffAction, dto?.actor ?? null);
   }
 
   @Patch('orders/:id/status')

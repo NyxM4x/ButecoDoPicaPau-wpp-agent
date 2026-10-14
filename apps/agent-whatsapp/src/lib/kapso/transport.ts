@@ -1,10 +1,12 @@
 import { normalizePhone } from '@/lib/phone';
 import {
+  buildImageByIdPayload,
   buildImagePayload,
   buildLocationRequestPayload,
   buildMenuCtaPayload,
   buildReplyButtonsPayload,
   buildTextPayload,
+  kapsoMediaUploadResponseSchema,
   kapsoSendResponseSchema,
   type ReplyButton,
 } from './messages';
@@ -36,6 +38,15 @@ export type KapsoSendResult =
 
 /** Alias histórico (Fase 3.3A): el resultado es el mismo para todo envío. */
 export type SendLocationResult = KapsoSendResult;
+
+/** Resultado de subir un archivo a la Media API: su id, o el mismo tipo de error que un envío. */
+export type KapsoMediaUploadResult =
+  | { ok: true; mediaId: string }
+  | Extract<KapsoSendResult, { ok: false }>;
+
+/** Lo que WhatsApp acepta como imagen y lo máximo que pesa (5 MB). */
+export const KAPSO_IMAGE_TYPES = ['image/png', 'image/jpeg'] as const;
+export const KAPSO_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 
 export interface KapsoTransportConfig {
   apiKey: string;
@@ -192,6 +203,95 @@ export function createKapsoTransport(cfg: KapsoTransportConfig) {
       let payload: ReturnType<typeof buildImagePayload>;
       try {
         payload = buildImagePayload(to, imageUrl, caption);
+      } catch {
+        return { ok: false, error: 'invalid_image' };
+      }
+      return postMessage(payload, {
+        phoneNumberId: options?.phoneNumberId,
+        timeoutMs: options?.timeoutMs,
+      });
+    },
+
+    /**
+     * Sube una imagen a la Media API y devuelve su id, para mandarla después
+     * con `sendImageById`. Es el camino de las imágenes PRIVADAS (el QR de pago
+     * que el POS guarda bajo llave): los bytes viajan aquí y nunca hace falta
+     * una dirección pública.
+     *
+     *   POST {baseUrl}/{phone_number_id}/media
+     *   multipart: messaging_product=whatsapp, type=image, file
+     *   Respuesta: { id }
+     *
+     * No lanza. Una imagen vacía, demasiado grande o de otro tipo es
+     * `invalid_image` SIN llamar a fetch.
+     */
+    async uploadImage(
+      bytes: Uint8Array,
+      contentType: string,
+      options?: SendOptions,
+    ): Promise<KapsoMediaUploadResult> {
+      const isImage = (KAPSO_IMAGE_TYPES as readonly string[]).includes(contentType);
+      if (!isImage || bytes.byteLength === 0 || bytes.byteLength > KAPSO_IMAGE_MAX_BYTES) {
+        return { ok: false, error: 'invalid_image' };
+      }
+      const phoneNumberId = options?.phoneNumberId || cfg.phoneNumberId;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), options?.timeoutMs ?? defaultTimeoutMs);
+
+      try {
+        const form = new FormData();
+        form.append('messaging_product', 'whatsapp');
+        form.append('type', 'image');
+        // Copia a un búfer propio: un `Buffer` de Node puede ser una vista de otro más grande.
+        form.append(
+          'file',
+          new Blob([Uint8Array.from(bytes)], { type: contentType }),
+          contentType === 'image/png' ? 'image.png' : 'image.jpg',
+        );
+
+        // Sin `content-type`: lo pone fetch, con el separador del multipart.
+        const res = await fetchImpl(`${cfg.baseUrl}/${phoneNumberId}/media`, {
+          method: 'POST',
+          headers: { 'x-api-key': cfg.apiKey },
+          body: form,
+          signal: controller.signal,
+        });
+        if (!res.ok) return { ok: false, error: 'http_error', status: res.status };
+
+        let json: unknown;
+        try {
+          json = await res.json();
+        } catch {
+          return { ok: false, error: 'invalid_response' };
+        }
+        const parsed = kapsoMediaUploadResponseSchema.safeParse(json);
+        if (!parsed.success) return { ok: false, error: 'invalid_response' };
+        return { ok: true, mediaId: parsed.data.id };
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return { ok: false, error: 'timeout' };
+        }
+        return { ok: false, error: 'network_error' };
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+
+    /**
+     * Envía una imagen ya subida (por su id de la Media API) con caption y
+     * devuelve el wamid. Mismo contrato que `sendImage`.
+     */
+    async sendImageById(
+      customerPhone: string,
+      mediaId: string,
+      caption: string,
+      options?: SendOptions,
+    ): Promise<KapsoSendResult> {
+      const to = normalizePhone(customerPhone);
+      if (!to) return { ok: false, error: 'invalid_phone' };
+      let payload: ReturnType<typeof buildImageByIdPayload>;
+      try {
+        payload = buildImageByIdPayload(to, mediaId, caption);
       } catch {
         return { ok: false, error: 'invalid_image' };
       }

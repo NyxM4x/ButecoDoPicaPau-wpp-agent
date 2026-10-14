@@ -1,0 +1,39 @@
+{
+  "_borrador": "BORRADOR para ver el diseño de la carta (2026-10-13). Las fotos de las tablas son las del cliente. TODO LO DEMÁS ES DE RELLENO: los nombres de las carnes, las descripciones, los precios, las bebidas y el combo. Antes de publicar hay que reemplazarlo por la carta real. No cargar este archivo en producción.",
+  "restaurant": {
+    "name": "Buteco do Pica-Pau"
+  },
+  "settings": {
+    "pickupEnabled": true,
+    "ordersPaused": false,
+    "requiresCashRegister": false
+  },
+  "categories": [
+    { "name": "Tablas", "sortOrder": 10 },
+    { "name": "Bebidas", "sortOrder": 20 }
+  ],
+  "products": [
+    { "code": "tabla_1", "name": "Tabla - Pollo crocante", "category": "Tablas", "price": 60, "sortOrder": 10, "image": "tablita1.webp", "description": "Trozos de pollo crocante con arroz, plátano frito y limón." },
+    { "code": "tabla_2", "name": "Tabla - Costilla", "category": "Tablas", "price": 60, "sortOrder": 20, "image": "tablita2.webp", "description": "Costilla cocida a fuego lento con arroz, plátano frito y limón." },
+    { "code": "tabla_4", "name": "Tabla - Carne de res", "category": "Tablas", "price": 60, "sortOrder": 30, "image": "tablita4.webp", "description": "Carne de res jugosa con arroz, plátano frito y limón." },
+    { "code": "tabla_5", "name": "Tabla - Carne 4 (falta)", "category": "Tablas", "price": 60, "sortOrder": 40, "image": "tablita1.webp", "description": "Falta el nombre y la foto de esta carne. Con arroz, plátano frito y limón." },
+    { "code": "tabla_6", "name": "Tabla - Carne 5 (falta)", "category": "Tablas", "price": 60, "sortOrder": 50, "image": "tablita2.webp", "description": "Falta el nombre y la foto de esta carne. Con arroz, plátano frito y limón." },
+    { "code": "tabla_7", "name": "Tabla - Carne 6 (falta)", "category": "Tablas", "price": 60, "sortOrder": 60, "image": "tablita4.webp", "available": false, "description": "Falta el nombre y la foto de esta carne. Con arroz, plátano frito y limón." },
+
+    { "code": "refresco_personal", "name": "Gaseosa - Personal", "category": "Bebidas", "price": 8, "sortOrder": 10, "description": "Bien helada." },
+    { "code": "refresco_2l", "name": "Gaseosa - 2 litros", "category": "Bebidas", "price": 18, "sortOrder": 20, "description": "Para compartir." },
+    { "code": "agua_sin_gas", "name": "Agua sin gas", "category": "Bebidas", "price": 6, "sortOrder": 30 }
+  ],
+  "promotions": [
+    {
+      "name": "Combo para dos",
+      "description": "Dos tablas y una gaseosa de 2 litros",
+      "promoPrice": 125,
+      "items": [
+        { "code": "tabla_1", "quantity": 1 },
+        { "code": "tabla_2", "quantity": 1 },
+        { "code": "refresco_2l", "quantity": 1 }
+      ]
+    }
+  ]
+}

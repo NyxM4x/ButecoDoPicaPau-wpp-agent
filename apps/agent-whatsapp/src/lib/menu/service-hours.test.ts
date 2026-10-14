@@ -81,7 +81,7 @@ describe('puede que la plancha siga prendida (03:50–04:15)', () => {
     // preguntar si la plancha sigue prendida.
     const aviso = serviceNoticeAt(enBolivia('2026-09-03T08:05:00.000Z'));
     expect(aviso?.body).toContain('consultamos');
-    expect(aviso?.body).toContain('plancha');
+    expect(aviso?.body).toContain('cocina sigue abierta');
     expect(aviso?.body).toContain('04:00');
   });
 

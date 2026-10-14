@@ -10,8 +10,11 @@ import {
 } from './catalog';
 import {
   CENTRAL_CLOSED,
+  CENTRAL_DELIVERY_DISABLED,
   CENTRAL_PAUSED,
+  CENTRAL_PAYMENT_METHOD_DISABLED,
   CENTRAL_PENDING_REVIEW,
+  CENTRAL_PICKUP_DISABLED,
   createCentralWebOrder,
   idempotencyKeyFor,
   toE164,
@@ -256,6 +259,9 @@ describe('pedido web por el backend central', () => {
     ['idempotency_key_reused', 'P1003'],
     ['closed', CENTRAL_CLOSED],
     ['orders_paused', CENTRAL_PAUSED],
+    ['pickup_disabled', CENTRAL_PICKUP_DISABLED],
+    ['delivery_disabled', CENTRAL_DELIVERY_DISABLED],
+    ['payment_method_disabled', CENTRAL_PAYMENT_METHOD_DISABLED],
   ])('traduce %s del backend a %s', async (code, expected) => {
     const { request } = fakeBackend(centralError(409, code));
     const outcome = await createCentralWebOrder(PARAMS, { request, findSessionPhone });
@@ -295,6 +301,7 @@ function gatewayDeps(over: Partial<GatewayDeps> = {}): GatewayDeps {
     authToken: 'secreto',
     sendText: vi.fn(async () => ({ ok: true as const, wamid: 'wamid.T' })),
     sendImage: vi.fn(async () => ({ ok: true as const, wamid: 'wamid.I' })),
+    sendPosImage: vi.fn(async () => ({ ok: true as const, wamid: 'wamid.P' })),
     sendButtons: vi.fn(async () => ({ ok: true as const, wamid: 'wamid.B' })),
     sendLocationRequest: vi.fn(async () => ({ ok: true as const, wamid: 'wamid.L' })),
     sendTelegram: vi.fn(async () => true),
@@ -337,6 +344,38 @@ describe('gateway: lo que el backend pide enviar', () => {
     );
     expect(await res.json()).toEqual({ externalMessageId: 'wamid.I' });
     expect(deps.sendImage).toHaveBeenCalledWith('+59170010001', 'https://x.test/qr.png', 'Tu QR');
+    expect(deps.sendPosImage).not.toHaveBeenCalled();
+  });
+
+  it('con una ruta del POS en imageUrl (el QR de pago) la descarga y la sube, no la manda como enlace', async () => {
+    const deps = gatewayDeps();
+    const res = await handleGatewayMessage(
+      post({ to: '+59170010001', text: 'Tu QR', imageUrl: '/orders/o-1/qr-image' }),
+      deps,
+    );
+    expect(await res.json()).toEqual({ externalMessageId: 'wamid.P' });
+    expect(deps.sendPosImage).toHaveBeenCalledWith('+59170010001', '/orders/o-1/qr-image', 'Tu QR');
+    expect(deps.sendImage).not.toHaveBeenCalled();
+  });
+
+  it('rechaza una imageUrl que no es ni ruta del POS ni https, sin enviar nada', async () => {
+    const deps = gatewayDeps();
+    for (const imageUrl of ['http://x.test/qr.png', '//otro.test/qr.png', 'qr.png', '/orders/../secreto']) {
+      const res = await handleGatewayMessage(post({ to: '+59170010001', text: 'Tu QR', imageUrl }), deps);
+      expect(res.status).toBe(400);
+    }
+    expect(deps.sendImage).not.toHaveBeenCalled();
+    expect(deps.sendPosImage).not.toHaveBeenCalled();
+    expect(deps.sendText).not.toHaveBeenCalled();
+  });
+
+  it('si el POS no entrega la imagen pide reintento; si entrega algo que no es una imagen, no', async () => {
+    const posCaido = gatewayDeps({ sendPosImage: vi.fn(async () => ({ ok: false as const, error: 'pos_image_unavailable' })) });
+    const noEsImagen = gatewayDeps({ sendPosImage: vi.fn(async () => ({ ok: false as const, error: 'invalid_image' })) });
+    const body = { to: '+59170010001', text: 'Tu QR', imageUrl: '/orders/o-1/qr-image' };
+
+    expect((await handleGatewayMessage(post(body), posCaido)).status).toBe(502);
+    expect((await handleGatewayMessage(post(body), noEsImagen)).status).toBe(422);
   });
 
   it('con buttons envía el texto con los botones de respuesta', async () => {
@@ -455,13 +494,79 @@ describe('ubicación de WhatsApp → backend central', () => {
     expect((await attachCentralLocation(input, { request })).result).toBe('invalid_status');
   });
 
-  it('una carrera con otro proceso es transitoria; lo demás sube', async () => {
+  it('traduce los rechazos del contrato; lo demás sube', async () => {
     const { attachCentralLocation } = await import('./location');
-    const carrera = backend(waiting, centralError(409, 'status_conflict'));
-    expect((await attachCentralLocation(input, { request: carrera.request })).result).toBe('concurrent_update');
+    // Los tres `code` que `POST /orders/:id/location` puede devolver con 409.
+    const casos = [
+      ['location_conflict', 'concurrent_update'],
+      ['location_not_expected', 'invalid_status'],
+      ['location_already_attached', 'already_attached'],
+    ] as const;
+    for (const [code, esperado] of casos) {
+      const { request } = backend(waiting, centralError(409, code));
+      expect((await attachCentralLocation(input, { request })).result, code).toBe(esperado);
+    }
 
     const caido = backend(waiting, centralError(0, 'central_unreachable'));
     await expect(attachCentralLocation(input, { request: caido.request })).rejects.toThrow();
+  });
+});
+
+describe('cotizar un punto sin pedido → POST /delivery/quotes', () => {
+  const input = { customerPhoneDigits: '59170010001', sourceMessageId: 'wamid.PIN', latitude: -17.8, longitude: -63.19 };
+
+  function backend(quote: { status: number; body: unknown } | Error) {
+    const calls: Array<{ path: string; init?: { headers?: Record<string, string>; body?: unknown } }> = [];
+    const request = (async (path: string, init?: { headers?: Record<string, string>; body?: unknown }) => {
+      calls.push({ path, init });
+      if (path === '/customers/find-or-create') return { status: 201, body: { id: 'cust-1' } };
+      if (quote instanceof Error) throw quote;
+      return quote;
+    }) as CentralRequestFn;
+    return { request, calls };
+  }
+
+  it('devuelve el monto que cotizó el POS, con una clave por mensaje', async () => {
+    const { quoteCentralLocation } = await import('./location');
+    const { request, calls } = backend({
+      status: 201,
+      body: { id: 'q1', status: 'quoted', distanceMeters: 4080, feeAmount: 18, errorCode: null },
+    });
+
+    expect(await quoteCentralLocation(input, { request })).toEqual({ result: 'quoted', amount: 18 });
+
+    expect(calls[1].path).toBe('/delivery/quotes');
+    // La misma ubicación entregada dos veces por el webhook no se mide dos veces.
+    expect(calls[1].init?.headers).toEqual({ 'idempotency-key': 'quote:wamid.PIN' });
+    expect(calls[1].init?.body).toEqual({ customerId: 'cust-1', latitude: -17.8, longitude: -63.19 });
+  });
+
+  it('fuera del tarifario no hay precio: es fuera de cobertura', async () => {
+    const { quoteCentralLocation } = await import('./location');
+    const { request } = backend({
+      status: 201,
+      body: { id: 'q1', status: 'manual_quote', distanceMeters: 30000, feeAmount: null, errorCode: 'manual_quote' },
+    });
+    expect(await quoteCentralLocation(input, { request })).toEqual({ result: 'out_of_coverage' });
+  });
+
+  it('nunca lanza: un POS caído o una medición fallida son un failed', async () => {
+    const { quoteCentralLocation } = await import('./location');
+    const fallida = backend({ status: 201, body: { id: 'q1', status: 'failed', feeAmount: null, errorCode: 'distance_unavailable' } });
+    expect(await quoteCentralLocation(input, { request: fallida.request })).toEqual({
+      result: 'failed',
+      error: 'distance_unavailable',
+    });
+
+    const caido = backend(centralError(0, 'central_unreachable'));
+    expect(await quoteCentralLocation(input, { request: caido.request })).toEqual({
+      result: 'failed',
+      error: 'central_unreachable',
+    });
+
+    // Un "quoted" sin monto no es una cotización: no se le dice un precio al cliente.
+    const sinMonto = backend({ status: 201, body: { id: 'q1', status: 'quoted', feeAmount: null, errorCode: null } });
+    expect((await quoteCentralLocation(input, { request: sinMonto.request })).result).toBe('failed');
   });
 });
 

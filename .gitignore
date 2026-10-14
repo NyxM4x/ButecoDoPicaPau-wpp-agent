@@ -9,3 +9,11 @@ coverage/
 
 # Datos locales de desarrollo (base PostgreSQL, logs)
 .local/
+
+# Documentos que entregó el banco: se quedan en la PC, no en el repositorio.
+Api Market Baneco*.pdf
+Cobros QR - Baneco*.pptx
+
+# Fotos originales del menú: el menú usa las preparadas en demos/<slug>/images/
+# (scripts/prepare-menu-images.mjs). Ver apps/agent-whatsapp/public/menu/README.md.
+apps/agent-whatsapp/public/menu/Tablita*.png

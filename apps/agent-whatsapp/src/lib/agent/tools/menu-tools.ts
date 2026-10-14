@@ -1,3 +1,4 @@
+import { restaurantProfile } from '@/lib/restaurant/profile';
 import {
   NO_ARGUMENTS,
   type AgentTool,
@@ -113,7 +114,7 @@ export function createGetMenuItemsTool(catalog: MenuCatalogPort): AgentTool {
     definition: {
       name: GET_MENU_ITEMS,
       description:
-        'Consulta el menú real de Don Zarco: nombre, precio y categoría de cada ' +
+        `Consulta el menú real de ${restaurantProfile().name}: nombre, precio y categoría de cada ` +
         'producto disponible. Úsala SOLO para una pregunta PUNTUAL sobre uno o ' +
         'dos productos concretos QUE EL CLIENTE HAYA NOMBRADO: cuánto cuesta ' +
         'algo, si existe tal producto. Los productos los acota el cliente, no ' +
@@ -136,7 +137,7 @@ export function createGetMenuItemsTool(catalog: MenuCatalogPort): AgentTool {
       // cliente se queda sin respuesta — y eso sigue siendo un fallo.
       return {
         result: {
-          currency: 'Bs',
+          currency: restaurantProfile().currency.symbol,
           items,
           ...(promotions === null
             ? {}
@@ -258,7 +259,7 @@ export function createSendMenuTool(
     definition: {
       name: SEND_MENU,
       description:
-        'Envía al cliente el menú interactivo de Don Zarco por WhatsApp. Úsala ' +
+        `Envía al cliente el menú interactivo de ${restaurantProfile().name} por WhatsApp. Úsala ` +
         'SIEMPRE que la respuesta tendría que enumerar VARIOS productos, una ' +
         'CATEGORÍA entera o lo que hay disponible: "qué tienen?", "qué ' +
         'hamburguesas hay?", "qué bebidas tienen?", "qué extras hay?", "qué ' +

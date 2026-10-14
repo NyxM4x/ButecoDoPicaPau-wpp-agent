@@ -1,6 +1,10 @@
-# Base de datos de DESARROLLO local: un PostgreSQL aislado en el puerto 54329,
+# Base de datos de DESARROLLO local: un PostgreSQL aislado en el puerto 54330,
 # con sus datos en .local/pgdata (ignorado por git). No toca el servicio de
 # PostgreSQL de Windows (puerto 5432) ni ninguna base remota.
+#
+# El puerto NO es el 54329 a propósito: ese es el de la demo (restaurant-demos).
+# Con el mismo puerto, este script encontraba la base de la demo ya arriba y las
+# migraciones de Buteco caían en ella.
 #
 #   .\scripts\dev-db.ps1 start    # crea el cluster la primera vez y lo arranca
 #   .\scripts\dev-db.ps1 stop
@@ -15,8 +19,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$Port = 54329
-$Database = 'restaurant_demos_dev'
+$Port = 54330
+$Database = 'buteco_dev'
 $Root = Split-Path -Parent $PSScriptRoot
 $DataDir = Join-Path $Root '.local\pgdata'
 $LogFile = Join-Path $Root '.local\postgres.log'

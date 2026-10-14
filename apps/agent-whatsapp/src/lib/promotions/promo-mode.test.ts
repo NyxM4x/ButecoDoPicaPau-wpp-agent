@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { MenuCategory } from '@/types';
-import { CASH_ENABLED } from '@/lib/orders/cash-enabled';
+import { isCashEnabled } from '@/lib/orders/cash-enabled';
 import type { Promotion, PromotionComponent } from './promotion';
-import { NORMAL_MODE, orderSectionsForMode, promoModeAt } from './promo-mode';
+import { normalMode, orderSectionsForMode, promoModeAt } from './promo-mode';
 
 /**
  * La noche de promoción (14-09-2026): lo que se prueba es que el modo empiece y
@@ -62,7 +62,7 @@ const MEDIANOCHE = Date.parse('2026-09-15T04:00:00.000Z');
 
 describe('promoModeAt — cuándo es noche de promoción', () => {
   it('sin promociones es el menú de siempre', () => {
-    expect(promoModeAt([], ANTES_DE_MEDIANOCHE)).toBe(NORMAL_MODE);
+    expect(promoModeAt([], ANTES_DE_MEDIANOCHE)).toEqual(normalMode());
   });
 
   it('con una promoción vendible se activa y apaga el efectivo y el recojo', () => {
@@ -74,10 +74,10 @@ describe('promoModeAt — cuándo es noche de promoción', () => {
 
   it('a las 00:00 en punto vuelve solo al menú de siempre', () => {
     const modo = promoModeAt([DOS_TRANCAPECHOS], MEDIANOCHE);
-    expect(modo).toBe(NORMAL_MODE);
+    expect(modo).toEqual(normalMode());
     // El efectivo vuelve a medianoche solo si `CASH_ENABLED` lo permite: desde
     // el 21-09-2026 está apagado aparte de la promoción.
-    expect(modo.cashAllowed).toBe(CASH_ENABLED);
+    expect(modo.cashAllowed).toBe(isCashEnabled());
     expect(modo.comboOnlyCodes.size).toBe(0);
     // El recojo NO vuelve a medianoche: desde el 15-09-2026 está apagado
     // siempre y no depende de la promoción. Ver `orders/pickup-enabled`.
@@ -87,19 +87,19 @@ describe('promoModeAt — cuándo es noche de promoción', () => {
   it('con el efectivo apagado (21-09-2026), el menú de siempre tampoco lo ofrece', () => {
     // `NORMAL_MODE` es también lo que se usa si las promociones no se pueden
     // leer: un fallo de Supabase no puede reabrir el efectivo.
-    expect(CASH_ENABLED).toBe(false);
-    expect(NORMAL_MODE.cashAllowed).toBe(false);
-    expect(NORMAL_MODE.active).toBe(false);
+    expect(isCashEnabled()).toBe(false);
+    expect(normalMode().cashAllowed).toBe(false);
+    expect(normalMode().active).toBe(false);
   });
 
   it('una promoción apagada no activa nada', () => {
     const apagada = { ...DOS_TRANCAPECHOS, isActive: false };
-    expect(promoModeAt([apagada], ANTES_DE_MEDIANOCHE)).toBe(NORMAL_MODE);
+    expect(promoModeAt([apagada], ANTES_DE_MEDIANOCHE)).toEqual(normalMode());
   });
 
   it('una promoción sin ahorro tampoco: no se puede comprar', () => {
     const sinAhorro = { ...DOS_TRANCAPECHOS, promoPrice: 36 };
-    expect(promoModeAt([sinAhorro], ANTES_DE_MEDIANOCHE)).toBe(NORMAL_MODE);
+    expect(promoModeAt([sinAhorro], ANTES_DE_MEDIANOCHE)).toEqual(normalMode());
   });
 });
 
@@ -140,7 +140,7 @@ describe('orderSectionsForMode — Bebidas debajo de Promociones', () => {
   });
 
   it('fuera del modo devuelve la misma lista, sin tocarla', () => {
-    expect(orderSectionsForMode(secciones, NORMAL_MODE)).toBe(secciones);
+    expect(orderSectionsForMode(secciones, normalMode())).toBe(secciones);
   });
 
   it('si no hay bebidas (búsqueda sin resultados en esa categoría) no inventa la sección', () => {

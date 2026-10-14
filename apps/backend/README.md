@@ -198,8 +198,12 @@ simulado:
   automáticamente, mismo patrón de auto-selección que `DistanceService`.
 - **`baneco` / `bank-qr`** — QR real de Banco Económico. `BanecoClientService`
   (`src/baneco/`) es el cliente HTTP crudo (`encrypt`/`authenticate`/
-  `generateQR`/`statusQR`/`cancelQR`, validado en certificación contra el
-  manual del banco; token cacheado en memoria con reautenticación en 401).
+  `generateQR`/`statusQR`/`cancelQR`, según el manual «API Market» v1.3.0;
+  el token dura 30 minutos, se renueva antes de vencer y también ante un
+  401; cada llamada tiene 15 s de espera). `statusQR` usa la ruta v2
+  (`GET /v2/statusQR/{id}`): la anterior mandaba el `qrId` en el cuerpo de
+  un GET, que `fetch` rechaza, así que ninguna consulta de estado llegaba al
+  banco. `npm run baneco:check` prueba las credenciales contra el banco.
   `QrPaymentsService` (`src/bank-qr/`) es la capa de dominio:
   `generateForOrder` es idempotente (reusa el intento vivo si ya existe) y
   crea un `payment_attempts` en `pending_review` igual que hoy con una foto
@@ -214,11 +218,18 @@ simulado:
   del banco) solo dispara esa misma re-verificación, nunca confía en el body
   (el manual no define auth para esa dirección — el Bearer es solo para
   comercio → banco). El `qrId` se acepta envuelto en `Payment`, en `payment`
-  o plano en la raíz, porque el manual declara el objeto pero no da un JSON
-  de ejemplo (ver `notify-payment.ts` y su spec).
+  (la forma del ejemplo del manual) o plano en la raíz (ver
+  `notify-payment.ts` y su spec).
   `POST /orders/:id/qr/generate` (JWT, `cashier`/`admin`) es la acción
   explícita del POS; el canal WhatsApp lo genera solo al crear el pedido
   (`orders.service.ts`, cae al texto de pedir captura si el banco falla).
+  En el aviso de WhatsApp viaja la ruta protegida
+  `/orders/:id/qr-image`, no una dirección pública: el agente la descarga
+  con su token de servicio y sube la imagen a WhatsApp.
+  En modo «sin POS» (`QrOrdersMaintenanceCron`, cada minuto): si el banco no
+  entrega el QR se le avisa al cliente que tarda y se reintenta durante 10
+  minutos; un QR sin pagar cancela el pedido a los 30, después de
+  preguntarle al banco y anularlo allá (plazos en `qr-expiry.ts`).
 
   **Pago cobrado que no se puede aplicar**: `decide()` exige caja abierta,
   así que un pago que entra después del cierre no se puede aplicar. El orden
@@ -252,20 +263,20 @@ simulado:
 
 ## Qué falta / deuda conocida
 
-- **Pago con QR bancario — pago real sin validar todavía**: Banco Económico
-  solo confirmó `generateQR`/`statusQR`/`cancelQR` en certificación;
-  `statusQrCode = 1` (pago real) y el webhook `notifyPaymentQR` siguen
-  "pendiente" según su propio manual. El código está listo para ambos casos
-  (polling ya funcional contra lo validado, webhook ya recibido pero
-  tratado solo como señal de "revisá ya", nunca como fuente de verdad) —
-  falta que el banco habilite una prueba de pago real en certificación para
-  confirmar de punta a punta, y después pedir credenciales de producción
-  (mismas env vars `BANECO_*`, sin cambios de código esperados).
+- **Pago con QR bancario — falta ver un pago**: el recorrido completo
+  (generar, pagar, vencer, banco caído) está comprobado contra un banco
+  simulado (`node scripts/check-qr-flow.mjs`, en la raíz del repo). Contra
+  el ambiente de certificación de Banco Económico está comprobado todo menos
+  el pago: `npm run baneco:check` (generar, consultar, anular) y
+  `check-qr-flow.mjs --real-bank` (el recorrido por el backend). Un pago
+  real no se probó nunca: `check-baneco.mjs --keep` deja un QR vivo para
+  que alguien lo pague, y `--status <qrId>` dice si entró. El webhook se
+  trata solo como señal de «revisá ya», nunca como fuente de verdad.
 
   **URL del webhook para darle al banco**:
-  `https://backend-central-zarco-production.up.railway.app/api/qrsimple/notifyPaymentQR`
-- **`paidQR` sin usar**: la sección 6.6 del manual expone
-  `GET /api/qrsimple/paidQR` con la lista de QR pagados de una fecha, pensada
+  `https://<dominio del backend>/api/qrsimple/notifyPaymentQR`
+- **`paidQR` sin usar**: la sección 7.6 del manual expone
+  `GET /api/qrsimple/v2/paidQR/{fecha}` con la lista de QR pagados de una fecha, pensada
   justamente para conciliación. Sería una red de seguridad mejor (y mucho más
   barata) que el cron de 5s: un barrido por día detecta cualquier pago que el
   webhook y el polling hayan perdido. Hoy no está implementado.

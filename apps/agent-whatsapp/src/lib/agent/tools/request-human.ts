@@ -90,7 +90,7 @@ export function createRequestHumanAction(port: HandoffPort): AgentTool {
         'es get_menu_items, ver qué hay es send_menu, y una duda normal es ' +
         'answer_directly. Tampoco por un "gracias" ni por un mensaje seco que ' +
         'se arregla contestando bien. Y NUNCA por escribir seguido: un saludo, ' +
-        'varios mensajes cortos uno detrás de otro ("hola", "zarco", "como ' +
+        'varios mensajes cortos uno detrás de otro ("hola", "buenas", "como ' +
         'estas", "quiero ordenar") o un cliente que pide a menudo son una ' +
         'conversación normal empezando, no un problema. Que alguien quiera ' +
         'pedir o te dicte su pedido tampoco se deriva: eso es send_menu, ' +

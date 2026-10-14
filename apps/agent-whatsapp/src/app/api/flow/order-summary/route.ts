@@ -1,3 +1,4 @@
+import { ensureRestaurantProfile } from '@/lib/restaurant/profile-loader';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getServerEnv } from '@/lib/env/env';
@@ -19,6 +20,8 @@ export const dynamic = 'force-dynamic';
  * borrador y devuelve la pantalla `ORDER_SUMMARY`.
  */
 export async function POST(request: Request): Promise<Response> {
+  // El perfil del restaurante vigente para todo lo que se diga en esta petición.
+  await ensureRestaurantProfile();
   const env = getServerEnv();
 
   // 1. Autenticación Bearer (Kapso Function → Vercel), comparación timing-safe.

@@ -1,15 +1,18 @@
 import Link from "next/link";
+import { connection } from "next/server";
+import { ensureRestaurantProfile } from "@/lib/restaurant/profile-loader";
 
-export default function Home() {
+export default async function Home() {
+  // Sin esto Next prerenderiza la página al compilar y deja fijo el nombre que
+  // hubiera en ese momento (o el de respaldo, si el POS no respondía).
+  await connection();
+  const { name } = await ensureRestaurantProfile();
   return (
     <main className="flex flex-1 flex-col items-center justify-center gap-6 bg-zinc-50 px-6 py-24 text-center dark:bg-black">
-      <span className="text-4xl" aria-hidden>
-        🥪
-      </span>
-      <h1 className="text-3xl font-semibold tracking-tight">Don Zarco Orders</h1>
+      <h1 className="text-3xl font-semibold tracking-tight">{name} — Pedidos</h1>
       <p className="max-w-md text-zinc-600 dark:text-zinc-400">
         Sistema de pedidos por WhatsApp. Este es el panel interno del
-        restaurante Don Zarco.
+        restaurante.
       </p>
       <Link
         href="/dashboard"

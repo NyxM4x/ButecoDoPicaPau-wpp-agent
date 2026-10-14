@@ -10,43 +10,10 @@
  */
 import type { MenuCategory, MenuItem } from '@/types';
 import type { Promotion, PromotionComponent } from '@/lib/promotions/promotion';
+import type { CentralCategory, CentralProduct, CentralPromotion } from './contract';
 
-// ── Lo que devuelve el backend (solo los campos que se usan) ────────────────
-
-export interface CentralCategory {
-  id: string;
-  name: string;
-  sortOrder: number;
-  isActive: boolean;
-}
-
-export interface CentralProduct {
-  id: string;
-  code: string;
-  name: string;
-  description: string | null;
-  categoryId: string;
-  price: number;
-  isActive: boolean;
-  isAvailable: boolean;
-  sortOrder: number;
-  imageUrl: string | null;
-}
-
-export interface CentralPromotion {
-  id: string;
-  name: string;
-  description: string | null;
-  promoPrice: number;
-  isActive: boolean;
-  archivedAt: string | null;
-  startsAt: string | null;
-  endsAt: string | null;
-  sortOrder: number;
-  imageUrl: string | null;
-  revision: number;
-  items: Array<{ productId: string; productName: string; quantity: number; unitPrice: number }>;
-}
+// Lo que devuelve el POS está definido en el contrato.
+export type { CentralCategory, CentralProduct, CentralPromotion };
 
 // ── Tipo de categoría ───────────────────────────────────────────────────────
 
@@ -123,6 +90,37 @@ export function toMenuItems(categories: CentralCategory[], products: CentralProd
         (a.category_label ?? '').localeCompare(b.category_label ?? '') ||
         a.sort_order - b.sort_order,
     );
+}
+
+// ── Lo que ve el asistente de IA ────────────────────────────────────────────
+
+/** Un producto tal como lo recibe el modelo (`get_menu_items`). */
+export interface CentralItemForModel {
+  name: string;
+  price: number;
+  category: string;
+  description?: string;
+}
+
+/**
+ * El catálogo que el asistente puede citar: solo lo que se puede pedir AHORA.
+ *
+ * Proyección mínima a propósito: sin ids, códigos ni orden. Lo que no se le
+ * entrega al modelo no lo puede repetir por WhatsApp. Un producto agotado no
+ * va: el asistente no puede ofrecer lo que el menú no deja pedir.
+ *
+ * La categoría es el nombre real que tiene en el POS ("Cervezas"), no uno de
+ * los tres tipos del menú web.
+ */
+export function toModelItems(items: MenuItem[]): CentralItemForModel[] {
+  return items
+    .filter((item) => item.is_active)
+    .map((item) => ({
+      name: item.name,
+      price: Number(item.price),
+      category: item.category_label ?? item.category,
+      ...(item.description ? { description: item.description } : {}),
+    }));
 }
 
 // ── Promociones ─────────────────────────────────────────────────────────────

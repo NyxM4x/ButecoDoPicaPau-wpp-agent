@@ -1,4 +1,4 @@
-import { centralFetchFile, isCentralEnabled } from '@/lib/central/client';
+import { fetchCentralProductImage, isCentralEnabled } from '@/lib/central';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,7 +25,7 @@ export async function GET(
 
   let upstream: Response;
   try {
-    upstream = await centralFetchFile(`/products/${id}/image`);
+    upstream = await fetchCentralProductImage(id);
   } catch {
     return new Response(null, { status: 502 });
   }

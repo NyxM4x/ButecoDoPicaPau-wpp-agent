@@ -10,7 +10,7 @@ import { formatMoney } from '@/lib/dashboard/format';
 import { MAX_CUSTOMER_NAME_LENGTH, MAX_NOTES_LENGTH } from '@/lib/checkout/limits';
 import type { CheckoutFormErrors, CheckoutFormFields } from '@/lib/checkout/form';
 import type { CheckoutFailure } from '@/lib/checkout/errors';
-import { CASH_ENABLED } from '@/lib/orders/cash-enabled';
+import { isCashEnabled } from '@/lib/orders/cash-enabled';
 
 /**
  * Formulario del checkout: misma hoja inferior que el carrito, sin librerías.
@@ -24,6 +24,8 @@ export function CheckoutPanel({
   fields,
   cashAllowed = true,
   pickupAllowed = true,
+  deliveryAllowed = true,
+  qrAllowed = true,
   errors,
   summary,
   promoSummary,
@@ -47,6 +49,10 @@ export function CheckoutPanel({
   cashAllowed?: boolean;
   /** ¿Se ofrece recojo? En noche de promoción tampoco. Ausente = sí. */
   pickupAllowed?: boolean;
+  /** ¿El local hace envíos? Sin envío, la única entrega es el recojo. */
+  deliveryAllowed?: boolean;
+  /** ¿Se puede pagar por QR? Lo dice el perfil del restaurante. */
+  qrAllowed?: boolean;
   errors: CheckoutFormErrors;
   summary: CartSummary;
   /** Los combos del carrito. El resumen del checkout tiene que sumarlos. */
@@ -172,17 +178,21 @@ export function CheckoutPanel({
               aria-labelledby={deliveryId}
               aria-invalid={errors.delivery_type ? true : undefined}
               aria-describedby={errors.delivery_type ? `${deliveryId}-error` : undefined}
-              className={`mt-1.5 grid gap-2 ${pickupAllowed ? 'grid-cols-2' : 'grid-cols-1'}`}
+              className={`mt-1.5 grid gap-2 ${pickupAllowed && deliveryAllowed ? 'grid-cols-2' : 'grid-cols-1'}`}
             >
-              <DeliveryOption
-                label="Envío"
-                hint="A tu dirección"
-                icon="🛵"
-                value="delivery"
-                active={isDelivery}
-                disabled={frozen}
-                onSelect={() => onChange('delivery_type', 'delivery')}
-              />
+              {/* Sin envío DESAPARECE, igual que el recojo: no es algo que se
+                  apague una noche, es algo que el local no hace. */}
+              {deliveryAllowed ? (
+                <DeliveryOption
+                  label="Envío"
+                  hint="A tu dirección"
+                  icon="🛵"
+                  value="delivery"
+                  active={isDelivery}
+                  disabled={frozen}
+                  onSelect={() => onChange('delivery_type', 'delivery')}
+                />
+              ) : null}
               {/* Sin recojo DESAPARECE, al revés que el efectivo (15-09-2026).
                   El efectivo se apaga una noche y vuelve, así que dejarlo en
                   gris le ahorra la pregunta a quien contaba con él. El recojo
@@ -226,17 +236,19 @@ export function CheckoutPanel({
               aria-labelledby={paymentId}
               aria-invalid={errors.payment_method ? true : undefined}
               aria-describedby={errors.payment_method ? `${paymentId}-error` : undefined}
-              className="mt-1.5 grid grid-cols-2 gap-2"
+              className={`mt-1.5 grid gap-2 ${qrAllowed ? 'grid-cols-2' : 'grid-cols-1'}`}
             >
-              <PaymentOption
-                label="QR"
-                hint="Escanea y paga"
-                icon="📱"
-                value="qr"
-                active={fields.payment_method === 'qr'}
-                disabled={frozen}
-                onSelect={() => onChange('payment_method', 'qr')}
-              />
+              {qrAllowed ? (
+                <PaymentOption
+                  label="QR"
+                  hint="Escanea y paga"
+                  icon="📱"
+                  value="qr"
+                  active={fields.payment_method === 'qr'}
+                  disabled={frozen}
+                  onSelect={() => onChange('payment_method', 'qr')}
+                />
+              ) : null}
               {/* Sin efectivo se DESHABILITA, no desaparece: quien pensaba pagar
                   así lee de un vistazo que hoy no se puede, en vez de buscar la
                   opción y escribir por WhatsApp para preguntar.
@@ -246,7 +258,13 @@ export function CheckoutPanel({
               <PaymentOption
                 label="Efectivo"
                 hint={
-                  cashAllowed ? 'Pagas al recibir' : CASH_ENABLED ? 'Hoy no disponible' : 'No disponible'
+                  cashAllowed
+                    ? isDelivery
+                      ? 'Pagas al recibir'
+                      : 'Pagas al retirar'
+                    : isCashEnabled()
+                      ? 'Hoy no disponible'
+                      : 'No disponible'
                 }
                 icon="💵"
                 value="cash"

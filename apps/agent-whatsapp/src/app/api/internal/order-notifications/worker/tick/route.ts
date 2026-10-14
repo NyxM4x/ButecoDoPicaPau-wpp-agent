@@ -1,3 +1,4 @@
+import { ensureRestaurantProfile } from '@/lib/restaurant/profile-loader';
 import { getServerEnv } from '@/lib/env/env';
 import { log } from '@/lib/log';
 import { handleWorkerTick } from '@/lib/orders/notifications/worker-handler';
@@ -21,6 +22,8 @@ export const maxDuration = 60;
  * dependencias; la lógica vive en `@/lib/orders/notifications/worker`.
  */
 export async function POST(request: Request): Promise<Response> {
+  // El perfil del restaurante vigente para todo lo que se diga en esta petición.
+  await ensureRestaurantProfile();
   let internalToken: string | undefined;
   try {
     internalToken = getServerEnv().INTERNAL_API_TOKEN;

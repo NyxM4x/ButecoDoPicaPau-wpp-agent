@@ -1,6 +1,6 @@
 import type { MenuCategory } from '@/types';
-import { CASH_ENABLED } from '@/lib/orders/cash-enabled';
-import { PICKUP_ENABLED } from '@/lib/orders/pickup-enabled';
+import { isCashEnabled } from '@/lib/orders/cash-enabled';
+import { isPickupEnabled } from '@/lib/orders/pickup-enabled';
 import { evaluatePromotion, isPurchasable, type Promotion } from './promotion';
 
 /**
@@ -76,12 +76,14 @@ export interface PromoMode {
  * fallo de Supabase reabriera el recojo justo cuando nadie está mirando.
  * `cashAllowed` sale de `CASH_ENABLED` por lo mismo (21-09-2026).
  */
-export const NORMAL_MODE: PromoMode = {
-  active: false,
-  cashAllowed: CASH_ENABLED,
-  pickupAllowed: PICKUP_ENABLED,
-  comboOnlyCodes: new Set(),
-};
+export function normalMode(): PromoMode {
+  return {
+    active: false,
+    cashAllowed: isCashEnabled(),
+    pickupAllowed: isPickupEnabled(),
+    comboOnlyCodes: new Set(),
+  };
+}
 
 /**
  * El modo del menú en un instante dado.
@@ -94,7 +96,7 @@ export function promoModeAt(promotions: ReadonlyArray<Promotion>, now: number): 
     isPurchasable(evaluatePromotion(promotion, now)),
   );
 
-  if (vendibles.length === 0) return NORMAL_MODE;
+  if (vendibles.length === 0) return normalMode();
 
   const comboOnlyCodes = new Set<string>();
   for (const promotion of vendibles) {

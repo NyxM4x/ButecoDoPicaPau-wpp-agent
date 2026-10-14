@@ -1,86 +1,64 @@
-import Image from 'next/image';
-
 /**
- * Encabezado comercial de la tienda (hero compacto, identidad Don Zarco).
- * Server Component sin interactividad.
+ * La portada de la carta: el nombre del local a lo grande, qué es y dónde queda.
  *
- * Usa el logo oficial (`public/brand/logo-don-zarco.png`) y un motivo radial
- * muy sutil (rayos en SVG a baja opacidad), en línea con el aro naranja del
- * emblema. No muestra estado abierto/cerrado, horarios, tiempos de entrega,
- * descuentos ni promociones: esos datos no existen en el modelo y no deben
- * inventarse.
+ * Todo sale del perfil del restaurante; aquí no hay ningún dato escrito. El
+ * logo no va aquí sino en la barra fija (`MenuStore`), que es lo que acompaña
+ * al cliente mientras recorre la carta.
  */
 export function MenuHeader({
-  restaurantName = null,
+  restaurantName,
+  tagline = null,
+  address = null,
+  mapsUrl = null,
 }: {
-  /**
-   * Nombre del local cuando el catálogo viene del backend central (el que está
-   * en Configuración del POS). Con él, la cabecera deja de ser la de Don Zarco:
-   * enseña ese nombre y no el logo, que es de un negocio concreto.
-   */
-  restaurantName?: string | null;
-} = {}) {
-  if (restaurantName) {
-    return (
-      <header className="relative overflow-hidden border-b border-donzarco-gold/30 bg-donzarco-red-dark px-4 pt-[max(1.25rem,env(safe-area-inset-top))] pb-5 text-white">
-        <div className="relative mx-auto flex max-w-5xl items-center gap-4">
-          <span
-            className="font-display flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-white/10 text-3xl text-donzarco-gold uppercase ring-1 ring-donzarco-gold/40 sm:h-20 sm:w-20"
-            aria-hidden
-          >
-            {restaurantName.trim().charAt(0)}
-          </span>
-          <div className="min-w-0">
-            <h1 className="font-display truncate text-2xl tracking-wide uppercase">{restaurantName}</h1>
-            <p className="mt-0.5 text-xs leading-relaxed text-white/70">
-              Arma tu carrito y termina el pedido por WhatsApp.
-            </p>
-          </div>
-        </div>
-      </header>
-    );
-  }
+  restaurantName: string;
+  /** Qué vende y dónde, en una línea. */
+  tagline?: string | null;
+  address?: string | null;
+  /** Enlace a la ubicación del local. Sin él, la dirección va como texto. */
+  mapsUrl?: string | null;
+}) {
+  const bajada = tagline ? tagline.charAt(0).toUpperCase() + tagline.slice(1) : null;
 
   return (
-    <header className="relative overflow-hidden border-b border-donzarco-gold/30 bg-donzarco-red-dark px-4 pt-[max(1.25rem,env(safe-area-inset-top))] pb-5 text-white">
-      {/* Motivo discreto: rayos radiales + aro, como el emblema. */}
-      <svg
-        className="pointer-events-none absolute inset-0 h-full w-full text-white/[0.06]"
-        viewBox="0 0 400 160"
-        preserveAspectRatio="xMidYMid slice"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        aria-hidden
-      >
-        <circle cx="300" cy="80" r="46" />
-        <circle cx="300" cy="80" r="62" />
-        <line x1="300" y1="0" x2="300" y2="18" />
-        <line x1="300" y1="142" x2="300" y2="160" />
-        <line x1="222" y1="80" x2="238" y2="80" />
-        <line x1="362" y1="80" x2="378" y2="80" />
-      </svg>
-
-      {/* Contenido centrado en desktop para alinear con el catálogo. */}
-      <div className="relative mx-auto flex max-w-5xl items-center gap-4">
-        <h1 className="sr-only">Don Zarco</h1>
-        <Image
-          src="/brand/logo-don-zarco.png"
-          alt="Don Zarco"
-          width={1254}
-          height={1254}
-          priority
-          className="h-16 w-16 shrink-0 rounded-xl object-contain ring-1 ring-donzarco-gold/40 drop-shadow-sm sm:h-20 sm:w-20"
-        />
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-white/90">
-            Trancapecho cochabambino · Santa Cruz
-          </p>
-          <p className="mt-0.5 text-xs leading-relaxed text-white/70">
-            Arma tu carrito y termina el pedido por WhatsApp.
-          </p>
-        </div>
+    <header className="px-4 pt-10 pb-2 text-center">
+      <div className="mx-auto max-w-5xl">
+        <h1 className="font-menu-dish text-[clamp(2.6rem,13vw,4.5rem)] leading-[0.88] font-extrabold text-menu-accent drop-shadow-[0_3px_0_rgba(0,0,0,0.6)]">
+          {restaurantName}
+        </h1>
+        {bajada ? (
+          <p className="font-menu-body mx-auto mt-3 max-w-sm text-sm leading-snug text-white/80">{bajada}</p>
+        ) : null}
+        {address ? (
+          mapsUrl ? (
+            <a
+              href={mapsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-menu-body mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/[0.07] px-4 py-2 text-xs font-medium text-white/85 ring-1 ring-white/15"
+            >
+              <PinIcon />
+              {address}
+            </a>
+          ) : (
+            <p className="font-menu-body mt-3 inline-flex items-center gap-1.5 text-xs text-white/65">
+              <PinIcon />
+              {address}
+            </p>
+          )
+        ) : null}
+        <p className="font-menu-body mt-4 text-xs text-white/55">
+          Arma tu carrito y termina el pedido por WhatsApp.
+        </p>
       </div>
     </header>
+  );
+}
+
+function PinIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 fill-menu-accent" aria-hidden>
+      <path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z" />
+    </svg>
   );
 }

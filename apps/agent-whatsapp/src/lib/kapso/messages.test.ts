@@ -13,11 +13,14 @@ import {
   buildWebLocationRequestBodyText,
   LOCATION_HOW_TO_TEXT,
   LOCATION_REQUEST_BODY_TEXT,
-  MENU_CTA_BODY_TEXT,
   menuCtaBodyText,
-  PAYMENT_QR_URL,
+  menuCtaWelcomeText,
+  paymentQrUrl,
 } from './messages';
-import { businessHoursClock } from '@/lib/agent/business/facts';
+import { businessSchedule } from '@/lib/agent/business/facts';
+
+/** El horario tal como sale en los mensajes automáticos. */
+const businessHoursClock = () => businessSchedule().replace('todos los días de ', '');
 
 const WEB_LOCATION_REQUEST_BODY_TEXT = buildWebLocationRequestBodyText('ORD-000042');
 
@@ -159,23 +162,23 @@ describe('buildWebLocationRequestBodyText', () => {
 
 describe('buildImagePayload (6D.1)', () => {
   it('construye un payload de imagen por enlace con caption', () => {
-    const payload = buildImagePayload('59170000001', PAYMENT_QR_URL, 'Pedido ORD-000042: paga con QR');
+    const payload = buildImagePayload('59170000001', paymentQrUrl(), 'Pedido ORD-000042: paga con QR');
     expect(payload).toEqual({
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
       to: '59170000001',
       type: 'image',
-      image: { link: PAYMENT_QR_URL, caption: 'Pedido ORD-000042: paga con QR' },
+      image: { link: paymentQrUrl(), caption: 'Pedido ORD-000042: paga con QR' },
     });
   });
 
   it('lanza si la URL o el caption están vacíos', () => {
     expect(() => buildImagePayload('59170000001', '', 'x')).toThrow();
-    expect(() => buildImagePayload('59170000001', PAYMENT_QR_URL, '  ')).toThrow();
+    expect(() => buildImagePayload('59170000001', paymentQrUrl(), '  ')).toThrow();
   });
 
   it('PAYMENT_QR_URL es la URL pública https del QR fijo', () => {
-    expect(PAYMENT_QR_URL).toBe('https://sarco-restaurant.vercel.app/payment/qr-2026.jpeg');
+    expect(paymentQrUrl()).toBe('https://sarco-restaurant.vercel.app/payment/qr-2026.jpeg');
   });
 });
 
@@ -198,7 +201,7 @@ describe('el cuerpo del botón según POR QUÉ se manda el menú', () => {
     // Escribir "menu" en frío es el primer contacto típico: es cuando el horario
     // vale de algo.
     const texto = menuCtaBodyText('explicit_request');
-    expect(texto).toBe(MENU_CTA_BODY_TEXT);
+    expect(texto).toBe(menuCtaWelcomeText());
     expect(texto).toContain(businessHoursClock());
   });
 
@@ -217,7 +220,7 @@ describe('el cuerpo del botón según POR QUÉ se manda el menú', () => {
   });
 
   it('la prueba interna usa el texto de siempre', () => {
-    expect(menuCtaBodyText('qa_trigger')).toBe(MENU_CTA_BODY_TEXT);
+    expect(menuCtaBodyText('qa_trigger')).toBe(menuCtaWelcomeText());
   });
 
   it('todos caben de sobra en el límite de WhatsApp', () => {
@@ -265,9 +268,10 @@ describe('el cuerpo del botón según POR QUÉ se manda el menú', () => {
       // Y desde el 27-09-2026 dice POR QUÉ, con el párrafo compartido.
       expect(texto.startsWith(CASH_POLICY_TEXT)).toBe(true);
       expect(texto).toContain('solo por QR');
-      // El envío no entra en el QR: quien pregunta por el efectivo tiene que
-      // saber que eso no cambió.
-      expect(texto).toMatch(/envío se lo seguís pagando al repartidor/);
+      // Cómo se paga el envío ya no se afirma aquí (13-10-2026): con el POS
+      // conectado el QR cobra el total, envío incluido, y decir que se le paga
+      // al repartidor sería mentira.
+      expect(texto).not.toMatch(/repartidor/);
       expect(texto).not.toMatch(/promoci/i);
       expect(texto).not.toMatch(/elegí EFECTIVO/i);
       expect([...texto].filter((c) => /\p{Extended_Pictographic}/u.test(c)).length).toBeLessThanOrEqual(1);
@@ -278,14 +282,14 @@ describe('el cuerpo del botón según POR QUÉ se manda el menú', () => {
     expect(menuCtaBodyText('agent_suggestion', 'price', { cashAllowed: false })).toBe(
       menuCtaBodyText('agent_suggestion', 'price'),
     );
-    expect(menuCtaBodyText('explicit_request', null, { cashAllowed: false })).toBe(MENU_CTA_BODY_TEXT);
+    expect(menuCtaBodyText('explicit_request', null, { cashAllowed: false })).toBe(menuCtaWelcomeText());
   });
 
   it('el payload lleva el cuerpo que se le pase, no la constante', () => {
     const payload = buildMenuCtaPayload('59170000001', undefined, undefined, 'texto elegido');
     expect(payload.interactive.body.text).toBe('texto elegido');
     // Y sin él, el de siempre: un llamador antiguo se comporta igual que antes.
-    expect(buildMenuCtaPayload('59170000001').interactive.body.text).toBe(MENU_CTA_BODY_TEXT);
+    expect(buildMenuCtaPayload('59170000001').interactive.body.text).toBe(menuCtaWelcomeText());
   });
 });
 
@@ -533,8 +537,10 @@ describe('proofReminderText — la cifra del QR, no el total', () => {
 
 describe('el pago es solo por QR (27-09-2026)', () => {
   it('el motivo habla de los pagos, no de los clientes', () => {
-    expect(CASH_POLICY_TEXT).toMatch(/^Desde ahora los pedidos se pagan solo por QR/);
-    expect(CASH_POLICY_TEXT).toMatch(/problemas con los pagos en efectivo/);
+    expect(CASH_POLICY_TEXT).toMatch(/^Por ahora los pedidos se pagan solo por QR/);
+    // Sin un motivo inventado: el de Don Zarco ("problemas con los pagos en
+    // efectivo") no es el de cualquier restaurante.
+    expect(CASH_POLICY_TEXT).not.toMatch(/problemas/);
     expect(CASH_POLICY_TEXT).not.toMatch(/clientes/i);
   });
 

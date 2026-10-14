@@ -13,7 +13,7 @@ import {
 import type { DispatchResult } from '@/lib/orders/notifications/web-notify';
 import { calculateCheckoutFingerprint } from './fingerprint';
 import type { PromoMode } from '@/lib/promotions/promo-mode';
-import { CASH_ENABLED } from './cash-enabled';
+import { isCashEnabled } from './cash-enabled';
 import { hashMenuSessionToken } from '@/lib/menu/session-token';
 
 const SESSION_TOKEN = 'token-opaco-de-prueba';
@@ -1034,8 +1034,8 @@ describe('noche de promoción', () => {
 
     const response = await handleCreateWebOrder(request(validBody({ payment_method: 'cash' })), deps);
 
-    expect(response.status).toBe(CASH_ENABLED ? 201 : 422);
-    expect(deps.rpcCalls).toHaveLength(CASH_ENABLED ? 1 : 0);
+    expect(response.status).toBe(isCashEnabled() ? 201 : 422);
+    expect(deps.rpcCalls).toHaveLength(isCashEnabled() ? 1 : 0);
   });
 });
 

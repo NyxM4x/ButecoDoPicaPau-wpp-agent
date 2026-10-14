@@ -66,6 +66,13 @@ const serverEnvSchema = z.object({
   TELEGRAM_BOT_TOKEN: optionalString,
   TELEGRAM_CHAT_ID: optionalString,
   /**
+   * Secreto del webhook de Telegram (`/api/telegram/webhook`), por donde vuelven
+   * los toques de los botones Listo / Salió / Entregado. Es el `secret_token`
+   * que se le da a Telegram al registrar el webhook. Ausente = los avisos salen
+   * sin botones y el webhook rechaza todo.
+   */
+  TELEGRAM_WEBHOOK_SECRET: optionalString,
+  /**
    * Chat de Telegram para los avisos de "aqui hace falta una persona".
    *
    * Separado del grupo de reparto a proposito: un reclamo es ruido para quien

@@ -1,3 +1,4 @@
+import { ensureRestaurantProfile } from '@/lib/restaurant/profile-loader';
 import { z } from 'zod';
 import { getServerEnv } from '@/lib/env/env';
 import { extractBearer, safeCompare } from '@/lib/security/auth';
@@ -47,7 +48,7 @@ export const maxDuration = 60;
  * ── Por qué existe esta ruta ────────────────────────────────────────────────
  *
  * El barrido de pedidos en efectivo sin confirmar vivía DENTRO de
- * `GET /api/internal/cron/tick`, que es el fallback de los Cloudflare Workers y
+ * `GET /api/internal/cron/tick`, que es el fallback del despertador y
  * lo despertaría un cron de Vercel. Pero el plan de Vercel no admite crons, así
  * que ese endpoint no lo llama nadie: el barrido estaba escrito, probado, y no
  * se ejecutó JAMÁS en producción.
@@ -94,6 +95,8 @@ function json(status: number, body: unknown): Response {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  // El perfil del restaurante vigente para todo lo que se diga en esta petición.
+  await ensureRestaurantProfile();
   if (request.method !== 'POST') return json(405, { error: 'method_not_allowed' });
 
   let internalToken: string | undefined;

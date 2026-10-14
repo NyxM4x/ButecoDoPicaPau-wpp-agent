@@ -23,6 +23,8 @@
  * esto necesita atender a un cliente, no depurar el sistema.
  */
 
+import { restaurantProfile } from '@/lib/restaurant/profile';
+
 /** Por qué se derivó, en el vocabulario de quien va a atender. */
 export const HANDOFF_CATEGORY_LABELS: Record<string, string> = {
   handoff_requested: 'El cliente necesita hablar con una persona',
@@ -82,7 +84,7 @@ export interface HandoffNoticeInput {
  */
 export function buildHandoffNotice(input: HandoffNoticeInput): string {
   const lineas = [
-    '🙋 Atención humana — Don Zarco',
+    `🙋 Atención humana — ${restaurantProfile().name}`,
     '',
     `Motivo: ${handoffCategoryLabel(input.reason)}`,
     `Teléfono: ${input.customerPhone}`,

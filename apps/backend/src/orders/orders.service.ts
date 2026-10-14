@@ -31,6 +31,13 @@ import { QrPaymentsService } from '../bank-qr/qr-payments.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ReplaceOrderDto } from './dto/replace-order.dto';
 import { cashConfirmedText, cashReviewButtons, cashReviewText } from './cash-review-message';
+import {
+  loadStaffNotice,
+  notifyStaffOrderFirm,
+  StaffNotice,
+  TELEGRAM_ACTOR_PREFIX,
+} from '../staff-notice/notify-order-firm';
+import { customerNoticeFor, decideStaffAction, StaffAction } from '../staff-notice/staff-actions';
 
 export interface OrderItemResponse {
   productId: string;
@@ -311,28 +318,20 @@ export class OrdersService {
     apiClient: string,
   ): Promise<CreateOrderOutcome> {
     const settings = await this.operationalSettings.getRow();
-    if (settings.orders_paused && dto.channel !== 'pos') {
-      throw new DomainException(
-        'orders_paused',
-        HttpStatus.CONFLICT,
-        'Los pedidos nuevos están pausados temporalmente.',
-      );
-    }
-    if (dto.deliveryType === 'pickup' && !settings.pickup_enabled) {
-      throw new DomainException(
-        'pickup_disabled',
-        HttpStatus.CONFLICT,
-        'El recojo en local está deshabilitado temporalmente.',
-      );
-    }
+    assertOrderingAllowed(settings, dto);
     const now = new Date();
     const bypassAllowed = dto.bypassHoursGate === true && dto.channel === 'pos';
     const gate = bypassAllowed
       ? ({ gate: 'proceed' } as const)
       : checkoutGateAt(
           now,
-          { opensHour: settings.business_opens_hour, closesHour: settings.business_closes_hour },
-          await this.cashRegister.isOpen(),
+          {
+            opensHour: settings.business_opens_hour,
+            closesHour: settings.business_closes_hour,
+            timeZone: settings.restaurant_timezone,
+          },
+          // En modo «sin POS» no hay caja que abrir: el horario decide.
+          !settings.requires_cash_register || (await this.cashRegister.isOpen()),
         );
 
     if (gate.gate === 'closed') {
@@ -434,6 +433,129 @@ export class OrdersService {
     };
   }
 
+  /**
+   * Modo «sin POS»: cierra como entregados los pedidos firmes.
+   *
+   * Sin pantalla de cocina nadie mueve un pedido a `delivered`, y quedaría «en
+   * curso» para siempre. Pasados `auto_complete_minutes` desde que se confirmó,
+   * se da por entregado. Solo los que ya quedaron FIRMES: un efectivo que el
+   * cliente no confirmó lo cancela `expireStaleOrders`, y un QR sin pagar no se
+   * da por entregado nunca.
+   *
+   * Con POS no hace nada: ahí el estado lo mueve una persona.
+   */
+  async autoCompleteOrders(now = new Date()): Promise<{ completed: number }> {
+    const settings = await this.operationalSettings.getRow();
+    if (settings.requires_cash_register || settings.auto_complete_minutes === null) {
+      return { completed: 0 };
+    }
+    const cutoff = new Date(now.getTime() - settings.auto_complete_minutes * 60_000);
+
+    const rows = await this.db
+      .updateTable('orders')
+      .set({ status: 'delivered', status_updated_by: 'auto_complete', updated_at: now })
+      .where('status', 'in', ['confirmed', 'preparing', 'ready', 'out_for_delivery'])
+      .where('confirmed_at', 'is not', null)
+      .where('confirmed_at', '<', cutoff)
+      .where((eb) =>
+        eb.or([
+          eb.and([eb('payment_method', '=', 'cash'), eb('cash_confirmed_at', 'is not', null)]),
+          eb('payment_status', '=', 'paid'),
+        ]),
+      )
+      .returning('id')
+      .execute();
+    return { completed: rows.length };
+  }
+
+  /**
+   * Un toque del personal en el aviso de Telegram: Listo, Salió o Entregado.
+   *
+   * Mueve el pedido, le avisa al cliente y devuelve el aviso tal como queda,
+   * para que el agente reemplace el mensaje (con la línea de estado y solo los
+   * botones que siguen teniendo sentido).
+   *
+   * Es del modo «sin POS»: con un POS el pedido se mueve desde la pantalla de
+   * cocina, con sesión de personal (`PATCH /orders/:id/status`).
+   */
+  async staffAction(
+    orderId: string,
+    action: StaffAction,
+    actor: string | null,
+  ): Promise<StaffNotice> {
+    const settings = await this.operationalSettings.getRow();
+    if (settings.requires_cash_register) {
+      throw new DomainException(
+        'staff_actions_disabled',
+        HttpStatus.CONFLICT,
+        'Las acciones desde Telegram son del modo sin POS: este local mueve los pedidos desde el POS.',
+      );
+    }
+
+    const order = await this.db
+      .selectFrom('orders')
+      .selectAll()
+      .where('id', '=', orderId)
+      .executeTakeFirst();
+    if (!order) throw new NotFoundDomainError('order', orderId);
+
+    const decision = decideStaffAction(order, action);
+    if (decision.kind === 'reject') {
+      throw new DomainException(decision.code, HttpStatus.CONFLICT, decision.message, {
+        status: order.status,
+      });
+    }
+
+    if (decision.kind === 'advance') {
+      const who = actor?.trim().slice(0, 60) ?? '';
+      const updated = await this.db
+        .updateTable('orders')
+        .set({
+          status: decision.to,
+          status_updated_by: `${TELEGRAM_ACTOR_PREFIX}${who}`,
+          updated_at: new Date(),
+        })
+        .where('id', '=', orderId)
+        .where('status', '=', decision.from)
+        .returning('id')
+        .executeTakeFirst();
+
+      // Si otro toque ganó la carrera, el cliente ya fue avisado por ese: aquí
+      // solo se devuelve el aviso como quedó.
+      if (updated && order.customer_id) {
+        const text = customerNoticeFor({
+          to: decision.to,
+          orderNumber: order.order_number,
+          deliveryType: order.delivery_type,
+          farewell: settings.farewell_message,
+        });
+        if (text) {
+          try {
+            await this.notifications.notifyNow({
+              channel: 'whatsapp',
+              kind: `order_${decision.to}_customer_notice`,
+              targetRef: order.id,
+              payload: { customerId: order.customer_id, text },
+            });
+          } catch (error) {
+            this.logger.warn(
+              `No se pudo avisar al cliente del pedido ${order.id}: ${(error as Error).message}`,
+            );
+          }
+        }
+      }
+    }
+
+    const notice = await loadStaffNotice(this.db, orderId);
+    if (!notice) throw new NotFoundDomainError('order', orderId);
+    return { text: notice.text, buttons: notice.buttons };
+  }
+
+  /** El símbolo de la moneda del restaurante, para los textos al cliente. */
+  private async currencySymbol(): Promise<string> {
+    return (await this.operationalSettings.getRow()).currency_symbol;
+  }
+
   async replace(
     orderId: string,
     dto: ReplaceOrderDto,
@@ -441,20 +563,7 @@ export class OrdersService {
     apiClient: string,
   ): Promise<{ httpStatus: 200 | 201; body: ReplaceOrderResponse }> {
     const settings = await this.operationalSettings.getRow();
-    if (settings.orders_paused && dto.channel !== 'pos') {
-      throw new DomainException(
-        'orders_paused',
-        HttpStatus.CONFLICT,
-        'Los pedidos nuevos están pausados temporalmente.',
-      );
-    }
-    if (dto.deliveryType === 'pickup' && !settings.pickup_enabled) {
-      throw new DomainException(
-        'pickup_disabled',
-        HttpStatus.CONFLICT,
-        'El recojo en local está deshabilitado temporalmente.',
-      );
-    }
+    assertOrderingAllowed(settings, dto);
 
     const outcome = await this.idempotency.run({
       apiClient,
@@ -734,6 +843,7 @@ export class OrdersService {
             Number(order.delivery_base_amount) + Number(order.delivery_surcharge_amount),
           deliveryDistanceMeters: order.delivery_distance_meters,
           totalAmount: Number(order.total_amount),
+          currencySymbol: await this.currencySymbol(),
         }),
         buttons: cashReviewButtons(order.order_number),
       },
@@ -1391,7 +1501,8 @@ export class OrdersService {
       }
       if (order.cash_confirmed_at !== null) return null; // ya confirmado, comportamiento idempotente de abajo
 
-      const registerSessionId = order.register_session_id ?? (await this.cashRegister.assertOpenSessionId(trx));
+      const registerSessionId =
+        order.register_session_id ?? (await this.cashRegister.sessionIdForPayment(trx));
 
       return trx
         .updateTable('orders')
@@ -1413,7 +1524,10 @@ export class OrdersService {
     }
 
     try {
-      if (updated.delivery_type === 'delivery') {
+      // En modo «sin POS» el personal recibe el pedido entero; con POS, la
+      // línea de siempre al grupo de reparto (el pedido ya está en pantalla).
+      const staffNotice = await notifyStaffOrderFirm(this.db, this.notifications, updated.id);
+      if (staffNotice === 'skipped' && updated.delivery_type === 'delivery') {
         await this.notifications.notifyNow({
           channel: 'telegram',
           kind: 'cash_confirmed_delivery_notice',
@@ -1435,6 +1549,7 @@ export class OrdersService {
               orderNumber: updated.order_number,
               deliveryType: updated.delivery_type,
               totalAmount: Number(updated.total_amount),
+              currencySymbol: await this.currencySymbol(),
             }),
           },
         });
@@ -1591,6 +1706,60 @@ export class OrdersService {
 
     const { items, promotions } = await loadOrderLines(this.db, orderId);
     return toOrderResponse(updated, items, promotions);
+  }
+}
+
+/**
+ * Lo que la configuración del local no deja pedir ahora: pausa, recojo, envío
+ * o una forma de pago apagada.
+ *
+ * La pausa y los apagados de envío y de pago son para los canales del cliente
+ * (`whatsapp`, `web`): el mostrador vende igual, que para eso tiene a la
+ * persona delante. El recojo apagado sí alcanza al POS, como venía.
+ */
+function assertOrderingAllowed(
+  settings: {
+    orders_paused: boolean;
+    pickup_enabled: boolean;
+    delivery_enabled: boolean;
+    enabled_payment_methods: OrderPaymentMethod[];
+  },
+  order: {
+    channel: OrderChannel;
+    deliveryType: OrderDeliveryType;
+    paymentMethod: OrderPaymentMethod;
+  },
+): void {
+  const fromCustomer = order.channel !== 'pos';
+
+  if (settings.orders_paused && fromCustomer) {
+    throw new DomainException(
+      'orders_paused',
+      HttpStatus.CONFLICT,
+      'Los pedidos nuevos están pausados temporalmente.',
+    );
+  }
+  if (order.deliveryType === 'pickup' && !settings.pickup_enabled) {
+    throw new DomainException(
+      'pickup_disabled',
+      HttpStatus.CONFLICT,
+      'El recojo en local está deshabilitado temporalmente.',
+    );
+  }
+  if (order.deliveryType === 'delivery' && !settings.delivery_enabled && fromCustomer) {
+    throw new DomainException(
+      'delivery_disabled',
+      HttpStatus.CONFLICT,
+      'El envío a domicilio está deshabilitado temporalmente.',
+    );
+  }
+  if (fromCustomer && !settings.enabled_payment_methods.includes(order.paymentMethod)) {
+    throw new DomainException(
+      'payment_method_disabled',
+      HttpStatus.CONFLICT,
+      `El local no acepta pagos con ${order.paymentMethod} por este canal.`,
+      { paymentMethod: order.paymentMethod, enabled: settings.enabled_payment_methods },
+    );
   }
 }
 

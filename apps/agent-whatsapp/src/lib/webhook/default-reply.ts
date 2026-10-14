@@ -15,7 +15,7 @@ import { readCashConfirmReply } from './cash-confirm-reply';
 import type { CashButtonPress } from './cash-confirm-button';
 import { isCourtesyOnly } from './courtesy';
 import { mentionsCash } from '@/lib/menu/cta-context';
-import { CASH_ENABLED } from '@/lib/orders/cash-enabled';
+import { isCashEnabled } from '@/lib/orders/cash-enabled';
 
 /**
  * QUÉ RECIBE EL CLIENTE CUANDO NO PIDIÓ NADA CONCRETO — módulo PURO (03-09-2026).
@@ -1037,7 +1037,7 @@ export function decideDefaultReply(input: DefaultReplyInput): DefaultReplyDecisi
     // mentirle sobre su propio pedido. Y solo mientras el efectivo esté
     // apagado de verdad: en noche de promoción el motivo es otro.
     if (
-      !CASH_ENABLED &&
+      !isCashEnabled() &&
       order.paymentMethod !== 'cash' &&
       state.cashPolicySent !== true &&
       candidatos.some((t) => mentionsCash(t))

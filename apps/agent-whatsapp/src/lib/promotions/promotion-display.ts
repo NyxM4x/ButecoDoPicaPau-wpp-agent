@@ -1,4 +1,4 @@
-import { BOLIVIA_UTC_OFFSET_MS } from '@/lib/orders/business-day';
+import { utcOffsetMs } from '@/lib/restaurant/hours';
 import type { MenuCategory } from '@/types';
 import type { PromotionComponent, PromotionStatus } from './promotion';
 
@@ -117,12 +117,12 @@ export function expiryLabel(endsAt: string | null, now: number): string | null {
  * criterio, y la misma constante, que `orders/business-day.ts`.
  */
 function boliviaDayNumber(ms: number): number {
-  return Math.floor((ms - BOLIVIA_UTC_OFFSET_MS) / 86_400_000);
+  return Math.floor((ms - utcOffsetMs(ms)) / 86_400_000);
 }
 
 /** "23:31" en hora boliviana. */
 function boliviaTime(ms: number): string {
-  const d = new Date(ms - BOLIVIA_UTC_OFFSET_MS);
+  const d = new Date(ms - utcOffsetMs(ms));
   const hh = String(d.getUTCHours()).padStart(2, '0');
   const mm = String(d.getUTCMinutes()).padStart(2, '0');
   return `${hh}:${mm}`;
@@ -130,7 +130,7 @@ function boliviaTime(ms: number): string {
 
 /** "06/09" en fecha boliviana. */
 function boliviaDate(ms: number): string {
-  const d = new Date(ms - BOLIVIA_UTC_OFFSET_MS);
+  const d = new Date(ms - utcOffsetMs(ms));
   const dd = String(d.getUTCDate()).padStart(2, '0');
   const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
   return `${dd}/${mm}`;
@@ -166,7 +166,7 @@ export function businessLocalToIso(value: string | null): string | null {
   const conSegundos = limpio.length === 16 ? `${limpio}:00` : limpio;
   const comoUtc = Date.parse(`${conSegundos}Z`);
   if (Number.isNaN(comoUtc)) return null;
-  return new Date(comoUtc + BOLIVIA_UTC_OFFSET_MS).toISOString();
+  return new Date(comoUtc + utcOffsetMs(comoUtc)).toISOString();
 }
 
 /** ISO en UTC → "2026-09-06T23:31" para rellenar el input. */
@@ -175,7 +175,7 @@ export function isoToBusinessLocal(iso: string | null): string {
   const ms = Date.parse(iso);
   if (Number.isNaN(ms)) return '';
 
-  const d = new Date(ms - BOLIVIA_UTC_OFFSET_MS);
+  const d = new Date(ms - utcOffsetMs(ms));
   const yyyy = d.getUTCFullYear();
   const MM = String(d.getUTCMonth() + 1).padStart(2, '0');
   const dd = String(d.getUTCDate()).padStart(2, '0');

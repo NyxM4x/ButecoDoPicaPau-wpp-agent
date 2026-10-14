@@ -9,6 +9,7 @@ import {
 } from '../common/exceptions/domain-exception';
 import { NotificationsOutService } from '../notifications-out/notifications-out.service';
 import { CashRegisterService } from '../cash-register/cash-register.service';
+import { notifyStaffOrderFirm } from '../staff-notice/notify-order-firm';
 
 export interface PaymentAttemptResponse {
   id: string;
@@ -95,6 +96,7 @@ export class PaymentAttemptsService {
 
     if (result.won) {
       this.notifyCustomerBestEffort(attemptId, result.customerId, decision);
+      this.notifyStaffIfAccepted(result.attempt.orderId, decision);
     }
     return { attempt: result.attempt, won: result.won };
   }
@@ -169,6 +171,7 @@ export class PaymentAttemptsService {
     });
 
     this.notifyCustomerBestEffort(result.attempt.id, result.customerId, decision);
+    this.notifyStaffIfAccepted(orderId, decision);
     return { attempt: result.attempt, won: result.won };
   }
 
@@ -186,14 +189,15 @@ export class PaymentAttemptsService {
   ): Promise<string | null> {
     const paymentStatus: OrderPaymentStatus = decision === 'accepted' ? 'paid' : 'rejected';
 
-    let registerSessionId: string | undefined;
+    let registerSessionId: string | null | undefined;
     if (decision === 'accepted') {
       const current = await trx
         .selectFrom('orders')
         .select('register_session_id')
         .where('id', '=', orderId)
         .executeTakeFirstOrThrow();
-      registerSessionId = current.register_session_id ?? (await this.cashRegister.assertOpenSessionId(trx));
+      registerSessionId =
+        current.register_session_id ?? (await this.cashRegister.sessionIdForPayment(trx));
     }
 
     const order = await trx
@@ -207,6 +211,15 @@ export class PaymentAttemptsService {
       .returning(['customer_id'])
       .executeTakeFirstOrThrow();
     return order.customer_id;
+  }
+
+  /**
+   * Con el pago aceptado el pedido queda firme: en modo «sin POS» es cuando el
+   * personal lo recibe entero por Telegram. No espera ni lanza.
+   */
+  private notifyStaffIfAccepted(orderId: string, decision: 'accepted' | 'rejected'): void {
+    if (decision !== 'accepted') return;
+    void notifyStaffOrderFirm(this.db, this.notifications, orderId);
   }
 
   private notifyCustomerBestEffort(

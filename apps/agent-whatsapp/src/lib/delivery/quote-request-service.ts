@@ -3,6 +3,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { getKapsoClient } from '@/lib/kapso/client';
 import { log } from '@/lib/log';
+import { isCentralEnabled, quoteCentralDelivery } from '@/lib/central';
+import { restaurantProfile } from '@/lib/restaurant/profile';
 import { getDeliveryConfig } from './config';
 import { getDistanceByRoad } from './mapbox';
 import { feeForMeters } from './fee';
@@ -49,6 +51,10 @@ import {
 
 /** Estados que el cliente llegó a ver, y que por tanto gastan cupo. */
 const ESTADOS_ATENDIDOS = ['quoted', 'out_of_coverage'] as const;
+
+/** El local no reparte: se dice de frente, sin cotizar nada. */
+const NO_DELIVERY_TEXT =
+  'Por ahora no hacemos envíos a domicilio: los pedidos se retiran en el local 🙌';
 
 export type StandaloneQuoteResult =
   | { result: 'quoted'; amount: number }
@@ -408,8 +414,10 @@ export async function askLocationForQuote(input: {
  */
 export async function quoteStandaloneLocation(
   input: StandaloneQuoteInput,
-  supabase: SupabaseClient = getSupabaseAdmin(),
+  supabaseClient?: SupabaseClient,
 ): Promise<StandaloneQuoteResult> {
+  // Perezoso: con el POS conectado no se toca la base del agente.
+  const supabase = supabaseClient ?? (isCentralEnabled() ? (null as never) : getSupabaseAdmin());
   const { customerPhone, sourceMessageId, coords, phoneNumberId } = input;
 
   const responder = async (text: string): Promise<void> => {
@@ -442,6 +450,35 @@ export async function quoteStandaloneLocation(
     });
 
   // 1. RECLAMAR.
+  // Con el POS conectado cotiza el POS, con su tarifario y sus coordenadas. El
+  // tope de consultas y la reutilización de medidas eran de las tablas del
+  // agente: aquí no se usan.
+  if (isCentralEnabled()) {
+    if (!restaurantProfile().deliveryEnabled) {
+      await responder(NO_DELIVERY_TEXT);
+      return { result: 'out_of_coverage' };
+    }
+    const cotizacion = await quoteCentralDelivery({
+      customerPhoneDigits: customerPhone,
+      sourceMessageId,
+      latitude: coords.lat,
+      longitude: coords.lng,
+    });
+    if (cotizacion.result === 'quoted') {
+      await responderConCta(buildQuoteCtaText(cotizacion.amount), buildQuoteText(cotizacion.amount));
+      log.info('delivery_quote_request_quoted', { source: 'central' });
+      return { result: 'quoted', amount: cotizacion.amount };
+    }
+    if (cotizacion.result === 'out_of_coverage') {
+      await responder(QUOTE_OUT_OF_COVERAGE_TEXT);
+      log.info('delivery_quote_request_out_of_coverage', { source: 'central' });
+      return { result: 'out_of_coverage' };
+    }
+    await responderConCta(QUOTE_FAILED_CTA_TEXT, QUOTE_FAILED_TEXT);
+    log.warn('delivery_quote_request_failed', { error: cotizacion.error });
+    return { result: 'failed', error: cotizacion.error };
+  }
+
   const atendidoYa = await yaExiste(supabase, sourceMessageId);
   if (atendidoYa === null) return { result: 'failed', error: 'ledger_unavailable' };
   if (atendidoYa) return { result: 'duplicate' };

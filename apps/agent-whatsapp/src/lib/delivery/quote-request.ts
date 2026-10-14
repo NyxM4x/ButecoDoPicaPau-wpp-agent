@@ -31,6 +31,8 @@
  * de cupo, no dos.
  */
 
+import { restaurantProfile } from '@/lib/restaurant/profile';
+
 /** Cuántas cotizaciones sueltas recibe un mismo teléfono por ventana. */
 export const STANDALONE_QUOTE_LIMIT = 2;
 
@@ -183,7 +185,7 @@ function formatBs(amount: number): string {
  * misma cifra son dos plantillas que un día dirán cosas distintas.
  */
 function quotePrefix(amount: number): string {
-  return `El envío hasta tu ubicación sale Bs ${formatBs(amount)} 🛵 `;
+  return `El envío hasta tu ubicación sale ${restaurantProfile().currency.symbol} ${formatBs(amount)} 🛵 `;
 }
 
 /**

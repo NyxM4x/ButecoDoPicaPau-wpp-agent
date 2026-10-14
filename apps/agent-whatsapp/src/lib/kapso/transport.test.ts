@@ -4,10 +4,10 @@ import {
   buildWebLocationRequestBodyText,
   LOCATION_HOW_TO_TEXT,
   LOCATION_REQUEST_BODY_TEXT,
-  MENU_CTA_BODY_TEXT,
   MENU_CTA_BUTTON_TEXT,
-  MENU_URL,
-  MENU_VIDEO_URL,
+  menuCtaHeader,
+  menuCtaWelcomeText,
+  menuUrl,
 } from './messages';
 
 const WEB_LOCATION_REQUEST_BODY_TEXT = buildWebLocationRequestBodyText('ORD-000042');
@@ -171,11 +171,11 @@ describe('createKapsoTransport.sendMenuCtaUrl (Fase 5.2A)', () => {
       type: 'interactive',
       interactive: {
         type: 'cta_url',
-        header: { type: 'video', video: { link: MENU_VIDEO_URL } },
-        body: { text: MENU_CTA_BODY_TEXT },
+        header: { type: 'video', video: { link: menuCtaHeader()?.link } },
+        body: { text: menuCtaWelcomeText() },
         action: {
           name: 'cta_url',
-          parameters: { display_text: MENU_CTA_BUTTON_TEXT, url: MENU_URL },
+          parameters: { display_text: MENU_CTA_BUTTON_TEXT, url: menuUrl() },
         },
       },
     });
@@ -185,13 +185,13 @@ describe('createKapsoTransport.sendMenuCtaUrl (Fase 5.2A)', () => {
     // El de saludo lleva el horario y dice DÓNDE se termina el pedido: suele ser
     // el primer mensaje que recibe un cliente nuevo, y es la única ocasión de
     // explicárselo — un `send_menu` confirmado no redacta nada después.
-    expect(MENU_CTA_BODY_TEXT).toBe(
+    expect(menuCtaWelcomeText()).toBe(
       'Hola, soy Don Zarco 👋 Atendemos todos los días de 19:00 a 04:00. ' +
         'Toca el botón para ver el menú, elegir lo que quieras y mandar tu pedido desde ahí mismo.',
     );
     expect(MENU_CTA_BUTTON_TEXT).toBe('Ver menú');
-    expect(MENU_URL).toBe('https://sarco-restaurant.vercel.app/menu');
-    expect(MENU_VIDEO_URL).toBe('https://demorestaurantagente.vercel.app/tutorialPedido.mp4?v=2');
+    expect(menuUrl()).toBe('https://sarco-restaurant.vercel.app/menu');
+    expect(menuCtaHeader()?.link).toBe('https://demorestaurantagente.vercel.app/tutorialPedido.mp4?v=2');
   });
 
   it('6D.2E: header de video + el session_token viaja SOLO en la URL (no en body/header)', async () => {
@@ -207,7 +207,7 @@ describe('createKapsoTransport.sendMenuCtaUrl (Fase 5.2A)', () => {
     const interactive = (captured[0].body as { interactive: Record<string, unknown> }).interactive;
     // Opción A: un solo cta_url con header de video (el tutorial del pedido).
     expect(interactive.type).toBe('cta_url');
-    expect(interactive.header).toEqual({ type: 'video', video: { link: MENU_VIDEO_URL } });
+    expect(interactive.header).toEqual({ type: 'video', video: { link: menuCtaHeader()?.link } });
     // El token está en la URL del botón…
     expect(JSON.stringify(interactive.action)).toContain('TOKEN_SECRETO_123');
     // …pero NUNCA en el body ni en el header.
@@ -610,6 +610,115 @@ describe('createKapsoTransport.sendImage (6D.1)', () => {
       ok: false,
       error: 'invalid_image',
     });
+    expect(captured).toHaveLength(0);
+  });
+});
+
+describe('createKapsoTransport: imagen privada (subir y enviar por id)', () => {
+  const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+
+  interface Upload {
+    url: string;
+    method?: string;
+    headers: Record<string, string>;
+    form: FormData;
+  }
+
+  /** fetch falso para la Media API: guarda el formulario tal como llegó. */
+  function fakeUpload(status: number, jsonBody: unknown, uploads: Upload[] = []) {
+    return (async (url: RequestInfo | URL, init?: RequestInit) => {
+      uploads.push({
+        url: String(url),
+        method: init?.method,
+        headers: (init?.headers ?? {}) as Record<string, string>,
+        form: init?.body as FormData,
+      });
+      return { ok: status >= 200 && status < 300, status, json: async () => jsonBody } as Response;
+    }) as typeof fetch;
+  }
+
+  it('sube los bytes a la Media API como multipart y devuelve el id', async () => {
+    const uploads: Upload[] = [];
+    const client = createKapsoTransport({ ...CONFIG, fetchImpl: fakeUpload(200, { id: 'media-77' }, uploads) });
+
+    expect(await client.uploadImage(PNG, 'image/png')).toEqual({ ok: true, mediaId: 'media-77' });
+
+    expect(uploads).toHaveLength(1);
+    const [upload] = uploads;
+    expect(upload.url).toBe(`${OFFICIAL_BASE_URL}/pnid-1/media`);
+    expect(upload.method).toBe('POST');
+    // Solo la clave: el content-type del multipart lo pone fetch, con su separador.
+    expect(upload.headers).toEqual({ 'x-api-key': 'test-api-key' });
+    expect(upload.form.get('messaging_product')).toBe('whatsapp');
+    expect(upload.form.get('type')).toBe('image');
+    const file = upload.form.get('file') as File;
+    expect(file.type).toBe('image/png');
+    expect(file.name).toBe('image.png');
+    expect([...new Uint8Array(await file.arrayBuffer())]).toEqual([...PNG]);
+  });
+
+  it('una vista de un búfer más grande sube solo sus bytes', async () => {
+    const uploads: Upload[] = [];
+    const client = createKapsoTransport({ ...CONFIG, fetchImpl: fakeUpload(200, { id: 'm' }, uploads) });
+    const grande = Uint8Array.from([9, 9, 9, ...PNG, 9, 9]);
+
+    await client.uploadImage(grande.subarray(3, 3 + PNG.length), 'image/jpeg');
+    const file = uploads[0].form.get('file') as File;
+    expect(file.name).toBe('image.jpg');
+    expect([...new Uint8Array(await file.arrayBuffer())]).toEqual([...PNG]);
+  });
+
+  it('lo que no es PNG/JPEG, está vacío o pasa de 5 MB → invalid_image, sin fetch', async () => {
+    const uploads: Upload[] = [];
+    const client = createKapsoTransport({ ...CONFIG, fetchImpl: fakeUpload(200, { id: 'm' }, uploads) });
+
+    expect(await client.uploadImage(PNG, 'image/webp')).toEqual({ ok: false, error: 'invalid_image' });
+    expect(await client.uploadImage(new Uint8Array(0), 'image/png')).toEqual({ ok: false, error: 'invalid_image' });
+    expect(await client.uploadImage(new Uint8Array(5 * 1024 * 1024 + 1), 'image/png')).toEqual({
+      ok: false,
+      error: 'invalid_image',
+    });
+    expect(uploads).toHaveLength(0);
+  });
+
+  it('error HTTP o respuesta sin id → errores tipados', async () => {
+    const rechazo = createKapsoTransport({ ...CONFIG, fetchImpl: fakeUpload(401, {}) });
+    const sinId = createKapsoTransport({ ...CONFIG, fetchImpl: fakeUpload(200, { ok: true }) });
+
+    expect(await rechazo.uploadImage(PNG, 'image/png')).toEqual({ ok: false, error: 'http_error', status: 401 });
+    expect(await sinId.uploadImage(PNG, 'image/png')).toEqual({ ok: false, error: 'invalid_response' });
+  });
+
+  it('envía la imagen subida por su id, con caption, y devuelve el wamid', async () => {
+    const captured: Captured[] = [];
+    const client = createKapsoTransport({
+      ...CONFIG,
+      fetchImpl: fakeFetch(200, { messages: [{ id: 'wamid.IMG_ID' }] }, captured),
+    });
+
+    expect(await client.sendImageById('59170000001', 'media-77', 'Tu pedido ORD-000042')).toEqual({
+      ok: true,
+      wamid: 'wamid.IMG_ID',
+    });
+    expect(captured[0].url).toBe(`${OFFICIAL_BASE_URL}/pnid-1/messages`);
+    expect(captured[0].body).toEqual({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: '59170000001',
+      type: 'image',
+      image: { id: 'media-77', caption: 'Tu pedido ORD-000042' },
+    });
+  });
+
+  it('sin id o sin caption → invalid_image, sin fetch', async () => {
+    const captured: Captured[] = [];
+    const client = createKapsoTransport({
+      ...CONFIG,
+      fetchImpl: fakeFetch(200, { messages: [{ id: 'x' }] }, captured),
+    });
+
+    expect(await client.sendImageById('59170000001', '  ', 'cap')).toEqual({ ok: false, error: 'invalid_image' });
+    expect(await client.sendImageById('59170000001', 'media-77', ' ')).toEqual({ ok: false, error: 'invalid_image' });
     expect(captured).toHaveLength(0);
   });
 });

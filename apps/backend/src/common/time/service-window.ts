@@ -31,14 +31,21 @@ export type ServiceWindow = 'open' | 'closed';
 export interface ServiceHours {
   opensHour: number;
   closesHour: number;
+  /** Zona IANA del restaurante. Ausente = Bolivia, como siempre. */
+  timeZone?: string;
 }
 
-function hourInBolivia(instant: Date): number | null {
+/**
+ * La hora del reloj en la zona del restaurante. Una zona que el entorno no
+ * conoce cae a la aritmética de Bolivia, que es lo que se asumía antes de que
+ * la zona fuera un dato del perfil.
+ */
+function hourInZone(instant: Date, timeZone: string = SERVICE_TIME_ZONE): number | null {
   const ms = instant.getTime();
   if (!Number.isFinite(ms)) return null;
   try {
     const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: SERVICE_TIME_ZONE,
+      timeZone,
       hour: 'numeric',
       hourCycle: 'h23',
     }).formatToParts(instant);
@@ -73,7 +80,7 @@ function hoursSinceOpen(hour: number, opensHour: number): number {
  * siempre, y un local de demostración no se podía mostrar a cualquier hora.
  */
 export function classifyServiceWindow(instant: Date, hours: ServiceHours): ServiceWindow {
-  const hour = hourInBolivia(instant);
+  const hour = hourInZone(instant, hours.timeZone);
   if (hour === null) return 'closed';
   if (hours.opensHour === hours.closesHour) return 'open';
   const relHour = hoursSinceOpen(hour, hours.opensHour);
@@ -88,6 +95,9 @@ export type CheckoutGate = { gate: 'proceed' } | { gate: 'late_review' } | { gat
  * del margen horario — ver comentario de cabecera del archivo. Afuera del
  * margen es `closed` sin importar la caja: no tiene sentido encolar un
  * mensaje que llegó a las 10am.
+ *
+ * En modo «sin POS» no hay caja que abrir: quien llama pasa `true`, y entonces
+ * el horario es lo único que decide (abierto = se toma, cerrado = no).
  */
 export function checkoutGateAt(
   instant: Date,

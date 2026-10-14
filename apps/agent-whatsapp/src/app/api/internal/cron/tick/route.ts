@@ -1,3 +1,4 @@
+import { ensureRestaurantProfile } from '@/lib/restaurant/profile-loader';
 import { log } from '@/lib/log';
 import { getServerEnv } from '@/lib/env/env';
 import { safeCompare } from '@/lib/security/compare';
@@ -51,17 +52,17 @@ export const dynamic = 'force-dynamic';
  *
  * ── Esta ruta es el FALLBACK, no el despertador principal ────────────────────
  *
- * El camino oficial es el Cloudflare Worker `sarco-recovery-cron`
- * (`cloudflare/recovery-cron`), que llama por POST, en paralelo, a cada worker
- * interno por separado: cada uno es su propia invocación de Vercel, con su
- * propio presupuesto, y el Worker espera a cada uno con su propio timeout de
- * 55 s. Esa separación existe porque un evento del inbox puede llevar un turno
+ * El camino oficial es el despertador del backend
+ * (`apps/backend/src/agent-wake`), que llama por POST, en paralelo, a cada
+ * worker interno por separado: cada uno es su propia invocación de Vercel, con
+ * su propio presupuesto, y el backend espera a cada uno con su propio timeout
+ * de 55 s. (Hasta el 2026-10-13 lo hacía un Worker de Cloudflare.) Esa separación existe porque un evento del inbox puede llevar un turno
  * completo del agente —11-12 s medidos—: encadenar los recoveries en una sola
  * invocación, como hace esta ruta, hace que uno le coma el presupuesto al otro.
  *
- * Esta ruta se conserva porque no cuesta nada y cubre el caso en que Cloudflare
- * esté caído o el Worker todavía no esté desplegado. Pero mientras el Worker
- * esté activo, el despertador principal es él, y esto es la segunda cuerda.
+ * Esta ruta se conserva porque no cuesta nada y cubre el caso en que el backend
+ * esté caído. Pero mientras el backend esté activo, el despertador principal es
+ * él, y esto es la segunda cuerda.
  */
 
 /** Token esperado. Acepta `CRON_SECRET` para no obligar a duplicar el valor. */
@@ -84,6 +85,8 @@ function bearerOf(header: string | null): string {
 }
 
 export async function GET(request: Request): Promise<Response> {
+  // El perfil del restaurante vigente para todo lo que se diga en esta petición.
+  await ensureRestaurantProfile();
   const esperado = expectedToken();
   // Fail closed: sin secreto configurado nadie dispara nada. Un worker abierto
   // dejaría que cualquiera forzara reprocesos desde fuera.
@@ -126,7 +129,7 @@ export async function GET(request: Request): Promise<Response> {
    * se ejecutó JAMÁS. El 09-09-2026 había once pedidos sin confirmar, el más
    * antiguo de hacía tres días, y once clientes sin su aviso.
    *
-   * Desde entonces el camino oficial es `sarco-recovery-cron`, que llama a
+   * Desde entonces el camino oficial es el despertador, que llama a
    * `POST /api/internal/orders/expiry/worker/tick` junto con los otros tres. Aquí se conserva por lo
    * mismo que los tres workers de arriba: un fallback que ejecuta MENOS que el
    * camino principal es una divergencia que no se nota hasta que hace falta. El

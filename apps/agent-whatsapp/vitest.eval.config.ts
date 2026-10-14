@@ -63,6 +63,8 @@ export default defineConfig({
   test: {
     include: ['evals/**/*.eval.ts'],
     environment: 'node',
+    // Los evals miden al modelo con el mismo restaurante que las pruebas.
+    setupFiles: ['./src/test/setup.ts'],
     env,
     // Llamadas reales a un proveedor externo: los timeouts de una suite unitaria
     // no sirven aquí.

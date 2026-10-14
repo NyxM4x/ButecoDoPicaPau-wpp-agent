@@ -1,3 +1,4 @@
+import { money } from '@/lib/restaurant/profile';
 import type { DeliveryType, MenuItem } from '@/types';
 import type { CalculatedLine, CalculatedOrder } from './types';
 
@@ -23,9 +24,14 @@ export function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
-/** Formatea un monto en bolivianos: `Bs. 57`. */
+/**
+ * Formatea un monto en la moneda del restaurante: `Bs. 57`.
+ *
+ * Conserva el nombre de cuando la moneda era siempre el boliviano; el símbolo
+ * sale del perfil (`lib/restaurant/profile`).
+ */
 export function formatBs(amount: number): string {
-  return `Bs. ${round2(amount)}`;
+  return money(amount);
 }
 
 /**

@@ -6,7 +6,7 @@ import type {
   PaymentMethod,
 } from '@/types';
 import {
-  PAYMENT_QR_URL,
+  paymentQrUrl,
   cashDecisionButtons,
   type ReplyButton,
 } from '@/lib/kapso/messages';
@@ -464,7 +464,7 @@ async function processConfirmation(
     order.payment_method === 'qr'
       ? sender.sendImage(
           order.customer_phone,
-          PAYMENT_QR_URL,
+          paymentQrUrl(),
           // Por QR se cobra SOLO la comida cuando hay envío: el delivery se paga
           // al repartidor. `deliveryAmount` en 0 solo lo tiene el recojo (el
           // delivery mínimo es Bs 10), y ahí vuelve el texto sin envío.

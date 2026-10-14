@@ -34,6 +34,25 @@ const SETTINGS_KEYS = [
   'restaurantLatitude',
   'restaurantLongitude',
   'restaurantName',
+  // Perfil del restaurante (GET /restaurant/profile): lo que el agente dice del local.
+  'restaurantDescription',
+  'restaurantPhone',
+  'restaurantAddress',
+  'restaurantMapsUrl',
+  'restaurantTimezone',
+  'restaurantLocale',
+  'currencyCode',
+  'currencySymbol',
+  'hoursText',
+  'deliveryEnabled',
+  'enabledPaymentMethods',
+  'greetingMessage',
+  'farewellMessage',
+  'menuVideoUrl',
+  'menuImageUrl',
+  // Modo «sin POS»: sin caja ni pantallas, con el pedido al personal por Telegram.
+  'requiresCashRegister',
+  'autoCompleteMinutes',
 ];
 
 const args = process.argv.slice(2);
@@ -233,11 +252,16 @@ async function main() {
   }
 
   // ── Configuración del local ───────────────────────────────────────────────
-  // El nombre sale de `restaurant.name`; el resto, de `settings`. Con --24h se
-  // pisa el horario: misma hora de apertura y de cierre = abierto todo el día.
+  // Nombre, descripción, dirección, enlace de Maps y teléfono salen de
+  // `restaurant`; el resto, de `settings`. Con --24h se pisa el horario: misma
+  // hora de apertura y de cierre = abierto todo el día.
   const wanted = {
     ...demo.settings,
     ...(demo.restaurant?.name ? { restaurantName: demo.restaurant.name } : {}),
+    ...(demo.restaurant?.description ? { restaurantDescription: demo.restaurant.description } : {}),
+    ...(demo.restaurant?.address ? { restaurantAddress: demo.restaurant.address } : {}),
+    ...(demo.restaurant?.mapsUrl ? { restaurantMapsUrl: demo.restaurant.mapsUrl } : {}),
+    ...(demo.restaurant?.phone ? { restaurantPhone: demo.restaurant.phone } : {}),
     ...(allDay ? { businessOpensHour: 0, businessClosesHour: 0 } : {}),
   };
   const settings = Object.fromEntries(

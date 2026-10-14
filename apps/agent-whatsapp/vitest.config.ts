@@ -16,5 +16,7 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.ts'],
     environment: 'node',
+    // Fija el restaurante con el que corren las pruebas. Ver `src/test/profiles.ts`.
+    setupFiles: ['./src/test/setup.ts'],
   },
 });

@@ -29,4 +29,8 @@
  * puerta y sus avisos como siempre. Esto solo decide si se puede crear uno
  * nuevo.
  */
-export const CASH_ENABLED = false;
+import { cashEnabled } from '@/lib/restaurant/profile';
+
+export function isCashEnabled(): boolean {
+  return cashEnabled();
+}

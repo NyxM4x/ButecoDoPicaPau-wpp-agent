@@ -22,7 +22,7 @@ import { PROOF_REMINDER_ACTION } from '@/lib/kapso/send-proof-reminder';
 import { ORDER_REVIEW_ACTION } from '@/lib/kapso/send-order-review';
 import { CASH_REPROMPT_ACTION } from '@/lib/kapso/send-cash-buttons';
 import { CASH_POLICY_ACTION } from '@/lib/kapso/send-cash-policy';
-import { CASH_ENABLED } from '@/lib/orders/cash-enabled';
+import { isCashEnabled } from '@/lib/orders/cash-enabled';
 import {
   CASH_WAIT_ACTION,
   DELIVERY_RELAY_ACTION,
@@ -468,7 +468,7 @@ export async function lookupCustomerState(
     //     cuando la rama que lo lee puede alcanzarse —efectivo apagado, pedido
     //     por QR, nada esperando de nuestro lado—; el resto no paga la consulta.
     const cashPolicySent =
-      !CASH_ENABLED && openOrder.paymentMethod !== 'cash' && espera === null
+      !isCashEnabled() && openOrder.paymentMethod !== 'cash' && espera === null
         ? await avisoDeEsperaEnviado(
             supabase,
             pausa?.conversationId ?? null,

@@ -191,7 +191,7 @@ export function KitchenReadyPanel({
 
                   {/* Productos y envío POR SEPARADO (05-09-2026).
 
-                      Esta es la pantalla donde Zarco y los repartidores cuadran
+                      Esta es la pantalla donde el local y los repartidores cuadran
                       la caja al final del turno, y ahí una sola cifra no sirve:
                       lo que se reparte es el envío, y lo que entra al negocio
                       son los productos. Con "COBRAR TODO BS 114" había que

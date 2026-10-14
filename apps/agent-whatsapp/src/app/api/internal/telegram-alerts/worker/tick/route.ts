@@ -1,3 +1,4 @@
+import { ensureRestaurantProfile } from '@/lib/restaurant/profile-loader';
 import { z } from 'zod';
 import { getServerEnv } from '@/lib/env/env';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
@@ -31,6 +32,8 @@ function json(status: number, body: unknown): Response {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  // El perfil del restaurante vigente para todo lo que se diga en esta petición.
+  await ensureRestaurantProfile();
   if (request.method !== 'POST') return json(405, { error: 'method_not_allowed' });
 
   let internalToken: string | undefined;

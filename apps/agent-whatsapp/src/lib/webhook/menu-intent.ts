@@ -1,3 +1,4 @@
+import { nameKeywords } from '@/lib/restaurant/profile';
 /**
  * Detección determinística de intención de menú (Fase 6D.2E) — módulo PURO.
  *
@@ -75,8 +76,6 @@ const SALUDOS: readonly string[] = [
   'como va',
   'como esta',
   'como estas',
-  'zarco',
-  'don zarco',
   'disculpa',
   'disculpe',
   'por favor',
@@ -96,7 +95,8 @@ const MAX_SALUDOS_ENCADENADOS = 4;
 export function sinSaludoInicial(norm: string): string {
   // Del más largo al más corto: "buenas noches" antes que "buenas", o quedaría
   // un "noches" suelto delante de la intención.
-  const ordenados = [...SALUDOS].sort((a, b) => b.length - a.length);
+  // El nombre del local cuenta como saludo: "hola zarco", "buenas don zarco".
+  const ordenados = [...SALUDOS, ...nameKeywords()].sort((a, b) => b.length - a.length);
 
   let actual = norm;
   for (let i = 0; i < MAX_SALUDOS_ENCADENADOS; i += 1) {

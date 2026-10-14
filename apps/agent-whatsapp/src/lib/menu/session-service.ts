@@ -1,6 +1,7 @@
 import 'server-only';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { getServerEnv } from '@/lib/env/env';
+import { publicAppUrl } from '@/lib/restaurant/profile';
 import { createMenuSessionRepository } from './session-repository';
 import { generateMenuSessionToken, hashMenuSessionToken } from './session-token';
 import type { MenuSession } from '@/types';
@@ -65,7 +66,7 @@ function defaultDeps(): MenuSessionServiceDeps {
 
   const repo = createMenuSessionRepository(getSupabaseAdmin());
   return {
-    appBaseUrl: env.APP_BASE_URL ?? 'https://sarco-restaurant.vercel.app',
+    appBaseUrl: publicAppUrl(),
     secret,
     envPhoneNumberId: env.KAPSO_PHONE_NUMBER_ID ?? null,
     findValidByPhone: (phone) => repo.findValidByPhone(phone),

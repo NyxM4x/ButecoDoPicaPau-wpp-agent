@@ -65,7 +65,11 @@ export class BankQrController {
     return this.qrPayments.markRefunded(id, dto.notes);
   }
 
-  /** Streaming autenticado — mismo criterio que fotos de producto, nunca Base64 crudo en un JSON. */
+  /**
+   * Streaming autenticado — mismo criterio que fotos de producto, nunca Base64
+   * crudo en un JSON. Es también la ruta que viaja en el aviso de WhatsApp: el
+   * agente la descarga con su token de servicio y sube la imagen a WhatsApp.
+   */
   @Get('orders/:id/qr-image')
   @UseGuards(ServiceOrStaffAuthGuard)
   async getImage(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
@@ -77,7 +81,7 @@ export class BankQrController {
 
   /**
    * `notifyPaymentQR` — el servicio que el comercio publica para que el banco
-   * avise al momento del pago (manual Baneco v1.0.0, sección 6.5). La ruta
+   * avise al momento del pago (manual Baneco v1.3.0, sección 7.5). La ruta
    * replica exactamente la del manual (`/api/qrsimple/notifyPaymentQR`), que
    * documenta como configurable solo `[dominio]:[puerto]`.
    *

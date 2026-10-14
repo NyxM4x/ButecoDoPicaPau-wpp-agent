@@ -1,3 +1,5 @@
+import { isCentralEnabled } from '@/lib/central';
+import { ensureRestaurantProfile } from '@/lib/restaurant/profile-loader';
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
@@ -61,10 +63,11 @@ export async function setRainSurcharge(
  * consulta falla, los pedidos siguen entrando. Pausar por un fallo nuestro
  * cerraría el negocio sin que nadie lo haya decidido.
  */
-export async function readOrdersPaused(
-  supabase: SupabaseClient = getSupabaseAdmin(),
-): Promise<boolean> {
+export async function readOrdersPaused(supabase?: SupabaseClient): Promise<boolean> {
+  // Con el POS conectado, la pausa es la suya: viene en el perfil.
+  if (!supabase && isCentralEnabled()) return (await ensureRestaurantProfile()).ordersPaused;
   try {
+    supabase ??= getSupabaseAdmin();
     const { data, error } = await supabase
       .from('delivery_settings')
       .select('orders_paused')

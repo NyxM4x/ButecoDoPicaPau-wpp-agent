@@ -1,7 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { BUSINESS_ADDRESS, BUSINESS_HOURS, BUSINESS_MAPS_URL } from './facts';
-import { DON_ZARCO_MAX_OUTPUT_TOKENS, DON_ZARCO_SYSTEM_PROMPT, systemPromptForMode } from './prompt';
+import { businessAddress, businessHours, businessMapsUrl } from './facts';
+import { AGENT_MAX_OUTPUT_TOKENS, baseSystemPrompt, systemPromptForMode } from './prompt';
+
+// El perfil de las pruebas es Don Zarco (ver `src/test/setup.ts`).
+const BUSINESS_ADDRESS = businessAddress();
+const BUSINESS_HOURS = businessHours();
+const BUSINESS_MAPS_URL = businessMapsUrl() as string;
+const DON_ZARCO_SYSTEM_PROMPT = baseSystemPrompt();
+const DON_ZARCO_MAX_OUTPUT_TOKENS = AGENT_MAX_OUTPUT_TOKENS;
 
 /**
  * Business Adapter — reglas grounded (Fase 6D.2F.4.1).
@@ -193,7 +200,7 @@ describe('prompt — explorar vs. preguntar un dato', () => {
     // formulaciones quedan resueltas explícitamente del lado del menú.
     for (const pregunta of [
       'qué tienen?',
-      'qué trancapechos',
+      'qué platos',
       'qué bebidas manejan?',
       'qué opciones hay?',
       'qué puedo pedir?',
@@ -472,8 +479,11 @@ describe('prompt — el Business Adapter sigue siendo solo texto', () => {
     const source = readFileSync(new URL('./prompt.ts', import.meta.url), 'utf8');
 
     const imports = source.match(/^\s*import\s.+$/gm) ?? [];
-    expect(imports).toHaveLength(1);
-    expect(imports[0]).toContain("from './facts'");
+    // Dos fuentes de datos y nada más: los hechos del negocio y el perfil del
+    // restaurante del que salen (13-10-2026).
+    expect(imports).toHaveLength(2);
+    expect(imports.some((line) => line.includes("from './facts'"))).toBe(true);
+    expect(imports.some((line) => line.includes("from '@/lib/restaurant/profile'"))).toBe(true);
 
     expect(source).not.toContain('@/lib/agent/core');
     expect(source).not.toContain('@/lib/menu');
