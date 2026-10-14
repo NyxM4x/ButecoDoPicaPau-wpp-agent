@@ -885,12 +885,12 @@ describe('contexto — imágenes', () => {
     // La diferencia con la reacción no es de grado: el caption lo TECLEÓ el
     // cliente; la frase de una reacción la redacta Kapso.
     const historia = [
-      msg({ actor: 'customer', content: 'Que hamburguesa es esta?', contentType: 'image' }),
+      msg({ actor: 'customer', content: 'Que alita es esta?', contentType: 'image' }),
       msg({ actor: 'customer', content: 'gracias', contentType: 'text' }),
     ];
 
     expect(buildWorkingContext(historia)).toEqual([
-      { role: 'user', content: 'Que hamburguesa es esta?' },
+      { role: 'user', content: 'Que alita es esta?' },
       { role: 'user', content: 'gracias' },
     ]);
   });
@@ -906,14 +906,14 @@ describe('contexto — imágenes', () => {
 
   it('17 · el contexto de selección se comporta igual', () => {
     const historia = [
-      msg({ actor: 'customer', content: 'Que hamburguesa es esta?', contentType: 'image' }),
+      msg({ actor: 'customer', content: 'Que alita es esta?', contentType: 'image' }),
       msg({ actor: 'customer', content: null, contentType: 'image' }),
     ];
 
     const contexto = buildSelectionContext(historia, { inboundText: 'y de tomar?' });
 
     expect(contexto).toEqual([
-      { role: 'user', content: 'Que hamburguesa es esta?' },
+      { role: 'user', content: 'Que alita es esta?' },
       { role: 'user', content: 'y de tomar?' },
     ]);
   });
@@ -923,7 +923,7 @@ describe('contexto — imágenes', () => {
     // se toca.
     const historia = [
       msg({ actor: 'customer', content: 'Reacted with ❤️ to message wamid.X', contentType: 'unknown' }),
-      msg({ actor: 'customer', content: 'Que hamburguesa es esta?', contentType: 'image' }),
+      msg({ actor: 'customer', content: 'Que alita es esta?', contentType: 'image' }),
     ];
 
     const redaccion = buildWorkingContext(historia);
@@ -939,10 +939,10 @@ describe('contexto — imágenes', () => {
     // la imagen, la fila del historial sobra.
     const historia = [
       msg({ actor: 'customer', content: 'hola', contentType: 'text' }),
-      msg({ actor: 'customer', content: 'Que hamburguesa es esta?', contentType: 'image' }),
+      msg({ actor: 'customer', content: 'Que alita es esta?', contentType: 'image' }),
     ];
 
-    expect(buildWorkingContext(historia, { dropTrailingUserText: 'Que hamburguesa es esta?' })).toEqual([
+    expect(buildWorkingContext(historia, { dropTrailingUserText: 'Que alita es esta?' })).toEqual([
       { role: 'user', content: 'hola' },
     ]);
   });
@@ -962,14 +962,14 @@ describe('contexto — imágenes', () => {
   it('26 · con imagen, el entrante de la ronda de decisión viaja como partes', () => {
     const partes = [
       { type: 'input_image' as const, image_url: 'data:image/jpeg;base64,AAAA' },
-      { type: 'input_text' as const, text: 'Que hamburguesa es esta?' },
+      { type: 'input_text' as const, text: 'Que alita es esta?' },
     ];
     const historia = [
-      msg({ actor: 'customer', content: 'Que hamburguesa es esta?', contentType: 'image' }),
+      msg({ actor: 'customer', content: 'Que alita es esta?', contentType: 'image' }),
     ];
 
     const contexto = buildSelectionContext(historia, {
-      inboundText: 'Que hamburguesa es esta?',
+      inboundText: 'Que alita es esta?',
       inboundParts: partes,
     });
 
@@ -1042,7 +1042,7 @@ describe('context — la decisión sabe si esto sigue siendo la misma conversaci
     // conversación empezando, no un cliente insistiendo.
     const historia = [
       msg({ content: 'hola', messageTimestamp: enMinuto(0) }),
-      msg({ content: 'zarco', messageTimestamp: enMinuto(0.2) }),
+      msg({ content: 'buteco', messageTimestamp: enMinuto(0.2) }),
       msg({ content: 'como esta', messageTimestamp: enMinuto(0.5) }),
       msg({ content: 'quiero ordenar', messageTimestamp: enMinuto(0.9) }),
     ];
@@ -1057,7 +1057,7 @@ describe('context — la decisión sabe si esto sigue siendo la misma conversaci
     // Es el turno que falló en producción: una conversación trabada de hace
     // horas y, encima, un "hola" nuevo. Sin esta línea los dos se leen pegados.
     const historia = [
-      msg({ content: 'quiero un trancapecho y una coca', messageTimestamp: enMinuto(0) }),
+      msg({ content: 'quiero una supertabla y una coca', messageTimestamp: enMinuto(0) }),
       msg({
         actor: 'ai',
         role: 'assistant',
@@ -1070,7 +1070,7 @@ describe('context — la decisión sabe si esto sigue siendo la misma conversaci
     const contexto = buildSelectionContext(historia, { inboundText: 'hola' });
 
     expect(contexto).toEqual([
-      { role: 'user', content: 'quiero un trancapecho y una coca' },
+      { role: 'user', content: 'quiero una supertabla y una coca' },
       { role: 'assistant', content: 'Te dejo el menú para que lo armes ahí' },
       { role: 'system', content: 'Evento del canal: pasaron 4 horas sin mensajes.' },
       { role: 'user', content: 'hola' },

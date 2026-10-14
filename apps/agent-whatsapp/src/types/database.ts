@@ -5,7 +5,7 @@ import type {
 } from '@/lib/payment-proof/analysis';
 
 /**
- * Tipos del modelo de datos de Don Zarco Orders.
+ * Tipos del modelo de datos del agente de pedidos.
  *
  * Reflejan el esquema definido en `supabase/migrations/0001_init.sql`.
  * Se mantienen a mano en la Fase 1; en fases posteriores pueden

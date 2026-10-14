@@ -27,7 +27,7 @@
  * `kapso.content` trae una frase compuesta por el proveedor que MEZCLA el
  * caption real del cliente con filename, tamaño, MIME y URL:
  *
- *     "Que hamburguesa es esta? Image attached (...) URL: ..."
+ *     "Que tabla es esta? Image attached (...) URL: ..."
  *
  * Sacar el caption de ahí exigiría recortar una frase cuyo formato no
  * controlamos, y el premio por equivocarse es meter una URL con acceso al

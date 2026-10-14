@@ -67,29 +67,29 @@ describe('titular — el mismo nombre escrito por bancos distintos', () => {
   });
 
   it('el nombre corto encaja dentro del largo', () => {
-    expect(matchesHolder('DON ZARCO SRL', ['DON ZARCO'])).toBe('match');
-    expect(matchesHolder('JUAN ZARCO', ['JUAN CARLOS ZARCO MENDOZA'])).toBe('match');
+    expect(matchesHolder('BUTECO SRL', ['BUTECO'])).toBe('match');
+    expect(matchesHolder('JUAN BUTECO', ['JUAN CARLOS BUTECO MENDOZA'])).toBe('match');
   });
 
   it('las iniciales no rompen la coincidencia', () => {
-    // `JUAN P. ZARCO` y `JUAN PABLO ZARCO` son la misma persona; exigir la
+    // `JUAN P. BUTECO` y `JUAN PABLO BUTECO` son la misma persona; exigir la
     // inicial haría fallar todos los pagos de un banco entero.
-    expect(matchesHolder('JUAN P. ZARCO', ['JUAN PABLO ZARCO'])).toBe('match');
+    expect(matchesHolder('JUAN P. BUTECO', ['JUAN PABLO BUTECO'])).toBe('match');
   });
 
   it('basta con que UNO de los alias coincida', () => {
-    expect(matchesHolder('ZARCO GASTRONOMIA', ['DON ZARCO', 'ZARCO GASTRONOMIA'])).toBe('match');
+    expect(matchesHolder('BUTECO GASTRONOMIA', ['BUTECO', 'BUTECO GASTRONOMIA'])).toBe('match');
   });
 
   it('otro titular NO pasa', () => {
-    expect(matchesHolder('MARIA LOPEZ', ['DON ZARCO', 'JUAN ZARCO'])).toBe('mismatch');
+    expect(matchesHolder('MARIA LOPEZ', ['BUTECO', 'JUAN BUTECO'])).toBe('mismatch');
   });
 
   it('sin nombre leído o sin nombre configurado, `unknown`', () => {
-    expect(matchesHolder(null, ['DON ZARCO'])).toBe('unknown');
-    expect(matchesHolder('DON ZARCO', [])).toBe('unknown');
+    expect(matchesHolder(null, ['BUTECO'])).toBe('unknown');
+    expect(matchesHolder('BUTECO', [])).toBe('unknown');
     // Solo palabras de dos letras: no identifican a nadie.
-    expect(matchesHolder('DE LA', ['DON ZARCO'])).toBe('unknown');
+    expect(matchesHolder('DE LA', ['BUTECO'])).toBe('unknown');
   });
 });
 
@@ -99,13 +99,13 @@ describe('configuración de la cuenta esperada', () => {
       bank: ' Banco Unión ',
       bankAliases: 'BUN | ',
       accountNumber: ' 1234567890 | 78486705 ',
-      holder: 'DON ZARCO',
-      holderAliases: 'DON ZARCO SRL | | ZARCO GASTRONOMIA',
+      holder: 'BUTECO',
+      holderAliases: 'BUTECO SRL | | BUTECO GASTRONOMIA',
     });
     expect(cuenta).toEqual({
       bankNames: ['Banco Unión', 'BUN'],
       accountNumbers: ['1234567890', '78486705'],
-      holderNames: ['DON ZARCO', 'DON ZARCO SRL', 'ZARCO GASTRONOMIA'],
+      holderNames: ['BUTECO', 'BUTECO SRL', 'BUTECO GASTRONOMIA'],
     });
   });
 
@@ -117,10 +117,10 @@ describe('configuración de la cuenta esperada', () => {
   });
 
   it('con solo el titular ya hay algo que contrastar', () => {
-    expect(parseExpectedAccount({ holder: 'DON ZARCO' })).toEqual({
+    expect(parseExpectedAccount({ holder: 'BUTECO' })).toEqual({
       bankNames: [],
       accountNumbers: [],
-      holderNames: ['DON ZARCO'],
+      holderNames: ['BUTECO'],
     });
   });
 });

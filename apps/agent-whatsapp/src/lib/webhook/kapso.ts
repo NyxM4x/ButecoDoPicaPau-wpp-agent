@@ -2037,7 +2037,7 @@ async function processEnvelopes(
  *
  * El último y no el primero porque es el mensaje que CIERRA la ráfaga y el que
  * el cliente espera que se conteste: en «hola» / «quería saber» / «qué
- * hamburguesas tienen?», la pregunta es la tercera.
+ * tablas tienen?», la pregunta es la tercera.
  *
  * ── Por qué además hace falta mirar si el WAMID sigue disponible ────────────
  *
@@ -2108,7 +2108,7 @@ function pickTurnAnchor(results: readonly EnvelopeResult[]): EnvelopeResult | nu
   // contradecirla. Vale igual cuando el botón salió por el camino determinista.
   //
   // El caso llega en cuanto se agrupan dos mensajes: "quiero pedir" abre el
-  // botón por la puerta de intención y "a cuanto está el trancapecho" queda de
+  // botón por la puerta de intención y "a cuanto está el chicharrón" queda de
   // ancla — sin esto, el cliente recibe su menú y encima una frase del modelo.
   //
   // `duplicate` cuenta como enviado: significa que ese WAMID ya produjo un CTA,
@@ -2671,7 +2671,7 @@ async function runBusiness(
       // El BURST entero, en el orden de `data[]` (5C.5). El ancla decide DE QUÉ
       // mensaje es el turno —y con ello la idempotencia—, pero lo que el modelo
       // tiene que mirar puede estar en otro elemento: en `[foto, "¿qué
-      // hamburguesa es esta?"]` el ancla es el texto y la imagen es el otro.
+      // tabla es esta?"]` el ancla es el texto y la imagen es el otro.
       // Solo entrantes reales del cliente; lo determinístico ya se atendió.
       const crudo = results
         .filter((r) => r.message !== null)

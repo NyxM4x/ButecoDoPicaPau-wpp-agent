@@ -12,7 +12,7 @@ function ticket(orderNumber: string, over: Partial<KitchenTicket> = {}): Kitchen
     stage: 'new' as KdsStage,
     deliveryType: 'delivery',
     paysCash: false,
-    lines: [{ name: 'Trancapecho', quantity: 1, modifiers: [], category: 'plato' as const }],
+    lines: [{ name: 'Supertabla', quantity: 1, modifiers: [], category: 'plato' as const }],
     notes: null,
     completedAt: null,
     amountDueByQr: 18,

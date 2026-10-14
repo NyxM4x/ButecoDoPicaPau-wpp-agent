@@ -256,7 +256,7 @@ describe('lotes — normalización', () => {
   it('3 · el orden de `data[]` se conserva tal cual, con su índice original', () => {
     const data = [
       envelope({ wamid: 'wamid.A', text: 'Gracias' }),
-      envelope({ wamid: 'wamid.B', text: 'Qué hamburguesas tienen?' }),
+      envelope({ wamid: 'wamid.B', text: 'Qué alitas tienen?' }),
       envelope({ wamid: 'wamid.C', text: 'Y bebidas?' }),
     ];
     const res = toEnvelopes(JSON.parse(batchBody(data)));
@@ -434,14 +434,14 @@ describe('lotes — el ancla es la POSICIÓN, no el reloj', () => {
     const mismoSegundo = 1_760_000_000;
     const raw = batchBody([
       envelope({ wamid: 'wamid.A', text: 'Gracias', timestamp: mismoSegundo }),
-      envelope({ wamid: 'wamid.B', text: 'Qué hamburguesas tienen?', timestamp: mismoSegundo }),
+      envelope({ wamid: 'wamid.B', text: 'Qué alitas tienen?', timestamp: mismoSegundo }),
     ]);
 
     const { processed } = await deliver(raw, { agentChannel: spy.channel });
 
     expect(spy.turns).toHaveLength(1);
     expect(spy.turns[0].providerMessageId).toBe('wamid.B');
-    expect(spy.turns[0].content).toBe('Qué hamburguesas tienen?');
+    expect(spy.turns[0].content).toBe('Qué alitas tienen?');
     expect(processed?.body).toMatchObject({ anchor_index: 1 });
   });
 
@@ -464,7 +464,7 @@ describe('lotes — el ancla es la POSICIÓN, no el reloj', () => {
     const raw = batchBody([
       envelope({ wamid: 'wamid.A', text: 'Gracias' }),
       envelope({ wamid: 'wamid.B', text: 'quería saber' }),
-      envelope({ wamid: 'wamid.C', text: 'qué hamburguesas tienen?' }),
+      envelope({ wamid: 'wamid.C', text: 'qué alitas tienen?' }),
     ]);
 
     const { processed } = await deliver(raw, { agentChannel: spy.channel });
@@ -478,7 +478,7 @@ describe('lotes — el ancla es la POSICIÓN, no el reloj', () => {
     expect(spy.persisted.map((m) => m.content)).toEqual([
       'Gracias',
       'quería saber',
-      'qué hamburguesas tienen?',
+      'qué alitas tienen?',
     ]);
     // Y un solo turno: una ráfaga es una intervención, no tres.
     expect(spy.turns).toHaveLength(1);
@@ -594,11 +594,11 @@ describe('lotes — cada elemento por su ruta', () => {
   });
 
   it('un elegible después de uno silencioso gana el ancla', async () => {
-    // El caso del documento de auditoría: ["qué hamburguesas hay?", ❤️]. La
+    // El caso del documento de auditoría: ["qué alitas hay?", ❤️]. La
     // reacción cierra el lote pero la pregunta es lo que hay que contestar.
     const spy = spyChannel();
     const raw = batchBody([
-      envelope({ wamid: 'wamid.A', text: 'qué hamburguesas hay?' }),
+      envelope({ wamid: 'wamid.A', text: 'qué alitas hay?' }),
       reactionEnvelope('wamid.R1'),
     ]);
 
@@ -715,7 +715,7 @@ describe('lotes — un mensaje se atiende una vez, llegue como llegue', () => {
     const spy = spyChannel();
     const raw = batchBody([
       envelope({ wamid: 'wamid.A', text: 'Gracias' }),
-      envelope({ wamid: 'wamid.B', text: 'qué hamburguesas hay?' }),
+      envelope({ wamid: 'wamid.B', text: 'qué alitas hay?' }),
     ]);
     const p = params(events, raw, { agentChannel: spy.channel });
 
@@ -826,7 +826,7 @@ describe('lotes — un WAMID ya consumido no deja al nuevo sin respuesta', () =>
     const spy = canalConHistoria(['wamid.V1', 'wamid.V2']);
     const raw = batchBody([
       envelope({ wamid: 'wamid.V1', text: 'gracias' }),
-      envelope({ wamid: 'wamid.V2', text: 'qué hamburguesas hay?' }),
+      envelope({ wamid: 'wamid.V2', text: 'qué alitas hay?' }),
     ]);
 
     const { processed } = await deliver(raw, { agentChannel: spy.channel });
@@ -843,7 +843,7 @@ describe('lotes — un WAMID ya consumido no deja al nuevo sin respuesta', () =>
     const spy = canalConHistoria([VIEJO]);
     const raw = batchBody([
       envelope({ wamid: 'wamid.N1', text: 'gracias' }),
-      envelope({ wamid: 'wamid.N2', text: 'qué hamburguesas hay?' }),
+      envelope({ wamid: 'wamid.N2', text: 'qué alitas hay?' }),
       envelope({ wamid: VIEJO, text: 'gracias' }),
     ]);
 
@@ -874,7 +874,7 @@ describe('lotes — un WAMID ya consumido no deja al nuevo sin respuesta', () =>
         return { result: 'duplicate', conversationId: 'conv-uuid' };
       },
     };
-    const raw = batchBody([envelope({ wamid: 'wamid.A', text: 'qué hamburguesas hay?' })]);
+    const raw = batchBody([envelope({ wamid: 'wamid.A', text: 'qué alitas hay?' })]);
 
     const { processed } = await deliver(raw, { agentChannel: channel });
 
@@ -1021,7 +1021,7 @@ describe('reacciones — silencio explícito', () => {
   it('11 · B) [texto, reacción]: la reacción se persiste y el texto ancla', async () => {
     const spy = spyChannel();
     const raw = batchBody([
-      envelope({ wamid: 'wamid.T1', text: 'qué hamburguesas hay?' }),
+      envelope({ wamid: 'wamid.T1', text: 'qué alitas hay?' }),
       reactionEnvelope('wamid.R1'),
     ]);
 
@@ -1050,7 +1050,7 @@ describe('reacciones — silencio explícito', () => {
     const raw = batchBody([
       envelope({ wamid: 'wamid.T1', text: 'gracias' }),
       reactionEnvelope('wamid.R1'),
-      envelope({ wamid: 'wamid.T2', text: 'qué hamburguesas hay?' }),
+      envelope({ wamid: 'wamid.T2', text: 'qué alitas hay?' }),
     ]);
 
     const { processed } = await deliver(raw, { agentChannel: spy.channel });
@@ -1060,7 +1060,7 @@ describe('reacciones — silencio explícito', () => {
 
     // Los tres quedan en el historial y en orden; lo que el contexto podrá leer
     // son los dos textos, porque la reacción se guardó sin contenido.
-    expect(spy.persisted.map((m) => m.content)).toEqual(['gracias', null, 'qué hamburguesas hay?']);
+    expect(spy.persisted.map((m) => m.content)).toEqual(['gracias', null, 'qué alitas hay?']);
     expect(JSON.stringify(spy.persisted)).not.toContain('Reacted with');
   });
 
@@ -1243,18 +1243,18 @@ describe('lotes — imágenes (5C.5)', () => {
 
   it('el caption sí se persiste como content', async () => {
     const spy = spyChannelConBurst();
-    const raw = batchBody([imageEnvelope('wamid.IMG1', 'Que hamburguesa es esta?')]);
+    const raw = batchBody([imageEnvelope('wamid.IMG1', 'Que alita es esta?')]);
 
     await deliver(raw, { agentChannel: spy.channel });
 
-    expect(spy.persisted[0].content).toBe('Que hamburguesa es esta?');
+    expect(spy.persisted[0].content).toBe('Que alita es esta?');
   });
 
   it('8 · [imagen, texto]: un solo turno, anclado en el texto', async () => {
     const spy = spyChannelConBurst();
     const raw = batchBody([
       imageEnvelope('wamid.IMG1'),
-      envelope({ wamid: 'wamid.T1', text: 'que hamburguesa es esta?' }),
+      envelope({ wamid: 'wamid.T1', text: 'que alita es esta?' }),
     ]);
 
     const { processed } = await deliver(raw, { agentChannel: spy.channel });
@@ -1429,7 +1429,7 @@ describe('lotes — el saludo dentro de una ráfaga es preámbulo', () => {
     const spy = spyChannel();
     const cta = contarCta();
     const raw = batchBody([
-      envelope({ wamid: 'wamid.A', text: 'Quisiera 2 trancapecho' }),
+      envelope({ wamid: 'wamid.A', text: 'Quisiera 2 supertabla' }),
       locationEnvelope('wamid.PIN'),
     ]);
 
@@ -1447,7 +1447,7 @@ describe('lotes — el saludo dentro de una ráfaga es preámbulo', () => {
     const spy = spyChannel();
     const cta = contarCta();
     const raw = batchBody([
-      envelope({ wamid: 'wamid.A', text: 'Quisiera 2 trancapecho' }),
+      envelope({ wamid: 'wamid.A', text: 'Quisiera 2 supertabla' }),
       envelope({ wamid: 'wamid.B', text: 'quiero pedir' }),
     ]);
 
@@ -1457,13 +1457,13 @@ describe('lotes — el saludo dentro de una ráfaga es preámbulo', () => {
   });
 
   it('un saludo acompañado de una pregunta deja hablar al agente', async () => {
-    // "Hola" / "qué hamburguesas hay?" — el saludo no dispara nada y la
+    // "Hola" / "qué alitas hay?" — el saludo no dispara nada y la
     // pregunta sigue su camino de siempre, que es el modelo.
     const spy = spyChannel();
     const cta = contarCta();
     const raw = batchBody([
       envelope({ wamid: 'wamid.A', text: 'Hola' }),
-      envelope({ wamid: 'wamid.B', text: 'qué hamburguesas hay?' }),
+      envelope({ wamid: 'wamid.B', text: 'qué alitas hay?' }),
     ]);
 
     await deliver(raw, { agentChannel: spy.channel, sendMenuCta: cta.fn });

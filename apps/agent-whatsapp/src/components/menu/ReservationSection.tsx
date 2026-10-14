@@ -25,12 +25,30 @@ import { restaurantProfile } from '@/lib/restaurant/profile';
  * `chatUrl` es el chat del local (`wa.me`). Sin él no hay a quién mandarle la
  * reserva, y quien arma la página no monta esta sección (salvo en desarrollo,
  * para poder verla: entonces el botón queda apagado y lo dice).
+ *
+ * `presetNote` deja escrita la nota desde fuera del formulario: «Reservar con
+ * este combo» en un cumpleaños. Cada `serial` nuevo la vuelve a escribir, sin
+ * tocar lo demás que el cliente ya llenó.
  */
-export function ReservationSection({ chatUrl }: { chatUrl: string | null }) {
+export function ReservationSection({
+  chatUrl,
+  presetNote = null,
+}: {
+  chatUrl: string | null;
+  presetNote?: { text: string; serial: number } | null;
+}) {
   const profile = restaurantProfile();
   const [fields, setFields] = useState<ReservationFields>(EMPTY_RESERVATION);
   const [errors, setErrors] = useState<ReservationErrors>({});
   const today = useMemo(() => todayIn(profile.timezone), [profile.timezone]);
+
+  // Durante el render y no en un efecto: la nota aparece en el mismo cuadro.
+  const [presetSerial, setPresetSerial] = useState<number | null>(null);
+  if (presetNote && presetNote.serial !== presetSerial) {
+    setPresetSerial(presetNote.serial);
+    setFields((current) => ({ ...current, notes: presetNote.text.slice(0, MAX_NOTES_LENGTH) }));
+    setErrors((current) => ({ ...current, notes: undefined }));
+  }
 
   const set = <K extends keyof ReservationFields>(key: K, value: ReservationFields[K]) => {
     setFields((current) => ({ ...current, [key]: value }));

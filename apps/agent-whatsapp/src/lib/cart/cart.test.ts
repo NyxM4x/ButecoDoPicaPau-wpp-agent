@@ -137,7 +137,7 @@ describe('totales', () => {
   /**
    * AGOTAR UN PRODUCTO TUMBABA EL MENÚ ENTERO (07-09-2026).
    *
-   * El panel marcó el trancapecho como agotado y `listActive()` dejó de
+   * El panel marcó la supertabla como agotado y `listActive()` dejó de
    * devolverlo. El cliente que lo tenía guardado en `localStorage` volvía al
    * menú, `summarizeCart` se quedaba sin ni una línea que cobrar y
    * `calculateOrder` lanzaba dentro del render de `useCart` — la pantalla
@@ -231,7 +231,7 @@ describe('persistencia en localStorage', () => {
 });
 
 describe('carrito por enlace: lo que quedó a medias no reaparece (19-09-2026)', () => {
-  const guardado = serializeCart({ TRANCAPECHO: 2 });
+  const guardado = serializeCart({ SUPERTABLA: 2 });
 
   it('con el mismo enlace se recupera el carrito guardado', () => {
     expect(rawForOwner('sesion-a', guardado, 'sesion-a')).toBe(guardado);

@@ -904,7 +904,7 @@ describe('el enlace que SÍ puede seguir', () => {
 });
 
 /**
- * Noche de promoción (14-09-2026): sin efectivo y sin el Trancapecho suelto.
+ * Noche de promoción (14-09-2026): sin efectivo y sin la Supertabla suelto.
  *
  * El menú ya no los ofrece. Estos tests fijan la barrera del servidor para la
  * pestaña abierta ANTES de encender la promoción, y sobre todo que un fallo
@@ -915,7 +915,7 @@ class DepsConPromo extends FakeDeps {
     active: true,
     cashAllowed: false,
     pickupAllowed: false,
-    comboOnlyCodes: new Set(['trancapecho']),
+    comboOnlyCodes: new Set(['supertabla']),
   };
   modoThrows: Error | null = null;
 
@@ -956,7 +956,7 @@ describe('noche de promoción', () => {
     const deps = new DepsConPromo();
 
     const response = await handleCreateWebOrder(
-      request(validBody({ payment_method: 'qr', items: [{ code: 'trancapecho', quantity: 1 }] })),
+      request(validBody({ payment_method: 'qr', items: [{ code: 'supertabla', quantity: 1 }] })),
       deps,
     );
     const body = (await response.json()) as { error: string; message: string };
@@ -1015,7 +1015,7 @@ describe('noche de promoción', () => {
     deps.modoThrows = new Error('supabase caído');
 
     const response = await handleCreateWebOrder(
-      request(validBody({ payment_method: 'qr', items: [{ code: 'trancapecho', quantity: 1 }] })),
+      request(validBody({ payment_method: 'qr', items: [{ code: 'supertabla', quantity: 1 }] })),
       deps,
     );
 

@@ -7,20 +7,20 @@ import type { RawKitchenItemRow } from '@/lib/kitchen/ticket-view';
  *
  * Los componentes de una promoción NO están en `order_items`: viven congelados
  * en `order_promotions.components_snapshot`, porque si fueran líneas sueltas el
- * mismo lomito se contaría dos veces y el subtotal saldría el doble.
+ * mismo keperí se contaría dos veces y el subtotal saldría el doble.
  *
  * Correcto para el dinero, y desastroso para la cocina: un pedido de Bs 60 se
  * vería en el tablero SIN NADA que preparar. Alguien tendría que adivinar.
  *
  * ── Por qué se aplanan y no se pintan como "combo" ──────────────────────────
  *
- * Quien cocina no necesita saber que dos lomitos venían juntos y con descuento:
- * necesita saber que hay DOS lomitos. Aplanar los componentes los mete en las
+ * Quien cocina no necesita saber que dos keperís venían juntos y con descuento:
+ * necesita saber que hay DOS keperís. Aplanar los componentes los mete en las
  * mismas líneas que el resto y todo lo demás sigue funcionando igual — el
  * agrupado por nombre, el recuento del ticket y el resumen de la jornada.
  *
- * El efecto secundario es el correcto: un pedido con un lomito suelto MÁS un
- * combo de dos lomitos muestra "3× Lomito", que es exactamente lo que hay que
+ * El efecto secundario es el correcto: un pedido con un keperí suelto MÁS un
+ * combo de dos keperís muestra "3× Keperí", que es exactamente lo que hay que
  * poner en la plancha. Pintarlos por separado obligaría a sumar de cabeza.
  *
  * El precio y el ahorro no aparecen por ningún lado, y no deben: en el tablero

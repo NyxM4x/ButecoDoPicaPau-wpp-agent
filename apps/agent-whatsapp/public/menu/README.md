@@ -21,3 +21,8 @@ Para agregar o cambiar fotos:
 
 Lo que se deje en esta carpeta queda publicado tal cual con el sitio, pese lo
 que pese, y el menú no lo usa.
+
+**Excepción: `capas/`**, la tabla por capas de la maqueta (`/menu/maqueta`): la
+tabla de base y cada carne recortada, en WebP. Salen de `tablaPrincipal.png` y
+`carnes/*.png` (que no van a git) con `node scripts/prepare-board-layers.mjs`.
+Ver `apps/agent-whatsapp/src/lib/menu/board-layers.ts`.

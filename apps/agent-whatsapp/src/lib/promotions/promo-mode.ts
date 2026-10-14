@@ -7,8 +7,8 @@ import { evaluatePromotion, isPurchasable, type Promotion } from './promotion';
  * La noche de promoción — módulo PURO (14-09-2026).
  *
  * Mientras haya al menos un combo que se pueda comprar, el menú no se comporta
- * como el de siempre. La primera fue "2 Trancapechos por Bs 25": la cocina solo
- * hace trancapechos, el resto del catálogo queda agotado y lo que se le ofrece
+ * como el de siempre. La primera fue "2 Chicharrones por Bs 25": la cocina solo
+ * hace chicharrones, el resto del catálogo queda agotado y lo que se le ofrece
  * al cliente junto al combo son las bebidas.
  *
  * Cuatro cosas cambian, y las cuatro se deciden AQUÍ para que el menú, el
@@ -34,9 +34,9 @@ import { evaluatePromotion, isPurchasable, type Promotion } from './promotion';
  *
  * ── Por qué el suelto se esconde solo en combos de un producto ──────────────
  *
- * "2× Trancapecho por Bs 25" es un precio por cantidad del MISMO producto:
+ * "2× Chicharrón por Bs 25" es un precio por cantidad del MISMO producto:
  * venderlo suelto al lado es ofrecer lo mismo dos veces. En un combo de varios
- * productos —lomito, soda y papa— cada uno sigue siendo algo que se pide solo,
+ * productos —keperí, limonada y sopa— cada uno sigue siendo algo que se pide solo,
  * y esconderlos vaciaría el menú.
  *
  * El suelto NO se marca agotado en la base: un componente inactivo tumba el

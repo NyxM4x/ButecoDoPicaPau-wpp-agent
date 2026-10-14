@@ -1,5 +1,5 @@
 /**
- * Tarifario de delivery de Don Zarco — módulo PURO.
+ * Tarifario de delivery propio del agente (solo sin POS) — módulo PURO.
  *
  * Trabaja EXCLUSIVAMENTE con metros enteros. NO llama a Mapbox ni a la red:
  * recibe metros y devuelve tarifa o fuera de cobertura. La tarifa jamás se

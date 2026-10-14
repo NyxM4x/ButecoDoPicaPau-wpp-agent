@@ -2,7 +2,7 @@
  * EL HORARIO DEL RESTAURANTE — módulo PURO.
  *
  * La hora local del negocio y su horario semanal, leídos del perfil. Antes eran
- * el desfase fijo de Bolivia y las horas de Don Zarco.
+ * el desfase fijo de Bolivia y las horas de la demo.
  *
  * El instante llega siempre como argumento: una función que consulta el reloj
  * por su cuenta no se puede probar, y aquí hay que poder afirmar qué pasa el

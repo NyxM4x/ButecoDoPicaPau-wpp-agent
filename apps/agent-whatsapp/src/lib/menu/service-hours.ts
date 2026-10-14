@@ -20,7 +20,7 @@ import { restaurantProfile, type RestaurantProfile } from '@/lib/restaurant/prof
  * vino a corregir.
  *
  * Las horas salen del horario semanal del perfil (`lib/restaurant/hours`):
- * hasta el 2026-10-13 eran las de Don Zarco, escritas aquí.
+ * hasta el 2026-10-13 eran las de la demo, escritas aquí.
  *
  * ── Por qué franjas y no "¿está abierto?" ───────────────────────────────────
  *

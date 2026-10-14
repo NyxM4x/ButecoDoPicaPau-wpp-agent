@@ -96,7 +96,7 @@ export function calculateOrder(
   return { lines, subtotal_amount, delivery_amount, total_amount };
 }
 
-/** Construye las líneas de resumen para el Flow: `2x Trancapecho — Bs. 44`. */
+/** Construye las líneas de resumen para el Flow: `2x Chicharrón — Bs. 44`. */
 export function buildSummaryLines(calc: CalculatedOrder): string[] {
   return calc.lines.map(
     (l) => `${l.quantity}x ${l.product_name_snapshot} — ${formatBs(l.subtotal)}`,

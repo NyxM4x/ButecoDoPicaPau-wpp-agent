@@ -8,7 +8,7 @@
  *
  * ── Por qué NO se le dice lo que esperamos encontrar ────────────────────────
  *
- * El prompt no menciona la cuenta de Don Zarco, ni el titular, ni el monto del
+ * El prompt no menciona la cuenta del local, ni el titular, ni el monto del
  * pedido. Es lo contrario de lo que parece más listo, y es a propósito: un
  * modelo al que se le enseña la respuesta correcta tiende a verla. Dile que la
  * cuenta debería terminar en 4471 y leerá 4471 donde pone 4477, que es justo el

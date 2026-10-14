@@ -1,7 +1,7 @@
 /**
  * El reparto de lo que se cobra en la puerta — modulo PURO.
  *
- * Al cerrar la noche, Zarco y quien reparte no cuadran una cifra: cuadran DOS.
+ * Al cerrar la noche, el local y quien reparte no cuadran una cifra: cuadran DOS.
  * Los productos entran al negocio y el envio se reparte, asi que "COBRAR TODO
  * BS 87" obliga a abrir el pedido para saber cuanto de eso era la moto. Esta
  * funcion es la que separa las dos mitades.

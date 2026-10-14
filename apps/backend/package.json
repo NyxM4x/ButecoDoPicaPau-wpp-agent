@@ -1,5 +1,5 @@
 {
-  "name": "backend-central-zarco",
+  "name": "buteco-backend",
   "version": "0.1.0",
   "description": "Backend central de negocio (La Fija) — NestJS + Postgres, dueño de menú/pedidos/pagos/delivery/promociones.",
   "private": true,

@@ -170,7 +170,7 @@ const serverEnvSchema = z.object({
    */
   PAYMENT_PROOF_ANALYSIS_ENABLED: optionalString,
   /**
-   * La cuenta donde cobra Don Zarco, tal como sale IMPRESA en el comprobante
+   * La cuenta donde cobra el local, tal como sale IMPRESA en el comprobante
    * del cliente — no como figura en el contrato del banco. Es lo que se compara
    * con lo que se lee en la imagen.
    *

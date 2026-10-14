@@ -10,10 +10,10 @@ import { normalMode, orderSectionsForMode, promoModeAt } from './promo-mode';
  * de un producto y que las bebidas suban sin desordenar lo demás.
  */
 
-const trancapecho = (over: Partial<PromotionComponent> = {}): PromotionComponent => ({
-  menuItemId: 'id-trancapecho',
-  code: 'trancapecho',
-  name: 'Trancapecho',
+const supertabla = (over: Partial<PromotionComponent> = {}): PromotionComponent => ({
+  menuItemId: 'id-supertabla',
+  code: 'supertabla',
+  name: 'Supertabla',
   category: 'plato',
   unitPrice: 18,
   quantity: 2,
@@ -22,9 +22,9 @@ const trancapecho = (over: Partial<PromotionComponent> = {}): PromotionComponent
 });
 
 /** 2 × Bs 18 = Bs 36 normal; se vende a Bs 25. Hasta las 00:00 del 15-09 en Bolivia. */
-const DOS_TRANCAPECHOS: Promotion = {
-  id: 'promo-trancapecho',
-  name: '2 Trancapechos',
+const DOS_SUPERTABLAS: Promotion = {
+  id: 'promo-supertabla',
+  name: '2 Supertablas',
   description: null,
   promoPrice: 25,
   imageUrl: null,
@@ -33,18 +33,18 @@ const DOS_TRANCAPECHOS: Promotion = {
   isActive: true,
   revision: 1,
   updatedAt: '2026-09-14T18:00:00.000Z',
-  components: [trancapecho()],
+  components: [supertabla()],
 };
 
 const COMBO_VARIADO: Promotion = {
-  ...DOS_TRANCAPECHOS,
-  id: 'promo-lomito',
-  name: 'Lomito con soda',
+  ...DOS_SUPERTABLAS,
+  id: 'promo-keperi',
+  name: 'Keperi con soda',
   promoPrice: 20,
   components: [
-    { ...trancapecho(), menuItemId: 'id-lomito', code: 'lomito', name: 'Lomito', quantity: 1 },
+    { ...supertabla(), menuItemId: 'id-keperi', code: 'keperi', name: 'Keperi', quantity: 1 },
     {
-      ...trancapecho(),
+      ...supertabla(),
       menuItemId: 'id-soda',
       code: 'soda_peque',
       name: 'Soda Peque',
@@ -66,14 +66,14 @@ describe('promoModeAt — cuándo es noche de promoción', () => {
   });
 
   it('con una promoción vendible se activa y apaga el efectivo y el recojo', () => {
-    const modo = promoModeAt([DOS_TRANCAPECHOS], ANTES_DE_MEDIANOCHE);
+    const modo = promoModeAt([DOS_SUPERTABLAS], ANTES_DE_MEDIANOCHE);
     expect(modo.active).toBe(true);
     expect(modo.cashAllowed).toBe(false);
     expect(modo.pickupAllowed).toBe(false);
   });
 
   it('a las 00:00 en punto vuelve solo al menú de siempre', () => {
-    const modo = promoModeAt([DOS_TRANCAPECHOS], MEDIANOCHE);
+    const modo = promoModeAt([DOS_SUPERTABLAS], MEDIANOCHE);
     expect(modo).toEqual(normalMode());
     // El efectivo vuelve a medianoche solo si `CASH_ENABLED` lo permite: desde
     // el 21-09-2026 está apagado aparte de la promoción.
@@ -93,20 +93,20 @@ describe('promoModeAt — cuándo es noche de promoción', () => {
   });
 
   it('una promoción apagada no activa nada', () => {
-    const apagada = { ...DOS_TRANCAPECHOS, isActive: false };
+    const apagada = { ...DOS_SUPERTABLAS, isActive: false };
     expect(promoModeAt([apagada], ANTES_DE_MEDIANOCHE)).toEqual(normalMode());
   });
 
   it('una promoción sin ahorro tampoco: no se puede comprar', () => {
-    const sinAhorro = { ...DOS_TRANCAPECHOS, promoPrice: 36 };
+    const sinAhorro = { ...DOS_SUPERTABLAS, promoPrice: 36 };
     expect(promoModeAt([sinAhorro], ANTES_DE_MEDIANOCHE)).toEqual(normalMode());
   });
 });
 
 describe('promoModeAt — qué deja de venderse suelto', () => {
   it('el producto de un combo de UN solo producto va solo en el combo', () => {
-    const modo = promoModeAt([DOS_TRANCAPECHOS], ANTES_DE_MEDIANOCHE);
-    expect([...modo.comboOnlyCodes]).toEqual(['trancapecho']);
+    const modo = promoModeAt([DOS_SUPERTABLAS], ANTES_DE_MEDIANOCHE);
+    expect([...modo.comboOnlyCodes]).toEqual(['supertabla']);
   });
 
   it('los productos de un combo variado se siguen vendiendo sueltos', () => {
@@ -116,10 +116,10 @@ describe('promoModeAt — qué deja de venderse suelto', () => {
   });
 
   it('una promoción que ya no se vende no esconde su producto', () => {
-    const vencida = { ...DOS_TRANCAPECHOS, endsAt: '2026-09-14T20:00:00.000Z' };
+    const vencida = { ...DOS_SUPERTABLAS, endsAt: '2026-09-14T20:00:00.000Z' };
     const modo = promoModeAt([vencida, COMBO_VARIADO], ANTES_DE_MEDIANOCHE);
     expect(modo.active).toBe(true);
-    expect(modo.comboOnlyCodes.has('trancapecho')).toBe(false);
+    expect(modo.comboOnlyCodes.has('supertabla')).toBe(false);
   });
 });
 
@@ -131,7 +131,7 @@ describe('orderSectionsForMode — Bebidas debajo de Promociones', () => {
   ];
 
   it('en noche de promoción las bebidas pasan primero y el resto no se desordena', () => {
-    const modo = promoModeAt([DOS_TRANCAPECHOS], ANTES_DE_MEDIANOCHE);
+    const modo = promoModeAt([DOS_SUPERTABLAS], ANTES_DE_MEDIANOCHE);
     expect(orderSectionsForMode(secciones, modo).map((s) => s.category)).toEqual([
       'bebida',
       'plato',
@@ -144,7 +144,7 @@ describe('orderSectionsForMode — Bebidas debajo de Promociones', () => {
   });
 
   it('si no hay bebidas (búsqueda sin resultados en esa categoría) no inventa la sección', () => {
-    const modo = promoModeAt([DOS_TRANCAPECHOS], ANTES_DE_MEDIANOCHE);
+    const modo = promoModeAt([DOS_SUPERTABLAS], ANTES_DE_MEDIANOCHE);
     const sinBebidas = [{ category: 'plato' as const }, { category: 'extra' as const }];
     expect(orderSectionsForMode(sinBebidas, modo).map((s) => s.category)).toEqual([
       'plato',

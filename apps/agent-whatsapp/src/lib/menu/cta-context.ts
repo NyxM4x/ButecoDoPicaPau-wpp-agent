@@ -101,13 +101,13 @@ const ENVIO = /\b(delivery|envio|envios|domicilio|reparto|aqui|aca|a mi casa)\b/
 /**
  * Dictar el pedido: una cantidad seguida de algo.
  *
- * "2 lomitos", "quiero 3 trancapechos", "mandame 2 hamburguesas". Es el cliente
+ * "2 costillas", "quiero 3 tablitas", "mandame 2 limonadas". Es el cliente
  * que todavía pide como se pedía antes, y el que más necesita que el botón le
  * explique por qué ahora conviene armarlo él.
  *
- * Se exige el DÍGITO junto a una palabra: sin él, "quiero lomito" es una
+ * Se exige el DÍGITO junto a una palabra: sin él, "quiero costilla" es una
  * intención de pedir cualquiera y ya la cubre el texto normal. Con él, la
- * intención es inequívoca — nadie escribe "2 lomitos" para preguntar algo.
+ * intención es inequívoca — nadie escribe "2 costillas" para preguntar algo.
  */
 const DICTADO = /\b\d{1,2}\s+[a-z]{3,}/;
 
@@ -136,8 +136,8 @@ export function classifyMenuCtaContext(
   if (mentionsCash(text)) return 'cash';
 
   if (COSTE.test(norm) && ENVIO.test(norm)) return 'delivery';
-  // Las dos formas de dictar: con dígito ("2 lomitos") y con la cantidad en
-  // letra tras un verbo de pedir ("quisiera un trancapecho"). La segunda la
+  // Las dos formas de dictar: con dígito ("2 costillas") y con la cantidad en
+  // letra tras un verbo de pedir ("quisiera un chicharrón"). La segunda la
   // decide el MISMO criterio que abre el menú, importado y no recopiado.
   if (DICTADO.test(norm) || isDictatedOrder(text)) return 'dictated';
   if (COSTE.test(norm)) return 'price';

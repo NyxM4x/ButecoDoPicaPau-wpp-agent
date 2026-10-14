@@ -21,9 +21,9 @@ export function SearchBar({
         inputMode="search"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        placeholder="Buscar hamburguesa, bebida…"
+        placeholder="Buscar plato o bebida…"
         aria-label="Buscar en el menú"
-        className="w-full rounded-full border border-zinc-200 bg-white py-3 pr-4 pl-10 text-base text-zinc-900 placeholder:text-zinc-400 focus:border-donzarco-red-dark focus:ring-2 focus:ring-donzarco-red-dark/20 focus:outline-none"
+        className="w-full rounded-full border border-zinc-200 bg-white py-3 pr-4 pl-10 text-base text-zinc-900 placeholder:text-zinc-400 focus:border-brand-red-dark focus:ring-2 focus:ring-brand-red-dark/20 focus:outline-none"
       />
     </div>
   );

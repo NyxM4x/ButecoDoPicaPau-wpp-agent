@@ -55,7 +55,7 @@ export interface PromotionForModel {
   price: number;
   /** Lo que costaría suelto: la cifra que el menú tacha. */
   normalPrice: number;
-  /** "2× Trancapecho". Sale de los componentes, nunca de un texto a mano. */
+  /** "2× Chicharrón". Sale de los componentes, nunca de un texto a mano. */
   includes: string;
   /** "Termina hoy 00:00". Ausente si no tiene fin. */
   until?: string;
@@ -121,7 +121,7 @@ export function createGetMenuItemsTool(catalog: MenuCatalogPort): AgentTool {
         'tú: no conviertas una pregunta amplia en puntual eligiendo un par por ' +
         'tu cuenta. ' +
         'NO la uses para responder qué hay, qué opciones existen ni qué ' +
-        'contiene una categoría entera (hamburguesas, bebidas, extras): eso se ' +
+        'contiene una categoría entera (tablas, bebidas, extras): eso se ' +
         'responde con send_menu. Nunca respondas de memoria. ' +
         'Trae también las promociones que se pueden comprar ahora: úsala si el ' +
         'cliente pregunta si hay promoción o cuánto sale una.',
@@ -243,7 +243,7 @@ export interface SendMenuToolResult {
  * Desde que se quitó el cooldown, esa etiqueta ya no abre ni cierra ninguna
  * puerta: es OBSERVABILIDAD y los dos envían igual. Y significa solo lo que
  * dice — `agent_suggestion` es "el entrante no nombró el menú", no "al agente
- * se le ocurrió a él": "¿qué hamburguesas tienen?" cae ahí y es una petición
+ * se le ocurrió a él": "¿qué tablas tienen?" cae ahí y es una petición
  * de ver productos como una casa.
  *
  * La única protección contra duplicados es la idempotencia técnica: el mismo
@@ -262,7 +262,7 @@ export function createSendMenuTool(
         `Envía al cliente el menú interactivo de ${restaurantProfile().name} por WhatsApp. Úsala ` +
         'SIEMPRE que la respuesta tendría que enumerar VARIOS productos, una ' +
         'CATEGORÍA entera o lo que hay disponible: "qué tienen?", "qué ' +
-        'hamburguesas hay?", "qué bebidas tienen?", "qué extras hay?", "qué ' +
+        'tablas hay?", "qué bebidas tienen?", "qué extras hay?", "qué ' +
         'opciones hay?". También cuando el cliente quiera elegir para pedir. ' +
         'Mandar el menú es mejor que reescribir el catálogo en el chat.',
       parameters: NO_ARGUMENTS,

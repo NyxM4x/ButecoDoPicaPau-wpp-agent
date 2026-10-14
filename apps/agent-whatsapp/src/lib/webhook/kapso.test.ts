@@ -891,7 +891,7 @@ describe('handleKapsoWebhook — CTA "Ver menú" (Fase 5.2A)', () => {
     //
     // El motivo es `agent_suggestion` y no `explicit_request`: nadie pidió el
     // menú. En el ledger tiene que verse cuál fue cuál.
-    for (const saludo of ['hola', 'Buenas noches', 'Hola buenas, don Zarco']) {
+    for (const saludo of ['hola', 'Buenas noches', 'Hola buenas, Buteco']) {
       const store = new FakeStore();
       const sender = fakeSendCta();
       const res = await callTrigger(store, sender, saludo);
@@ -1894,7 +1894,7 @@ describe('handleKapsoWebhook — ubicación compartida por link de Google Maps',
     const expand = fakeExpand();
     const standalone = fakeStandalone();
 
-    const res = await callTexto('hola, tienen hamburguesas?', {
+    const res = await callTexto('hola, tienen alitas?', {
       expand: expand.fn,
       standalone: standalone.fn,
     });
@@ -1942,7 +1942,7 @@ describe('handleKapsoWebhook — la pregunta por el envío no llega al modelo', 
 
   it('el mensaje real que derivó una conversación ahora se atiende aquí', async () => {
     const ask = fakeAsk();
-    const res = await callAsk('hola como esta zarco cuanto me saldria delivery aqui', ask.fn);
+    const res = await callAsk('hola como esta buteco cuanto me saldria delivery aqui', ask.fn);
 
     expect(res.outcome).toBe('processed');
     expect(ask.calls).toHaveLength(1);
@@ -1951,9 +1951,9 @@ describe('handleKapsoWebhook — la pregunta por el envío no llega al modelo', 
 
   it('una pregunta por el precio de un PRODUCTO sigue yendo al agente', async () => {
     // El falso positivo que hay que evitar: si esto se activara, "cuánto cuesta
-    // el trancapecho" contestaría pidiendo la ubicación en vez del precio.
+    // la supertabla" contestaría pidiendo la ubicación en vez del precio.
     const ask = fakeAsk();
-    await callAsk('cuanto cuesta el trancapecho?', ask.fn);
+    await callAsk('cuanto cuesta la supertabla?', ask.fn);
 
     expect(ask.calls).toEqual([]);
   });

@@ -50,7 +50,7 @@ import type { MenuCtaContext } from './cta-context';
  *
  * CUIDADO CON LEERLO DE MÁS. `agent_suggestion` significa exactamente "el
  * entrante no nombraba el menú ni la carta", NO "el agente actuó por iniciativa
- * propia". "¿Qué hamburguesas tienen?" es una petición clarísima de explorar
+ * propia". "¿Qué tablas tienen?" es una petición clarísima de explorar
  * productos y queda igualmente como `agent_suggestion`, porque no dijo ninguna
  * de las dos palabras.
  *

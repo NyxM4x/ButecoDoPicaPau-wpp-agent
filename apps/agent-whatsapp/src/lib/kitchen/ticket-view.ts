@@ -338,7 +338,7 @@ function pagoAceptadoDe(payment: PaymentView | null): boolean {
  *
  * La condicion incluye `stage === 'new'` a proposito. Una vez alguien pulso
  * INICIAR, el ticket se queda pase lo que pase con el pago: si se rechaza el
- * comprobante despues, la hamburguesa ya esta en la plancha y hacerla
+ * comprobante despues, la costilla ya esta en la parrilla y hacerla
  * desaparecer de la pantalla no la devuelve al refrigerador — solo deja a quien
  * cocina sin saber que estaba haciendo.
  *
@@ -617,7 +617,7 @@ export function toKitchenTickets(
     // borrosa en trabajo manual por WhatsApp.
     //
     // Solo mientras está NUEVO, por el mismo motivo que el filtro de entrada:
-    // si la hamburguesa ya está en la plancha, hacerla desaparecer de la
+    // si la costilla ya está en la parrilla, hacerla desaparecer de la
     // pantalla no la devuelve al refrigerador.
     if (stage === 'new' && (gate.state === 'rejected_grace' || gate.state === 'expired')) {
       continue;

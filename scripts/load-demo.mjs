@@ -3,10 +3,10 @@
 // usando la MISMA API que usa el POS: login de admin, categorías, productos,
 // fotos, promociones y configuración del local. Sin dependencias (Node >= 20).
 //
-//   node scripts/load-demo.mjs don-zarco               # carga o actualiza
-//   node scripts/load-demo.mjs cafe-central --replace  # y apaga lo que no sea de esta demo
-//   node scripts/load-demo.mjs don-zarco --with-staff  # crea además los usuarios cocina y caja
-//   node scripts/load-demo.mjs don-zarco --24h         # sin horario: para mostrar la demo a cualquier hora
+//   node scripts/load-demo.mjs buteco-do-pica-pau       # carga o actualiza
+//   node scripts/load-demo.mjs buteco-do-pica-pau --replace  # y apaga lo que no sea de esta demo
+//   node scripts/load-demo.mjs buteco-do-pica-pau --with-staff  # crea además los usuarios cocina y caja
+//   node scripts/load-demo.mjs buteco-do-pica-pau --24h         # sin horario: para mostrar la demo a cualquier hora
 //
 // Es idempotente: se puede correr las veces que haga falta. Nunca borra nada:
 // `--replace` desactiva productos y categorías y archiva promociones, así los

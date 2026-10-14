@@ -7,7 +7,7 @@ import type { ExpectedAccount } from './expected-account';
 const CUENTA: ExpectedAccount = {
   bankNames: ['Banco Unión'],
   accountNumbers: ['1234567890'],
-  holderNames: ['DON ZARCO'],
+  holderNames: ['BUTECO'],
 };
 
 /** Cabecera JPEG real: `sniffMimeType` decide por los BYTES, no por el nombre. */
@@ -22,7 +22,7 @@ const LECTURA = (over: Record<string, unknown> = {}) =>
     bank: 'Banco Unión',
     destinationBank: 'Banco Unión',
     destinationAccount: '1234567890',
-    destinationHolder: 'DON ZARCO',
+    destinationHolder: 'BUTECO',
     amount: 48,
     currency: 'BOB',
     transactionRef: 'TX-1',
@@ -83,7 +83,7 @@ describe('análisis — el recorrido completo', () => {
           // cuando no, es lo único con lo que se distingue un fallo de lectura
           // de un alias que falta.
           destinationAccount: '1234567890',
-          destinationHolder: 'DON ZARCO',
+          destinationHolder: 'BUTECO',
           destinationBank: 'Banco Unión',
         },
       },

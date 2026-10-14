@@ -19,7 +19,7 @@ const RESPUESTA_COMPLETA = JSON.stringify({
   legible: true,
   bank: 'Banco Unión',
   destinationAccount: '****7890',
-  destinationHolder: 'DON ZARCO SRL',
+  destinationHolder: 'BUTECO SRL',
   amount: 48,
   currency: 'BOB',
   transactionRef: '987654321',
@@ -46,7 +46,7 @@ describe('la instrucción del lector', () => {
     // que la cuenta acaba en 4471 y leerá 4471 donde pone 4477, que es justo el
     // dígito que cambia el retoque.
     const texto = JSON.stringify(buildProofReadInput(DATA_URL));
-    for (const filtrado of ['ZARCO', 'esperad', 'debería decir', 'correcto si']) {
+    for (const filtrado of ['BUTECO', 'esperad', 'debería decir', 'correcto si']) {
       expect(texto.toLowerCase(), filtrado).not.toContain(filtrado.toLowerCase());
     }
   });

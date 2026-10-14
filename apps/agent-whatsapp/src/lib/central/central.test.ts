@@ -54,7 +54,7 @@ const PRODUCTS: CentralProduct[] = [
   product({ id: 'p2', code: 'pan_cunape', name: 'Cuñapé', categoryId: 'c2', price: 5, description: null }),
   product({ id: 'p1', imageUrl: '/products/p1/image' }),
   product({ id: 'p3', code: 'cafe_espresso', name: 'Espresso', sortOrder: 5, isAvailable: false }),
-  product({ id: 'p4', code: 'trancapecho', name: 'Trancapecho', categoryId: 'c3' }),
+  product({ id: 'p4', code: 'supertabla', name: 'Supertabla', categoryId: 'c3' }),
 ];
 
 describe('catálogo central → menú web', () => {
@@ -98,18 +98,19 @@ describe('catálogo central → menú web', () => {
     expect(filterMenuItems(items, 'c:Panadería').map((i) => i.code)).toEqual(['pan_cunape']);
   });
 
-  it('un producto de otra demo con el mismo code no hereda la foto fija de Don Zarco', () => {
+  it('un producto de otra demo con el mismo code no hereda la foto fija de Buteco do Pica-Pau', () => {
     const [item] = toMenuItems(
       [{ ...CAT_OFF, isActive: true }],
-      [product({ id: 'p4', code: 'trancapecho', categoryId: 'c3', imageUrl: null })],
+      [product({ id: 'p4', code: 'supertabla', categoryId: 'c3', imageUrl: null })],
     );
     expect(productImage(item).src).toBeNull();
   });
 
-  it('sin campos del backend, el catálogo de siempre no cambia', () => {
-    const legacy = { code: 'trancapecho', category: 'plato' as const };
-    expect(productImage(legacy).src).toBe('/menu/trancapecho.webp');
-    expect(productDescription('trancapecho')).toContain('cochabambino');
+  it('sin campos del backend no hay foto ni descripción escritas en el código', () => {
+    // Las de la demo anterior se retiraron: sin POS, el placeholder.
+    const legacy = { code: 'supertabla', category: 'plato' as const };
+    expect(productImage(legacy).src).toBeNull();
+    expect(productDescription('supertabla')).toBeNull();
     expect(categoryTabsFor([legacy]).map((t) => t.id)).toEqual(['all', 'plato', 'extra', 'bebida']);
   });
 });

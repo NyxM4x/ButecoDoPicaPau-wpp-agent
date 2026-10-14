@@ -172,7 +172,7 @@ export function CartPanel({
                     className="h-14 w-14 rounded-lg"
                     sizes="56px"
                   />
-                  <span className="absolute left-0.5 top-0.5 rounded-full bg-donzarco-gold px-1 py-px text-[8px] font-bold uppercase text-donzarco-ink">
+                  <span className="absolute left-0.5 top-0.5 rounded-full bg-brand-gold px-1 py-px text-[8px] font-bold uppercase text-brand-ink">
                     Promo
                   </span>
                 </div>
@@ -183,7 +183,7 @@ export function CartPanel({
                     {line.quantity} × {formatMoney(line.unitPrice)}
                   </p>
                   {vence !== null && (
-                    <p className="text-[11px] font-medium text-donzarco-gold">{vence}</p>
+                    <p className="text-[11px] font-medium text-brand-gold">{vence}</p>
                   )}
                 </div>
 
@@ -288,7 +288,7 @@ export function CartPanel({
             onClick={onContinue}
             disabled={!canCheckout}
             aria-describedby={checkoutNotice ? 'cart-checkout-notice' : undefined}
-            className="mt-4 w-full rounded-full bg-donzarco-gold px-5 py-4 text-base font-bold text-donzarco-ink shadow-lg shadow-black/30 transition-transform active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
+            className="mt-4 w-full rounded-full bg-brand-gold px-5 py-4 text-base font-bold text-brand-ink shadow-lg shadow-black/30 transition-transform active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
           >
             Continuar pedido
           </button>
@@ -309,7 +309,7 @@ export function CartPanel({
 }
 
 /**
- * "Trancapecho", "Trancapecho y Papas", "Trancapecho, Papas y Coca".
+ * "Chicharrón", "Chicharrón y Limonada", "Chicharrón, Limonada y Coca".
  *
  * A mano y no con `Intl.ListFormat`: son tres nombres como mucho y el separador
  * del castellano no cambia, así que traer un formateador de locale para esto

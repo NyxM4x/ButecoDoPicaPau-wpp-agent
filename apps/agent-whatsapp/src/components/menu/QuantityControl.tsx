@@ -31,7 +31,7 @@ export function QuantityControl({
   const atMax = quantity >= MAX_QUANTITY_PER_ITEM;
   const button = size === 'sm' ? 'h-8 w-8 text-base' : 'h-10 w-10 text-lg';
   const palette =
-    tone === 'inverse' ? 'bg-donzarco-gold text-donzarco-ink' : 'bg-donzarco-red-dark text-white';
+    tone === 'inverse' ? 'bg-brand-gold text-brand-ink' : 'bg-brand-red-dark text-white';
   const buttonHover =
     tone === 'inverse' ? 'hover:bg-black/10 active:bg-black/20' : 'hover:bg-white/15 active:bg-white/25';
 

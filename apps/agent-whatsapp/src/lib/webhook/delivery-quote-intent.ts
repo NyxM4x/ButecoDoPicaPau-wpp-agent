@@ -8,7 +8,7 @@ import { normalizeIntentText } from './menu-intent';
  * Se intentó. Dos veces, y las dos se midió con el eval contra el modelo real:
  *
  *   · Ronda 1 — se abrió `answer_directly` al costo del envío y se le prohibió
- *     a `request_human` derivar por ello. Resultado: "hola como esta zarco
+ *     a `request_human` derivar por ello. Resultado: "hola como esta
  *     cuanto me saldria delivery aqui" siguió derivando 3 de 3 veces.
  *   · Ronda 2 — se quitó del prompt la salida "eso tendría que confirmártelo
  *     una persona del equipo" y se reescribió el bloque de delivery como una
@@ -30,12 +30,12 @@ import { normalizeIntentText } from './menu-intent';
  * Exige DOS cosas juntas: una palabra de COSTE y una de ENVÍO. Ninguna de las
  * dos basta sola, y esa es toda la defensa contra los falsos positivos:
  *
- *   · "cuánto cuesta el trancapecho"  → coste sí, envío no  → NO
+ *   · "cuánto cuesta el chicharrón"  → coste sí, envío no  → NO
  *   · "hacen delivery?"                → envío sí, coste no  → NO
  *   · "cuánto sale el envío"           → las dos             → SÍ
  *
  * No va anclado al comienzo, a diferencia de `isMenuIntent`, y no puede estarlo:
- * esta pregunta llega casi siempre en mitad de la frase —"hola como esta zarco
+ * esta pregunta llega casi siempre en mitad de la frase —"hola como esta
  * cuanto me saldria delivery aqui"—. Lo que sustituye al ancla es la exigencia
  * de las dos familias de palabras a la vez.
  *
@@ -63,7 +63,7 @@ const COSTE = /\b(cuanto|cuantos|precio|costo|coste|tarifa|vale)\b/;
  *
  * Un "aquí" junto a un precio solo puede significar una cosa en un chat de
  * restaurante: cuánto cuesta traerlo HASTA AQUÍ. Ningún producto del menú se
- * pregunta así; "cuánto cuesta el trancapecho" no lleva deixis, y por eso esta
+ * pregunta así; "cuánto cuesta el chicharrón" no lleva deixis, y por eso esta
  * familia no lo toca.
  *
  * Suele venir después de compartir la ubicación o pegar un link de Maps, que es

@@ -1,7 +1,8 @@
 /**
  * La JORNADA DE SERVICIO — módulo PURO.
  *
- * Don Zarco abre a las 18:00 y cierra a las 04:00 de la madrugada siguiente. Su
+ * Un local que abre a las 18:00 y cierra a las 04:00 de la madrugada siguiente:
+ * su
  * jornada de trabajo cruza la medianoche, así que "hoy" en el calendario y "hoy"
  * en la cocina no son lo mismo — y confundirlos rompe cosas de verdad:
  *

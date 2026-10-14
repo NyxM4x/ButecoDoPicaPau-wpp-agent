@@ -161,7 +161,7 @@ describe('otros falsos positivos que había que cerrar', () => {
   });
 
   it('el menú y los productos no disparan nada', () => {
-    for (const frase of ['pasame el menu', 'que tienen', 'cuanto cuesta el trancapecho']) {
+    for (const frase of ['pasame el menu', 'que tienen', 'cuanto cuesta la supertabla']) {
       expect(isLocalAddressRequest(frase), frase).toBe(false);
     }
   });
@@ -212,7 +212,7 @@ describe('no le roba mensajes a los detectores que ya existen', () => {
       'menu porfa',
       'quiero hacer un pedido',
       'que tienen',
-      'a cuanto el trancapecho',
+      'a cuanto la supertabla',
       'estan abiertos',
       'ya estan atendiendo',
     ];

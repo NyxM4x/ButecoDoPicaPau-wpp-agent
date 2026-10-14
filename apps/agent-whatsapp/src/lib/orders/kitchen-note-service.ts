@@ -19,7 +19,7 @@ import { KITCHEN_NOTE_MAX_LENGTH } from '@/lib/webhook/order-change-intent';
  * Si el paso 1 falla, el paso 2 no ocurre. Un "claro que sí, ya lo anotamos"
  * sin nota escrita es una promesa falsa, y este proyecto lleva desde agosto
  * cerrando exactamente esa clase de agujero: el cliente se quedaría tranquilo y
- * su hamburguesa saldría con cebolla.
+ * su tablita saldría con ají.
  *
  * ── Solo mientras el pedido no esté en la plancha ──────────────────────────
  *

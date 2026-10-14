@@ -60,7 +60,7 @@ describe('request_human — el contrato con el núcleo', () => {
   });
 
   it('la descripción distingue derivar de lo que el agente SÍ puede resolver', () => {
-    // Sin esto, "cuánto cuesta el trancapecho" acabaría despertando a alguien.
+    // Sin esto, "cuánto cuesta la supertabla" acabaría despertando a alguien.
     const d = createRequestHumanAction(puerto(true)).definition.description;
     expect(d).toContain('queja');
     expect(d).toContain('get_menu_items');
@@ -84,7 +84,7 @@ describe('request_human — el contrato con el núcleo', () => {
   });
 
   it('la descripción excluye la pregunta por el costo del envío', () => {
-    // El fallo del 29-08-2026: "hola como esta zarco cuanto me saldria delivery
+    // El fallo del 29-08-2026: "hola como esta buteco cuanto me saldria delivery
     // aqui" derivó la conversación en su PRIMER mensaje. No había queja ni
     // historial — el modelo se quedó sin puerta y cayó en la única que quedaba.
     // Con `toolChoice: 'required'` esta acción es el desagüe del catálogo si no

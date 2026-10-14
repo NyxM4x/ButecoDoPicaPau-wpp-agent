@@ -63,7 +63,7 @@ export function statusHint(status: PromotionStatus): string | null {
 // ── Composición ─────────────────────────────────────────────────────────────
 
 /**
- * "2× Soda Peque + 2× Lomito + 2× Porción de papa".
+ * "2× Limonada 1 L + 2× Keperí + 2× Sopa de maní".
  *
  * Se genera SIEMPRE desde los componentes reales. En la tarjeta se recorta a dos
  * líneas por CSS, pero el texto completo viaja entero para quien lo lea con un
@@ -192,9 +192,9 @@ export function isoToBusinessLocal(iso: string | null): string {
  * Orden: plato → extra → bebida; a igualdad de categoría, el más caro; y el
  * código como desempate final para que la elección sea determinista.
  *
- * El desempate importa más de lo que parece. Sin él, "2 lomitos goleadores"
- * podía acabar ilustrado con una botella de gaseosa solo porque llegaba primero
- * en el array, y la tarjeta del combo de lomitos mostraba una soda. Con esto, la
+ * El desempate importa más de lo que parece. Sin él, "2 keperís para compartir"
+ * podía acabar ilustrado con una jarra de limonada solo porque llegaba primero
+ * en el array, y la tarjeta del combo de keperís mostraba una bebida. Con esto, la
  * foto es siempre la del producto que da nombre al combo.
  *
  * Determinista también entre renders: la misma promoción elige el mismo

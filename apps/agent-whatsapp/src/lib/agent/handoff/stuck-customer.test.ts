@@ -49,8 +49,8 @@ describe('isStuckCustomer — las dos puertas que van ANTES de contar', () => {
 
 describe('isStuckCustomer — el flujo REAL que disparó una alerta falsa', () => {
   it('un pedido que llega a pagarse NO es un atasco', () => {
-    // 29-08-2026, 03:24. "Hola don Zarco quiero pedir", "2 lomitos quería",
-    // "Si envíeme 2 lomitos", ubicación, ubicación, comprobante. Seis
+    // 29-08-2026, 03:24. "Hola Buteco quiero pedir", "2 keperis quería",
+    // "Si envíeme 2 keperis", ubicación, ubicación, comprobante. Seis
     // mensajes, menú enviado tres veces, pedido #1 creado y pagado.
     expect(isStuckCustomer({ messages: 6, menusSent: 3, hasProgress: true })).toBe(false);
   });

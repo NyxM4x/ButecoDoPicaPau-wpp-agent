@@ -75,7 +75,7 @@ describe('quote-request — el cupo', () => {
   });
 
   it('la ventana cubre una jornada de servicio entera', () => {
-    // Don Zarco abre de 18:00 a 04:00: diez horas. Con una ventana más corta, el
+    // Buteco do Pica-Pau abre de 18:00 a 04:00: diez horas. Con una ventana más corta, el
     // cupo se reiniciaría a mitad del servicio y no significaría nada.
     expect(STANDALONE_QUOTE_WINDOW_HOURS).toBeGreaterThanOrEqual(10);
   });

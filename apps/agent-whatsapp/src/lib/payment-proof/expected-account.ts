@@ -2,7 +2,7 @@
  * La cuenta que DEBE aparecer en un comprobante — módulo PURO.
  *
  * Es el patrón contra el que se contrasta lo que se lee en la imagen: si el
- * dinero no fue a esta cuenta, no fue a Don Zarco. Todo sale de configuración,
+ * dinero no fue a esta cuenta, no fue al local. Todo sale de configuración,
  * nunca de la base ni del navegador: cambia una vez al año y no debe poder
  * cambiarlo quien entra al panel.
  *
@@ -95,7 +95,7 @@ export function normalizeName(value: string | null | undefined): string {
 /**
  * Palabras con las que se identifica a alguien. Las de una o dos letras se
  * descartan: `J.` y `DE` no distinguen a nadie, y exigirlas haría fallar
- * `JUAN P. ZARCO` contra `JUAN PABLO ZARCO`, que son la misma persona.
+ * `JUAN P. PEREZ` contra `JUAN PABLO PEREZ`, que son la misma persona.
  */
 function significantTokens(name: string): string[] {
   return normalizeName(name)
@@ -251,8 +251,8 @@ export function matchesBank(read: string | null, expected: string[]): FieldMatch
  * ¿Es el titular leído el nuestro?
  *
  * Coincide si TODAS las palabras significativas del nombre más corto están en el
- * otro. Así `DON ZARCO` encaja dentro de `DON ZARCO SRL`, y `JUAN ZARCO` dentro
- * de `JUAN CARLOS ZARCO MENDOZA`, sin que `MARIA LOPEZ` encaje en ninguno.
+ * otro. Así `EL BUEN SABOR` encaja dentro de `EL BUEN SABOR SRL`, y `JUAN PEREZ`
+ * dentro de `JUAN CARLOS PEREZ MENDOZA`, sin que `MARIA LOPEZ` encaje en ninguno.
  *
  * Con una sola palabra significativa a un lado se exige que esté en el otro: un
  * apellido suelto es poco, pero es exactamente lo que pinta más de un banco.

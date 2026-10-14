@@ -247,9 +247,9 @@ describe('persist-inbound — M: se persiste igual con la conversación pausada'
 
 describe('persist-inbound — contenido por tipo, sin marcadores (§5)', () => {
   it('texto: content real', async () => {
-    await persist(store, inbound({ text: { body: 'dos hamburguesas' } }));
+    await persist(store, inbound({ text: { body: 'dos alitas' } }));
 
-    expect(store.messages[0]).toMatchObject({ contentType: 'text', content: 'dos hamburguesas' });
+    expect(store.messages[0]).toMatchObject({ contentType: 'text', content: 'dos alitas' });
   });
 
   it('ubicación: content NULL y coordenadas en metadata', async () => {

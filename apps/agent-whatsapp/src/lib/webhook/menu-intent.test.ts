@@ -181,19 +181,19 @@ describe('menú — cómo escribe la gente de verdad', () => {
 
 describe('isMenuIntent — el saludo encadenado (29-08-2026)', () => {
   it('los dos mensajes reales que NO se reconocían', () => {
-    // Se retiraba UN saludo y se paraba, así que quedaba "zarco como va quiero
+    // Se retiraba UN saludo y se paraba, así que quedaba "buteco como va quiero
     // pedir" y "buenas queria pedir": ninguno empieza por una frase de
     // intención, y los dos acababan en el modelo.
-    expect(isMenuIntent('Hola Zarco cómo va quiero pedir')).toBe(true);
+    expect(isMenuIntent('Hola Buteco cómo va quiero pedir')).toBe(true);
     expect(isMenuIntent('Hola buenas quería pedir')).toBe(true);
   });
 
   it('el vocativo del negocio cuenta como saludo', () => {
     for (const texto of [
-      'Zarco quiero pedir',
-      'don zarco quiero ordenar',
-      'que dice zarco quiero pedir',
-      'hola buenas noches don zarco quiero pedir',
+      'Buteco quiero pedir',
+      'buteco quiero ordenar',
+      'que dice buteco quiero pedir',
+      'hola buenas noches buteco quiero pedir',
     ]) {
       expect(isMenuIntent(texto), texto).toBe(true);
     }
@@ -204,7 +204,7 @@ describe('isMenuIntent — el saludo encadenado (29-08-2026)', () => {
     // encaje. Una frase que menciona la intención en medio sigue sin activar.
     expect(isMenuIntent('mi amigo dijo que aca se puede pedir')).toBe(false);
     expect(isMenuIntent('no quiero pedir todavia')).toBe(false);
-    expect(isMenuIntent('hola zarco como va, gracias por todo')).toBe(false);
+    expect(isMenuIntent('hola buteco como va, gracias por todo')).toBe(false);
   });
 
   it('un saludo a secas no es PEDIR el menú (lo atiende isGreetingOnly)', () => {
@@ -214,7 +214,7 @@ describe('isMenuIntent — el saludo encadenado (29-08-2026)', () => {
     // que nadie hizo. Ver `isGreetingOnly` más abajo.
     expect(isMenuIntent('hola')).toBe(false);
     expect(isMenuIntent('hola buenas')).toBe(false);
-    expect(isMenuIntent('hola zarco como va')).toBe(false);
+    expect(isMenuIntent('hola buteco como va')).toBe(false);
   });
 
   it('el pedido dictado con producto y cantidad abre el menú', () => {
@@ -223,10 +223,10 @@ describe('isMenuIntent — el saludo encadenado (29-08-2026)', () => {
     // cotización del envío lo mandara a un menú que nunca vio.
     for (const texto of [
       'Quisiera un trança pecho',
-      'quiero una hamburguesa',
-      'dame dos lomitos',
-      'hola buenas noches quisiera una salchipapa',
-      'mandame 2 trancapechos',
+      'quiero una alita',
+      'dame dos keperis',
+      'hola buenas noches quisiera una sopa',
+      'mandame 2 supertablas',
     ]) {
       expect(isMenuIntent(texto), texto).toBe(true);
     }
@@ -248,10 +248,10 @@ describe('isMenuIntent — el saludo encadenado (29-08-2026)', () => {
   });
 
   it('sin cantidad, nombrar un producto no basta', () => {
-    // "Quiero lomito" es una intención de pedir cualquiera; lo que hace
+    // "Quiero keperi" es una intención de pedir cualquiera; lo que hace
     // inequívoco al dictado es la cantidad. Y sin ella entrarían frases como
     // "quiero saber el horario", que empiezan igual.
-    expect(isMenuIntent('quiero lomito')).toBe(false);
+    expect(isMenuIntent('quiero keperi')).toBe(false);
     expect(isMenuIntent('quiero saber el horario')).toBe(false);
     expect(isMenuIntent('necesito hablar con alguien')).toBe(false);
   });
@@ -269,7 +269,7 @@ describe('isGreetingOnly — el mensaje que es SOLO un saludo', () => {
       'Buenas noches',
       'holi',
       'hola buenas',
-      'Hola buenas noches don Zarco',
+      'Hola buenas noches Buteco',
       'que tal',
       '¿Hola?',
     ]) {
@@ -284,8 +284,8 @@ describe('isGreetingOnly — el mensaje que es SOLO un saludo', () => {
       'hola estan abiertos?',
       'hola quiero pedir',
       'buenas cuanto sale el envio',
-      'hola zarco como va, gracias por todo',
-      'hola quisiera un trancapecho',
+      'hola buteco como va, gracias por todo',
+      'hola quisiera una supertabla',
     ]) {
       expect(isGreetingOnly(texto), texto).toBe(false);
     }

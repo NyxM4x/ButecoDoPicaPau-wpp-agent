@@ -8,7 +8,7 @@
  * ── De dónde salen ───────────────────────────────────────────────────────────
  *
  * Del perfil del restaurante (`lib/restaurant/profile`), que viene del POS.
- * Hasta el 2026-10-13 eran constantes de Don Zarco escritas en este archivo, y
+ * Hasta el 2026-10-13 eran constantes de la demo escritas en este archivo, y
  * cambiar el horario pedía un despliegue.
  *
  * ── Por qué estos datos sí entran al prompt ─────────────────────────────────
@@ -21,6 +21,9 @@
  *
  * Lo que NO va aquí: precios, productos, promociones, tiempos de entrega,
  * tarifas de envío ni nada que ya tenga una fuente de verdad en el POS.
+ *
+ * Desde el 2026-10-14 entra además lo que el propio local escribe en
+ * `RESTAURANT_FACTS` (ver `ownerFacts`): sus reglas, no su catálogo.
  */
 import { hoursInWords, scheduleSentence } from '@/lib/restaurant/hours';
 import { restaurantProfile, type RestaurantProfile } from '@/lib/restaurant/profile';
@@ -103,6 +106,30 @@ function deliveryFact(profile: RestaurantProfile): string {
 }
 
 /**
+ * Lo que el local pidió que el asistente sepa (`RESTAURANT_FACTS`): qué trae
+ * cada plato, cómo se reserva, los combos de cumpleaños, cuánto tarda la
+ * cocina…
+ *
+ * ── Por qué esto sí puede entrar ────────────────────────────────────────────
+ *
+ * Por la misma razón que el horario: son reglas del local que cambian poco y
+ * que la gente pregunta todos los días. Sin ellas, «¿cómo reservo?» o «¿qué
+ * trae la tablita?» se contestaban con «no tengo esa información», que para
+ * un cliente es lo mismo que no tener respuesta.
+ *
+ * Las escribe el dueño, no el modelo. Por eso van tal cual y con una regla
+ * pegada: repetirlas sí, estirarlas no. «La cocina tarda de 30 a 40 minutos»
+ * no dice cuánto falta para que llegue un pedido ya hecho.
+ */
+function ownerFacts(profile: RestaurantProfile): string[] {
+  if (profile.facts.length === 0) return [];
+  return [
+    '- Lo que el local te pidió que sepas. Puedes decirlo tal cual cuando venga al caso, pero no lo estires a lo que no dice ni lo completes con suposiciones:',
+    ...profile.facts.map((fact) => `  · ${fact}`),
+  ];
+}
+
+/**
  * Bloque de "hechos del negocio" que se inyecta en el system prompt.
  *
  * ── Que hay un solo local es un HECHO, no un dato que falte ──────────────
@@ -119,6 +146,7 @@ export function businessFactsBlock(profile: RestaurantProfile = restaurantProfil
     locationFact(profile),
     '- Es su ÚNICO local: no hay sucursales ni otro punto de venta. Si preguntan si están en otra zona, en otro barrio o si tienen otra sede, contesta que no, que solo atienden en esa dirección. Eso lo sabes: no es un dato que te falte, así que no respondas que no tienes la información.',
     deliveryFact(profile),
+    ...ownerFacts(profile),
     '- Fuera de lo anterior, no tienes ningún dato del negocio en la cabeza.',
   ].join('\n');
 }

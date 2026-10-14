@@ -58,7 +58,7 @@ describe('isExplicitHumanRequest — hacen falta las DOS familias', () => {
   it('una conversación normal no la activa', () => {
     for (const texto of [
       'hola',
-      'quiero pedir 2 trancapechos',
+      'quiero pedir 2 supertablas',
       'cuanto sale el envio',
       'gracias!',
       '',

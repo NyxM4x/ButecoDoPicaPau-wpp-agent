@@ -121,7 +121,7 @@ const RESUMEN_VACIO: CartSummary = {
  * producto."— y hace bien: es la guarda del pedido de verdad, la que impide
  * cobrar por nada. Pero esto no cobra nada, solo PINTA.
  *
- * Así que el cliente que tenía dos trancapechos guardados en su navegador y
+ * Así que el cliente que tenía dos chicharrones guardados en su navegador y
  * volvía al menú después de que el panel lo marcara agotado recibía esa
  * excepción DENTRO del render de `useCart` —ver `use-cart.ts`—, y una excepción
  * en el render se lleva por delante el árbol entero: el menú no cargaba. No su

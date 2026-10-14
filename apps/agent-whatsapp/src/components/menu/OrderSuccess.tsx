@@ -54,7 +54,7 @@ export function OrderSuccess({
             {isPickup ? 'Pedido confirmado' : 'Pedido registrado'}
           </h2>
 
-          <p className="mt-1 text-3xl font-bold tracking-wide text-donzarco-red-dark tabular-nums">
+          <p className="mt-1 text-3xl font-bold tracking-wide text-brand-red-dark tabular-nums">
             {shortOrderNumber(order.order_number)}
           </p>
           {/* El número completo, discreto: es la referencia con la que se puede

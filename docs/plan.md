@@ -255,7 +255,7 @@ perfil de ejemplo (`src/test/profiles.ts`): por eso todavía se lo nombra ahí.
 | Qué | Por qué no se hizo | Cuándo |
 |---|---|---|
 | **Los mensajes fijos están solo en español** (con voseo boliviano). El perfil cambia el idioma del asistente de IA, no el de las plantillas | Traducirlas es un trabajo aparte, y solo hace falta si Buteco atiende en otro idioma | Al saber el país y el idioma |
-| Archivos de Don Zarco en `apps/agent-whatsapp/public/`: `brand/logo-don-zarco.png`, `payment/qr-2026.jpeg` (el QR de **su** cuenta bancaria) y `tutorialPedido.mp4`. Las fotos de `menu/` ya las borró el usuario el 2026-10-13 | Ya nada los usa con el perfil de Buteco; borrarlos es una decisión del usuario | Antes de publicar |
+| ~~Archivos de Don Zarco en `apps/agent-whatsapp/public/`~~ | Borrados el 2026-10-14 (logo, video y el QR de **su** cuenta), con `demos/don-zarco`. Ver [flujos-buteco.md](flujos-buteco.md#lo-que-se-quitó-de-la-demo-anterior-2026-10-14) | — |
 | ~~Colores del menú web~~ | Hecho el 2026-10-13: la carta nueva, ver [Fase 5](#hecho-2026-10-13-la-carta-del-menú-web). Falta el logo | — |
 | El almacenamiento de comprobantes del agente (`PAYMENT_PROOF_*` en su `.env.example`) trae de ejemplo Cloudflare R2 | Solo lo usa el modo sin POS; con el POS conectado los comprobantes van al POS. No hay que configurarlo | — |
 | `RESTAURANT_LOGO_URL` | El logo no está en el contrato del POS: es una variable del agente | Fase 5 |
@@ -686,6 +686,196 @@ Para verlo: `scripts\dev-db.ps1 start`, `npm run start:local` en
   del POS).
 - **Dirección, descripción y horario** del local: la portada los muestra cuando
   estén en el perfil.
+
+### Hecho (2026-10-13): la maqueta de la tabla por capas
+
+Al usuario le gustó que la foto cambie al elegir la carne, y quiso llevarlo más
+lejos: **la misma tabla (arroz y plátano) fija, y encima solo la carne
+recortada**. Una carne para las tablitas, y 2 o 3 juntas sobre la misma tabla
+para las tablas para compartir. Pidió primero una maqueta con pocas imágenes,
+antes de cargar todo.
+
+Está en **`/menu/maqueta`** (solo en desarrollo: en producción es un 404). No
+lee el POS ni deja pedir: tiene la Tablita (elige la carne, y para 1 o para 2),
+la Tabla de Zeus (2 carnes) y la Hércules (3), con los precios del volante.
+
+| Qué | Cómo quedó | Dónde |
+|---|---|---|
+| Las capas | La base y cada carne sin el margen vacío, en WebP: de 4,5 MB a 280 KB las cuatro | `scripts/prepare-board-layers.mjs` → `public/menu/capas/` |
+| El acomodo | Cada hueco son tres números en % de la base: el centro, dónde se apoya y el ancho. 1 carne: la punta ancha de la tabla. 2: atrás a la izquierda y delante del plátano. 3: además, delante del arroz. La tablita para 2 es el mismo hueco con más porción | `src/lib/menu/board-layers.ts` |
+| La tabla en pantalla | Base fija y una capa por hueco; lo que está más abajo en la foto se pinta encima. Al cambiar, la carne vieja se levanta y la nueva cae con su sombra. Un hueco vacío muestra su número sobre la tabla | `src/components/menu/BoardStage.tsx`, animaciones `board-*` en `globals.css` |
+| Elegir N carnes | Hueco por hueco, con contador «1 de 2»; tocar un hueco elegido deja cambiarlo. El «+» espera a que estén todas, y la maqueta muestra la línea que llegaría a la cocina | `src/app/menu/maqueta/BoardMockup.tsx` |
+| Que nada se corte | Una prueba pone cada carne en cada hueco y falla si se sale del cuadro | `src/lib/menu/board-layers.test.ts` |
+
+Para mover un hueco: cambiar sus tres números en `board-layers.ts` y mirar
+`/menu/maqueta`, que se recarga sola. Si cambia la foto de la base, hay que
+volver a medirlos. Los originales (`tablaPrincipal.png`, `carnes/*.png`)
+quedaron fuera de git, como las `Tablita*.png`.
+
+**Comprobado** contra el agente local, en Chrome sin ventana a 390 px: sin
+errores en consola ni desborde horizontal; elegir carne, pasar de 1 a 2
+personas, llenar Zeus y Hércules, repetir una carne y el «+». Las capas que
+salen se retiran al terminar su animación. **No comprobado**: en un teléfono
+de verdad.
+
+Lo que la maqueta deja ver y falta decidir:
+
+- **Tablas de 4 a 7 carnes** (Dioses, Super Tabla L y XL): en esta tabla no
+  caben. Piden otra base, más grande, o mostrarlas de otra forma.
+- **Faltan 5 recortes**: keperí, alitas, chicharrón de chancho, chicharrón de
+  pollo y cola de lagarto. Conviene pedirlos con el mismo ángulo y la misma luz
+  que la base: la costilla está fotografiada de frente y la tabla desde arriba
+  (a este tamaño se nota poco).
+- **Si las carnes se pueden repetir** en una tabla para compartir: la maqueta
+  lo deja.
+- **Dónde viven las capas** cuando la carta sea real: un producto del POS tiene
+  una sola foto. La carne recortada puede ser la foto de «Tablita - Costilla»,
+  pero la base no tiene sitio en el contrato; puede quedarse en el agente.
+- **Pasarlo a la carta real** (`ProductCard`): la Tablita sirve ya con las
+  variantes de hoy; las tablas para compartir necesitan que las carnes elegidas
+  lleguen a la cocina (ver abajo).
+
+### Hecho (2026-10-14): la bienvenida con tres opciones
+
+El usuario no quiere la carta en una sola página: es un recorrido eterno para
+el cliente. Tomó como referencia la bienvenida de «Pollo Loco», que hace
+elegir la sucursal con tres botones grandes, y pidió lo mismo para **elegir qué
+viene a hacer el cliente**. Cada opción abre SOLO lo suyo:
+
+| Opción | Qué muestra |
+|---|---|
+| **Tablitas para 1 y 2** | Las tablitas + Bebidas + Extras |
+| **Para compartir** | Las tablas para compartir (Zeus, Hércules, Spartacus) + Bebidas + Extras |
+| **Reservar mesa** | El formulario de reserva + los combos de cumpleaños |
+
+Cómo funciona la maqueta:
+
+- **La bienvenida** entra en una pantalla de celular: el nombre del local (o su
+  logo, si hay `RESTAURANT_LOGO_URL`), «¡Bienvenido!», las tres opciones con su
+  ícono y su línea de color, y una tabla con carnes asomando abajo.
+- **La opción va en la dirección** (`?ver=para-1-y-2`, `para-compartir`,
+  `reservar`): el «atrás» del celular vuelve a la bienvenida, y **el bot puede
+  mandar el enlace directo a una opción**. Se cambia sin volver a pedir la
+  página (`history.pushState`, que `useSearchParams` de Next sigue), y conserva
+  los demás parámetros (la `session` del bot).
+- **Adentro**, la barra fija lleva «‹ Inicio» y las secciones de esa opción
+  (`CategoryTabs`, el de la carta). Debajo del título, las otras dos opciones
+  a un toque, sin volver al inicio.
+- **Un solo pedido** para todas las opciones: una tablita y después una
+  bebida. En la maqueta es un carrito de mentira (`mock-cart.tsx`) que muestra
+  cada línea con el nombre que llegaría a la cocina y avisa la espera de 30 a
+  40 minutos.
+- **Los cumpleaños, dentro de «Reservar mesa»**: no se compran en el carrito,
+  se reservan. Los dos combos del volante con lo que trae cada uno y la
+  condición del carnet. «Reservar con este combo» sube al formulario con la
+  nota ya escrita, que llega en el mensaje de WhatsApp. Para eso el formulario
+  real (`ReservationSection`) acepta ahora una nota desde fuera (`presetNote`);
+  en la carta de hoy no cambia nada.
+
+Todos los textos, opciones, bebidas, extras, precios y combos están en
+`src/app/menu/maqueta/data.ts`.
+
+**Comprobado** en Chrome sin ventana a 390 px: sin errores ni desborde; la
+bienvenida mide justo una pantalla; elegir una opción, agregar una tablita y
+una limonada, ver el pedido, volver con «Inicio» y con el «atrás» del
+navegador, pasar a «Para compartir» con el pedido intacto, y el combo que deja
+la nota en la reserva.
+
+Falta decidir:
+
+- **La descripción de «Para compartir»**: el usuario pidió «para más de 3
+  personas, entre 3 y 8 carnes», pero el volante dice otra cosa (Zeus: 2 carnes
+  para 2 a 3 personas; la XL: 7 carnes para 20 a 30). Está así en la maqueta
+  hasta que lo confirme.
+- **Los extras**: en el volante solo está la sopa de maní (sábados y
+  domingos). Falta la lista del local (porciones, salsas…) con precios. Y de
+  las bebidas, la medida del vino y del copo sujo.
+- **Los combos de cumpleaños**: si van incluidos en el precio de la tabla o se
+  cobran aparte, qué es la «tablita cumpleañera», y con cuánta anticipación se
+  reservan. En el volante no hay otros combos; si los hubiera (tabla + bebida),
+  irían en la sección «Combos» que la carta ya arma con las promociones del POS.
+
+**Propuesta de carta que se le presentó** (falta que la confirme):
+
+| Sección | Qué lleva | Cómo se elige |
+|---|---|---|
+| Para 1 y 2 | Una tarjeta «Tablita» con las 7 carnes, y la sopa de maní aparte | La carne (cambia la imagen) y el tamaño: para 1 o para 2 |
+| Para compartir | Zeus, Hércules, Spartacus, Dioses, Super Tabla L y XL | La tabla según cuántos son, y tantas carnes como permite |
+| Bebidas | Limonada, maracuyá, copuazú, Coca-Cola, vino, copo sujo | El tamaño (como hoy) |
+| Cumpleaños | Los dos paquetes del combo cumpleañero | No se compra: lleva a la reserva con «Es un cumpleaños» marcado |
+| Reservas | El formulario de siempre | — |
+
+Las carnes de una tabla para compartir tienen que llegar a la cocina. Hoy el
+pedido solo tiene una nota general y el carrito cuenta por producto. Camino
+rápido propuesto: escribir las carnes elegidas en la nota del pedido. Camino
+correcto: que cada línea lleve sus opciones (backend, carrito y contrato;
+hay que acordarlo con Rocha).
+
+**La carta real, leída de los volantes del cliente** (2026-10-14):
+
+- *Tablitas para 1 y 2 personas* (arroz, plátano, salsa de ajo y ají):
+  keperí 70; alitas agridulce 60; chicharrón de chancho 70 y 110 (con limón);
+  chicharrón de pollo 50 y 100; chicharrón de pescado 75 y 120; costilla 75 y
+  120; cola de lagarto 75 y 120. Sopa de maní 15, solo sábados y domingos.
+- *Tablitas especiales* (arroz, plátano, salsa de ajo y limón; carnes a
+  elección): Super Tabla XL, 7 carnes, 20 a 30 personas, 1600; Super Tabla L,
+  5 carnes, 15 a 17, 950; Tabla de los Dioses, 4 carnes, 5 a 8, 450; Tabla
+  Spartacus, 3 carnes, 4 a 5, 350; Tabla Hércules, 3 carnes, 3 a 4, 250;
+  Tabla de Zeus, 2 carnes, 2 a 3, 175.
+- *Bebidas*: limonada 1 L 15 / 2 L 25; maracuyá 15 / 30; copuazú 25 / 35;
+  Coca-Cola 2 L 25; vino 60; copo sujo 25.
+- *Combo cumpleañero* (el festejado presenta su carnet el día del evento):
+  con Super Tabla L o XL, video editado, fotos con los invitados, cumpleaños
+  feliz, vela lluvia de oro, tablita cumpleañera, banda y vino para los
+  invitados; con una tablita mixta mediana (Dioses, Spartacus, Hércules o
+  Zeus), cumpleaños feliz, vela lluvia de oro, jarra de limonada de 2 L y
+  fotos.
+- Reservas: 695 95015. Instagram @buteco.do.picapau.scz (Santa Cruz).
+  «Comida preparada al momento, espera de 30 a 40 minutos»: mostrarlo en el
+  carrito, antes de confirmar.
+
+Preguntas que se le hicieron y siguen sin respuesta: si keperí y alitas
+vienen solo en un tamaño; si las carnes de las tablas para compartir son las
+mismas 7 y si se pueden repetir; si la L y la XL se piden por delivery o solo
+con reserva, y con cuánta anticipación; si el 695 95015 es el WhatsApp de
+reservas y el bot usa otro número; si la sopa de maní se bloquea entre semana;
+«Spartacus» o «Sportacus» (los volantes no coinciden). Las carnes recortadas
+que mandó se llaman «biffe», «chicharrón de pescado» y «costilla de res»:
+«biffe» no está en el volante.
+
+### Hecho (2026-10-14): fuera la demo anterior, y los flujos de Buteco
+
+Revisión completa en **[`docs/flujos-buteco.md`](flujos-buteco.md)**: qué hace
+el agente con cada cosa que puede escribir un cliente de Buteco, qué ya sirve y
+qué falta. Lo hecho:
+
+- **Sin rastros de Don Zarco** en el código del agente ni del backend: sus
+  productos, descripciones, fotos, colores, nombres de paquete, ejemplos de los
+  comentarios y los textos que lee la IA. Borrados su carta de demo, su logo, su
+  video y la imagen del QR de su cuenta bancaria, que quedaba publicada. Una
+  prueba (`no-hardcoded-restaurant.test.ts`) falla si vuelve a aparecer en
+  `src/`, también en comentarios.
+- **Base del agente**: migración `0040_retira_carta_de_la_demo.sql` (probada en
+  un Postgres de prueba) y `seed.sql` vacío. En la base local del backend se
+  borraron sus productos y su combo.
+- **Pruebas**: el restaurante de las pruebas es Buteco (dirección y horario de
+  ejemplo) y los productos de ejemplo, tablas, keperí, alitas. Pasan las 4373.
+- **`RESTAURANT_FACTS`**: lo que el local quiere que el asistente sepa, una
+  frase por línea. Entra al prompt junto al horario y la ubicación. La de Buteco
+  (del volante) está en el `.env.local` y en `flujos-buteco.md`.
+- **Dos reglas nuevas del prompt**: para cuántas personas es una tabla se puede
+  decir si está escrito; una reserva nunca se confirma.
+- **Evals**: seis casos nuevos de preguntas del local (reservar, qué trae la
+  tablita, cuánto tarda, cumpleaños). **No se corrieron**: no hay
+  `OPENAI_API_KEY` en el `.env.local`.
+
+Hallazgo: **las tarifas de envío del backend son de otro proyecto** (migración
+`1700000011000`, Bs 10 el primer km…). Hay que cargar las de Buteco antes de
+publicar.
+
+Lo más urgente que falta decidir: **el flujo de las reservas** (si el 695 95015
+es el número del bot o no) y **cómo llegan a la cocina las carnes** de una
+tabla para compartir.
 
 ## Fase 6 — Conectar el POS multi-tenant
 

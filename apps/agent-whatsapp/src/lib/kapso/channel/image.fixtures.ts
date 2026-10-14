@@ -35,7 +35,7 @@ export const IMAGE_BYTE_SIZE = 70332;
 export const IMAGE_MIME_TYPE = 'image/jpeg';
 export const IMAGE_FILENAME = 'imagen-sanitizada.jpg';
 
-export const IMAGE_CAPTION_TEXT = 'Que hamburguesa es esta?';
+export const IMAGE_CAPTION_TEXT = 'Que alita es esta?';
 
 /**
  * URLs sanitizadas. Transitorias por definición: nunca se persisten.

@@ -32,12 +32,12 @@ function item(
 
 /** Mismo catálogo que `supabase/seed.sql`. */
 const MENU: MenuItem[] = [
-  item('trancaburguer', 'Trancaburguer', 'plato', 30, 10),
-  item('trancapecho', 'Trancapecho', 'plato', 18, 20),
-  item('salchiburguer', 'Salchiburguer', 'plato', 18, 30),
-  item('hamburguesa', 'Hamburguesa', 'plato', 15, 40),
-  item('lomito', 'Lomito', 'plato', 18, 50),
-  item('salchipapa', 'Salchipapa', 'plato', 18, 60),
+  item('picanha', 'Picanha', 'plato', 30, 10),
+  item('supertabla', 'Supertabla', 'plato', 18, 20),
+  item('chuleta', 'Chuleta', 'plato', 18, 30),
+  item('alita', 'Alita', 'plato', 15, 40),
+  item('keperi', 'Keperi', 'plato', 18, 50),
+  item('sopa', 'Sopa', 'plato', 18, 60),
   item('gaseosa_2l', 'Gaseosa 2 L', 'bebida', 18, 70),
   item('gaseosa_personal', 'Gaseosa personal', 'bebida', 8, 80),
   item('porcion_papas', 'Porción de papa', 'extra', 7, 100),
@@ -84,12 +84,12 @@ describe('filterMenuItems — filtrado por categoría', () => {
   it('filtra platos', () => {
     const result = filterMenuItems(MENU, 'plato', '');
     expect(result.map((i) => i.code)).toEqual([
-      'trancaburguer',
-      'trancapecho',
-      'salchiburguer',
-      'hamburguesa',
-      'lomito',
-      'salchipapa',
+      'picanha',
+      'supertabla',
+      'chuleta',
+      'alita',
+      'keperi',
+      'sopa',
     ]);
   });
 
@@ -104,10 +104,10 @@ describe('filterMenuItems — filtrado por categoría', () => {
 
 describe('filterMenuItems — búsqueda', () => {
   it('encuentra por nombre, sin distinguir mayúsculas', () => {
-    expect(filterMenuItems(MENU, 'all', 'salchib').map((i) => i.code)).toEqual([
-      'salchiburguer',
+    expect(filterMenuItems(MENU, 'all', 'chulet').map((i) => i.code)).toEqual([
+      'chuleta',
     ]);
-    expect(filterMenuItems(MENU, 'all', 'LOMITO').map((i) => i.code)).toEqual(['lomito']);
+    expect(filterMenuItems(MENU, 'all', 'KEPERI').map((i) => i.code)).toEqual(['keperi']);
   });
 
   it('ignora acentos en ambos sentidos', () => {
@@ -119,13 +119,12 @@ describe('filterMenuItems — búsqueda', () => {
     ]);
   });
 
-  it('encuentra por descripción', () => {
-    expect(filterMenuItems(MENU, 'all', 'arroz y ensalada').map((i) => i.code)).toEqual([
-      'trancapecho',
-    ]);
-    expect(filterMenuItems(MENU, 'all', 'milanesa').map((i) => i.code)).toEqual([
-      'trancaburguer',
-    ]);
+  it('encuentra por descripción (la que trae el producto del POS)', () => {
+    const conDescripcion = [
+      { ...item('supertabla', 'Supertabla', 'plato', 950, 0), description: 'Arroz, plátano y cinco carnes a elección.' },
+      { ...item('keperi', 'Keperi', 'plato', 70, 1), description: null },
+    ];
+    expect(filterMenuItems(conDescripcion, 'all', 'cinco carnes').map((i) => i.code)).toEqual(['supertabla']);
   });
 
   it('combina búsqueda con la categoría activa', () => {
@@ -144,9 +143,10 @@ describe('filterMenuItems — búsqueda', () => {
 });
 
 describe('descripciones e imágenes', () => {
-  it('los 9 productos del seed tienen descripción', () => {
+  it('sin POS no hay descripciones escritas en el código', () => {
+    // Las de la demo anterior se retiraron: con el POS, cada producto trae la suya.
     for (const menuItem of MENU) {
-      expect(productDescription(menuItem.code), menuItem.code).toBeTruthy();
+      expect(productDescription(menuItem.code), menuItem.code).toBeNull();
     }
   });
 
@@ -154,12 +154,9 @@ describe('descripciones e imágenes', () => {
     expect(productDescription('producto_inexistente')).toBeNull();
   });
 
-  it('los nueve productos del seed tienen foto en /menu/*.webp', () => {
+  it('sin POS ningún producto tiene foto escrita en el código: sale el placeholder', () => {
     for (const menuItem of MENU) {
-      const image = productImage(menuItem);
-      expect(image.src, menuItem.code).toMatch(/^\/menu\/[a-z0-9-]+\.webp$/);
-      // El src apunta al mismo archivo declarado en `file` (coherencia).
-      expect(image.src, menuItem.code).toBe(`/menu/${image.file}`);
+      expect(productImage(menuItem).src, menuItem.code).toBeNull();
     }
   });
 
@@ -210,48 +207,27 @@ describe('groupByCategory', () => {
     });
 
     const groups = groupByCategory([
-      agotado('trancapecho', 0),
-      item('hamburguesa', 'Hamburguesa', 'plato', 25, 1),
-      agotado('lomito', 2),
-      item('salchipapa', 'Salchipapa', 'plato', 18, 3),
+      agotado('supertabla', 0),
+      item('alita', 'Alita', 'plato', 25, 1),
+      agotado('keperi', 2),
+      item('sopa', 'Sopa', 'plato', 18, 3),
     ]);
 
     expect(groups[0].items.map((i) => i.code)).toEqual([
-      'hamburguesa',
-      'salchipapa',
-      'trancapecho',
-      'lomito',
+      'alita',
+      'sopa',
+      'supertabla',
+      'keperi',
     ]);
   });
 
-  it('los platos salen en el orden de vitrina, no en el de la base', () => {
-    // EXPERIMENTAL (rediseno-menu-fastfood, 17-09-2026): el orden de los platos
-    // lo fija `PLATO_ORDER` en el código, NO `sort_order`. Es a propósito y es
-    // temporal: `sort_order` es producción, y este orden nació dentro de un
-    // rediseño que todavía se está probando. Si el rediseño se adopta, esto
-    // baja a una migración y la lista del código desaparece.
-    const groups = groupByCategory(MENU);
-    expect(groups[0].items.map((i) => i.code)).toEqual([
-      'trancapecho',
-      'trancaburguer',
-      'lomito',
-      'hamburguesa',
-      'salchiburguer',
-      'salchipapa',
-    ]);
-  });
-
-  it('un plato que no esté en el orden de vitrina va al final, no se pierde', () => {
+  it('sin orden de vitrina en el código, los platos siguen el orden recibido', () => {
     const groups = groupByCategory([
       item('nuevo_plato', 'Plato nuevo', 'plato', 20, 5),
-      item('lomito', 'Lomito', 'plato', 18, 50),
-      item('trancapecho', 'Trancapecho', 'plato', 18, 20),
+      item('keperi', 'Keperi', 'plato', 18, 50),
+      item('supertabla', 'Supertabla', 'plato', 18, 20),
     ]);
-    expect(groups[0].items.map((i) => i.code)).toEqual([
-      'trancapecho',
-      'lomito',
-      'nuevo_plato',
-    ]);
+    expect(groups[0].items.map((i) => i.code)).toEqual(['nuevo_plato', 'keperi', 'supertabla']);
   });
 
   it('no muta la lista que recibe', () => {

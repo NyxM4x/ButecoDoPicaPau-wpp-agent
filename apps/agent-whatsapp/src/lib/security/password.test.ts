@@ -3,9 +3,9 @@ import { hashPassword, verifyPassword, PASSWORD_SALT_ROUNDS } from './password';
 
 describe('password — hashing con sal', () => {
   it('el hash no es la contrasena en claro', async () => {
-    const hash = await hashPassword('zarco-secreto');
-    expect(hash).not.toBe('zarco-secreto');
-    expect(hash).not.toContain('zarco-secreto');
+    const hash = await hashPassword('buteco-secreto');
+    expect(hash).not.toBe('buteco-secreto');
+    expect(hash).not.toContain('buteco-secreto');
   });
 
   it('dos hashes de la MISMA contrasena son distintos (sal aleatoria)', async () => {

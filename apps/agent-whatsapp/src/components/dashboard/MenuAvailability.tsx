@@ -13,7 +13,7 @@ import { formatMoney } from '@/lib/dashboard/format';
  *
  * No cuenta unidades ni descuenta al vender. Es un interruptor por producto,
  * porque es lo que de verdad pasa en la cocina: no se acaba "una unidad", se
- * acaba el lomito, y quien está atendiendo necesita sacarlo del menú en dos
+ * acaba el keperí, y quien está atendiendo necesita sacarlo del menú en dos
  * segundos y sin escribir un número.
  *
  * ── Retirar no borra ────────────────────────────────────────────────────────

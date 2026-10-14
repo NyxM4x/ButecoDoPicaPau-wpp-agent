@@ -247,7 +247,7 @@ describe('decideDefaultReply — cuando la foto YA llegó (04-09-2026)', () => {
   const conFoto = (over: Partial<OpenOrderSnapshot> = {}): CustomerStateSnapshot => ({
     paused: false,
     proofRemindedRecently: false,
-    catalogTerms: ['hamburguesa', 'gaseosa'],
+    catalogTerms: ['alita', 'gaseosa'],
     openOrder: {
       orderId: 'order-uuid',
       orderNumber: 'ORD-260904-002',
@@ -346,7 +346,7 @@ describe('decideDefaultReply — corregir la cantidad', () => {
   const conPedido = (over: Partial<OpenOrderSnapshot> = {}): CustomerStateSnapshot => ({
     paused: false,
     proofRemindedRecently: false,
-    catalogTerms: ['trancapecho', 'hamburguesa', 'gaseosa'],
+    catalogTerms: ['supertabla', 'alita', 'gaseosa'],
     openOrder: pedido({ orderNumber: 'ORD-260904-020', ...over }),
   });
 
@@ -392,7 +392,7 @@ describe('decideDefaultReply — corregir la cantidad', () => {
   });
 
   it('el producto partido en dos también', () => {
-    expect(decidir('Que sean 3 tranca pecho', conPedido()).action).toBe('order_review');
+    expect(decidir('Que sean 3 super tabla', conPedido()).action).toBe('order_review');
   });
 
   it('un olvido no acaba anotado en la comanda', () => {
@@ -438,7 +438,7 @@ describe('decideDefaultReply — el pedido en efectivo también se cambia', () =
   const enEfectivo = (over: Partial<OpenOrderSnapshot> = {}): CustomerStateSnapshot => ({
     paused: false,
     proofRemindedRecently: false,
-    catalogTerms: ['trancapecho', 'vaso', 'limonada', 'gaseosa'],
+    catalogTerms: ['supertabla', 'vaso', 'limonada', 'gaseosa'],
     openOrder: pedido({
       orderNumber: 'ORD-260904-026',
       // Lo que devuelve `paymentGateOf` para un pedido en efectivo: no hay
@@ -531,7 +531,7 @@ describe('decideDefaultReply — la entrega entera, no solo el ancla', () => {
   const conPedido = (over: Partial<OpenOrderSnapshot> = {}): CustomerStateSnapshot => ({
     paused: false,
     proofRemindedRecently: false,
-    catalogTerms: ['trancapecho', 'vaso', 'limonada', 'gaseosa', 'papas'],
+    catalogTerms: ['supertabla', 'vaso', 'limonada', 'gaseosa', 'papas'],
     openOrder: pedido({ orderNumber: 'ORD-260904-026', paymentMethod: 'cash', ...over }),
   });
 
@@ -626,7 +626,7 @@ describe('decideDefaultReply — CONFIRMO / CANCELAR en efectivo', () => {
   ): CustomerStateSnapshot => ({
     paused: false,
     proofRemindedRecently: false,
-    catalogTerms: ['trancapecho', 'lomito', 'gaseosa'],
+    catalogTerms: ['supertabla', 'keperi', 'gaseosa'],
     openOrder: pedido({
       orderNumber: 'ORD-260904-040',
       payment: 'not_required',
@@ -719,7 +719,7 @@ describe('decideDefaultReply — el pedido en efectivo ya está en cocina', () =
   const enCocina = (over: Partial<CustomerStateSnapshot> = {}): CustomerStateSnapshot => ({
     paused: false,
     proofRemindedRecently: false,
-    catalogTerms: ['hamburguesa', 'papa', 'gaseosa', 'trancapecho'],
+    catalogTerms: ['alita', 'papa', 'gaseosa', 'supertabla'],
     openOrder: {
       orderId: 'order-uuid',
       orderNumber: 'ORD-260905-030',
@@ -787,7 +787,7 @@ describe('decideDefaultReply — el pedido en efectivo ya está en cocina', () =
    */
   it('las frases que la lista NO ve reciben respuesta igual', () => {
     for (const frase of [
-      'No le coloquen locoto al trancapecho', // `coloquen` no está, y nombra un producto
+      'No le coloquen locoto a la supertabla', // `coloquen` no está, y nombra un producto
       'Más salsita', // `mas` no es marca, y cuenta como cantidad
       'Me podría mandar salsa bbq', // la lista sabe `manda`, no `mandar`
       'un favor', // no pide nada todavía, pero anuncia que viene algo
@@ -800,10 +800,10 @@ describe('decideDefaultReply — el pedido en efectivo ya está en cocina', () =
 
   it('la ráfaga entera decide: basta un mensaje que pida algo', () => {
     // El caso literal del pedido #13: "Un favor" / "No le coloquen locoto al
-    // trancapecho" / "🙏" / "Más salsita" en el mismo minuto.
+    // supertabla" / "🙏" / "Más salsita" en el mismo minuto.
     const decision = decideDefaultReply({
       text: 'Más salsita',
-      batchTexts: ['Un favor', 'No le coloquen locoto al trancapecho', '🙏', 'Más salsita'],
+      batchTexts: ['Un favor', 'No le coloquen locoto a la supertabla', '🙏', 'Más salsita'],
       isBatchAnchor: true,
       menuAlreadySent: false,
       explicitIntent: false,
@@ -935,7 +935,7 @@ describe('decideDefaultReply — el pedido parado esperando ubicación', () => {
   const parado = (over: Partial<CustomerStateSnapshot> = {}): CustomerStateSnapshot => ({
     paused: false,
     proofRemindedRecently: false,
-    catalogTerms: ['lomito', 'papas', 'gaseosa', 'trancapecho'],
+    catalogTerms: ['keperi', 'papas', 'gaseosa', 'supertabla'],
     openOrder: {
       orderId: 'order-uuid',
       orderNumber: 'ORD-260906-050',

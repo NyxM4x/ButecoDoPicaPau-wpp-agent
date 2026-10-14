@@ -16,8 +16,8 @@
  * a secas. Las dos estaban mal, y la segunda saltó en un pedido que terminó
  * PAGADO:
  *
- *   "Hola don Zarco quiero pedir" · "2 lomitos quería" · "Si envíeme 2
- *   lomitos" · ubicación · ubicación · comprobante  →  seis mensajes, alerta.
+ *   "Hola quiero pedir" · "2 keperís quería" · "Si envíeme 2
+ *   keperís" · ubicación · ubicación · comprobante  →  seis mensajes, alerta.
  *
  * Ese cliente hizo todo bien. Un pedido normal —saludo, intento, menú,
  * ubicación, comprobante— gasta seis o siete mensajes sin ningún problema, así

@@ -22,11 +22,11 @@ export function CartButton({
         type="button"
         onClick={onOpen}
         aria-label={`Ver carrito: ${productLabel}, total ${formatMoney(total)}`}
-        className="mx-auto flex w-full max-w-md items-center justify-between gap-3 rounded-full bg-donzarco-red-dark px-5 py-4 text-white shadow-lg shadow-black/50 ring-1 ring-white/15 transition-colors hover:bg-donzarco-red-hover active:bg-donzarco-red-active"
+        className="mx-auto flex w-full max-w-md items-center justify-between gap-3 rounded-full bg-brand-red-dark px-5 py-4 text-white shadow-lg shadow-black/50 ring-1 ring-white/15 transition-colors hover:bg-brand-red-hover active:bg-brand-red-active"
       >
         <span className="flex min-w-0 items-center gap-3">
           <span
-            className="flex h-8 min-w-8 items-center justify-center rounded-full bg-white px-1.5 text-sm font-bold text-donzarco-red-dark tabular-nums"
+            className="flex h-8 min-w-8 items-center justify-center rounded-full bg-white px-1.5 text-sm font-bold text-brand-red-dark tabular-nums"
             aria-hidden
           >
             {units}

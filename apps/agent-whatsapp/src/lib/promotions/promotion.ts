@@ -11,7 +11,7 @@ import type { MenuCategory, MenuItem } from '@/types';
  *
  * El precio normal NUNCA se guarda ni se acepta del navegador: se CALCULA
  * sumando los precios vigentes de los componentes. Un precio normal almacenado
- * es una copia que envejece — sube el lomito y el combo seguiría anunciando un
+ * es una copia que envejece — sube el keperí y el combo seguiría anunciando un
  * ahorro que ya no existe.
  *
  * Esta es la misma definición que implementa `promotion_normal_price` en la
@@ -272,7 +272,7 @@ export function validatePromotionDraft(
     });
   }
 
-  // Dos unidades mínimo, no dos productos: "2× lomito" es un combo válido.
+  // Dos unidades mínimo, no dos productos: "2× keperí" es un combo válido.
   if (totalUnitsOf(resueltos) < MIN_PROMOTION_UNITS) errores.push('components_required');
 
   // ── Fechas ───────────────────────────────────────────────────────────────

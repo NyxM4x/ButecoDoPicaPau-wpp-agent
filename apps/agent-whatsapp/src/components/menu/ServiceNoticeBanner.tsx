@@ -22,7 +22,7 @@ import { useServerClock } from '@/lib/menu/use-server-clock';
  * tarde, cuando el menú por sí solo —precios, fotos, botón de pedir— dice a
  * gritos que se puede comer ya. Ahí el cartel no acompaña: corrige. Por eso va
  * en rojo pleno, con borde de 2 px y el título en mayúsculas, que es el único
- * peso visual capaz de competir con una vitrina de hamburguesas.
+ * peso visual capaz de competir con una vitrina de tablas.
  *
  * ── El color no comunica solo ───────────────────────────────────────────────
  *
@@ -61,22 +61,22 @@ const ESTILOS = {
   // en `page.tsx`, y por la misma razón: contradice a una vitrina que invita a
   // comer ya.
   closed: {
-    caja: 'border-2 border-donzarco-red bg-donzarco-red-dark shadow-lg shadow-black/30',
-    punto: 'bg-donzarco-gold',
+    caja: 'border-2 border-brand-red bg-brand-red-dark shadow-lg shadow-black/30',
+    punto: 'bg-brand-gold',
     titulo: 'text-base uppercase tracking-wide text-white',
     cuerpo: 'text-white/85',
   },
   // Ámbar: "puede que sí, puede que no". El rojo se reserva para lo único que
   // no admite duda, que es el local cerrado.
   after_hours: {
-    caja: 'border border-donzarco-gold/50 bg-donzarco-ink/90 shadow-lg shadow-black/25 backdrop-blur-sm',
-    punto: 'bg-donzarco-gold',
-    titulo: 'text-sm text-donzarco-gold',
+    caja: 'border border-brand-gold/50 bg-brand-ink/90 shadow-lg shadow-black/25 backdrop-blur-sm',
+    punto: 'bg-brand-gold',
+    titulo: 'text-sm text-brand-gold',
     cuerpo: 'text-white/80',
   },
   opening: {
-    caja: 'border border-white/15 bg-donzarco-ink/90 shadow-lg shadow-black/25 backdrop-blur-sm',
-    punto: 'bg-donzarco-red',
+    caja: 'border border-white/15 bg-brand-ink/90 shadow-lg shadow-black/25 backdrop-blur-sm',
+    punto: 'bg-brand-red',
     titulo: 'text-sm text-white',
     cuerpo: 'text-white/80',
   },

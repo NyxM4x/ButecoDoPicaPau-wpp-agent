@@ -41,13 +41,13 @@
  * del administrador de promociones del dashboard.
  */
 @theme {
-  --color-donzarco-red: #f7941d;        /* acento */
-  --color-donzarco-red-dark: #c2570c;   /* acciones (texto blanco encima) */
-  --color-donzarco-red-hover: #a94a08;  /* hover de las acciones */
-  --color-donzarco-red-active: #8a3c06; /* active/pressed de las acciones */
-  --color-donzarco-ink: #1d110a;        /* café casi negro — texto y paneles oscuros */
-  --color-donzarco-surface: #fff7ec;    /* crema — fondo claro de los paneles */
-  --color-donzarco-gold: #f9a825;       /* dorado — acento sobre fondo oscuro */
+  --color-brand-red: #f7941d;        /* acento */
+  --color-brand-red-dark: #c2570c;   /* acciones (texto blanco encima) */
+  --color-brand-red-hover: #a94a08;  /* hover de las acciones */
+  --color-brand-red-active: #8a3c06; /* active/pressed de las acciones */
+  --color-brand-ink: #1d110a;        /* café casi negro — texto y paneles oscuros */
+  --color-brand-surface: #fff7ec;    /* crema — fondo claro de los paneles */
+  --color-brand-gold: #f9a825;       /* dorado — acento sobre fondo oscuro */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -138,6 +138,106 @@ body {
   animation: menu-swap 380ms cubic-bezier(0.2, 0.9, 0.25, 1.05);
 }
 
+/*
+ * ── La tabla por capas (2026-10-13, prototipo) ──────────────────────────────
+ *
+ * Ver `components/menu/BoardStage` (y los huecos, en `lib/menu/board-layers`).
+ * La carne nueva cae sobre la tabla y
+ * rebota apenas; la que se cambia se levanta y desaparece. La sombra crece
+ * mientras la carne baja, como si se acercara a la madera.
+ */
+.board-slot {
+  transition:
+    left 420ms cubic-bezier(0.2, 0.9, 0.25, 1.05),
+    bottom 420ms cubic-bezier(0.2, 0.9, 0.25, 1.05),
+    width 420ms cubic-bezier(0.2, 0.9, 0.25, 1.05);
+}
+.board-out {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+.board-meat {
+  transform-origin: 50% 100%;
+  filter: drop-shadow(0 6px 5px rgba(0, 0, 0, 0.5));
+}
+.board-shadow {
+  position: absolute;
+  inset-inline: 2%;
+  bottom: 0;
+  aspect-ratio: 4 / 1;
+  transform: translateY(42%);
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0.25) 60%, transparent);
+}
+@keyframes board-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-55%);
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(2%) scale(1.03, 0.96);
+  }
+  78% {
+    transform: translateY(-3%);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes board-shadow-in {
+  0% {
+    opacity: 0;
+    transform: translateY(42%) scale(0.45);
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(42%) scale(1.04);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(42%);
+  }
+}
+@keyframes board-lift {
+  to {
+    opacity: 0;
+    transform: translateY(-35%) scale(0.9);
+  }
+}
+@keyframes board-shadow-out {
+  to {
+    opacity: 0;
+    transform: translateY(42%) scale(0.5);
+  }
+}
+.board-in .board-meat {
+  animation: board-drop 620ms cubic-bezier(0.3, 0.75, 0.4, 1) both;
+}
+.board-in .board-shadow {
+  animation: board-shadow-in 620ms ease-out both;
+}
+.board-out .board-meat {
+  animation: board-lift 300ms ease-in forwards;
+}
+.board-out .board-shadow {
+  animation: board-shadow-out 300ms ease-in forwards;
+}
+/* El hueco que se está eligiendo late, para que se vea dónde va a caer la carne. */
+@keyframes board-marker {
+  /* Solo `transform`: el corrimiento hacia abajo es la propiedad `translate`
+     de Tailwind, que va aparte y se suma. */
+  50% {
+    transform: scale(1.08);
+  }
+}
+.board-marker-active {
+  animation: board-marker 1.2s ease-in-out infinite;
+}
+
 /* Quien pidió menos movimiento ve todo en su sitio desde el principio. */
 @media (prefers-reduced-motion: reduce) {
   .menu-reveal {
@@ -146,6 +246,20 @@ body {
     transition: none;
   }
   .menu-swap {
+    animation: none;
+  }
+  .board-slot {
+    transition: none;
+  }
+  /* La que se va desaparece sin gesto. No `none`: el componente la retira al
+     terminar la animación, y sin animación se quedaría ahí escondida. */
+  .board-in .board-meat,
+  .board-in .board-shadow,
+  .board-out .board-meat,
+  .board-out .board-shadow {
+    animation-duration: 1ms;
+  }
+  .board-marker-active {
     animation: none;
   }
 }

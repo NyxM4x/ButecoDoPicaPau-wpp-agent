@@ -20,7 +20,7 @@ import { normalizeIntentText } from '@/lib/webhook/menu-intent';
  *   `agent_suggestion`  no la contiene. NADA MÁS.
  *
  * En particular, `agent_suggestion` NO significa "el agente actuó por
- * iniciativa propia". "¿Qué hamburguesas tienen?" es una petición explícita de
+ * iniciativa propia". "¿Qué tablas tienen?" es una petición explícita de
  * ver productos y cae aquí, simplemente porque no dice "menú" ni "carta".
  *
  * De ahí que esta señal NO valga como entrada directa de un Conversation

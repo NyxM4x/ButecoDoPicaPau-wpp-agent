@@ -12,7 +12,7 @@ import type { DeliveryQuoteStatus, OrderStatus } from '@/types';
  *
  *   12:19  el cliente rearma su pedido  →  #1 creado, se le pide la ubicación
  *          (no la manda)
- *   18:20  escribe "Hola Zarco menu"    →  "Tu pedido #1 está guardado 🙌 Para
+ *   18:20  escribe "Hola, el menu"     →  "Tu pedido #1 está guardado 🙌 Para
  *                                           seguir nos falta tu ubicación"
  *
  * Seis horas después, un carrito que el cliente ya había abandonado le seguía

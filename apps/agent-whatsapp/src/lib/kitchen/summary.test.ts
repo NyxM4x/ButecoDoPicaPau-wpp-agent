@@ -43,19 +43,19 @@ function ticket(
 describe('resumen — solo suma los tickets activos', () => {
   it('un pedido en `done` o `cancelled` NO suma al panel derecho', () => {
     const tickets = [
-      ticket('A', 'new', [['Trancapecho', 3]]),
-      ticket('B', 'in_progress', [['Trancapecho', 2]]),
-      ticket('C', 'done', [['Trancapecho', 5]]),
-      ticket('D', 'cancelled', [['Trancapecho', 9]]),
+      ticket('A', 'new', [['Supertabla', 3]]),
+      ticket('B', 'in_progress', [['Supertabla', 2]]),
+      ticket('C', 'done', [['Supertabla', 5]]),
+      ticket('D', 'cancelled', [['Supertabla', 9]]),
     ];
     const s = summarizeProducts(tickets);
-    expect(s.rows).toEqual([{ name: 'Trancapecho', quantity: 5 }]);
+    expect(s.rows).toEqual([{ name: 'Supertabla', quantity: 5 }]);
     expect(s.totalUnits).toBe(5);
     expect(s.countedOrders).toBe(2);
   });
 
   it('COMPLETAR resta los productos y el pedido; DEVOLVER A COCINA los vuelve a sumar', () => {
-    const activo = [ticket('A', 'in_progress', [['Trancaburguer', 4]])];
+    const activo = [ticket('A', 'in_progress', [['Picanha', 4]])];
     expect(summarizeProducts(activo).totalUnits).toBe(4);
     expect(summarizeProducts(activo).countedOrders).toBe(1);
 
@@ -79,7 +79,7 @@ describe('resumen — solo suma los tickets activos', () => {
   });
 
   it('CANCELAR resta los productos y el pedido del resumen', () => {
-    const nuevo = [ticket('A', 'new', [['Trancapecho', 3]])];
+    const nuevo = [ticket('A', 'new', [['Supertabla', 3]])];
     const cancelado = [{ ...nuevo[0], stage: 'cancelled' as KdsStage }];
     expect(summarizeProducts(cancelado).totalUnits).toBe(0);
     expect(summarizeProducts(cancelado).countedOrders).toBe(0);
@@ -90,18 +90,18 @@ describe('resumen — orden y agrupación', () => {
   it('ordena por cantidad descendente y, a igual cantidad, alfabético', () => {
     const tickets = [
       ticket('A', 'new', [
-        ['Trancapecho', 5],
+        ['Supertabla', 5],
         ['Gaseosa 2 L', 4],
       ]),
       ticket('B', 'in_progress', [
-        ['Trancapecho', 3],
-        ['Trancaburguer', 5],
+        ['Supertabla', 3],
+        ['Picanha', 5],
         ['Api con pastel', 4],
       ]),
     ];
     expect(summarizeProducts(tickets).rows).toEqual([
-      { name: 'Trancapecho', quantity: 8 },
-      { name: 'Trancaburguer', quantity: 5 },
+      { name: 'Supertabla', quantity: 8 },
+      { name: 'Picanha', quantity: 5 },
       { name: 'Api con pastel', quantity: 4 },
       { name: 'Gaseosa 2 L', quantity: 4 },
     ]);
@@ -112,12 +112,12 @@ describe('resumen — orden y agrupación', () => {
       {
         ...ticket('A', 'new', []),
         lines: [
-          { name: 'Trancapecho', quantity: 2, modifiers: ['sin cebolla'], category: 'plato' as const },
-          { name: 'Trancapecho', quantity: 1, modifiers: ['extra tocino'], category: 'plato' as const },
+          { name: 'Supertabla', quantity: 2, modifiers: ['sin cebolla'], category: 'plato' as const },
+          { name: 'Supertabla', quantity: 1, modifiers: ['extra tocino'], category: 'plato' as const },
         ],
       },
     ];
-    expect(summarizeProducts(tickets).rows).toEqual([{ name: 'Trancapecho', quantity: 3 }]);
+    expect(summarizeProducts(tickets).rows).toEqual([{ name: 'Supertabla', quantity: 3 }]);
   });
 
   it('sin tickets activos el resumen queda vacío', () => {
@@ -146,19 +146,19 @@ describe('resumen — el total espera a que el pago se confirme', () => {
 
   it('un pedido nuevo con el pago sin confirmar NO suma al total', () => {
     const tickets = [
-      ticket('A', 'new', [['Trancapecho', 3]]),
-      sinConfirmar(ticket('B', 'new', [['Trancapecho', 2]])),
+      ticket('A', 'new', [['Supertabla', 3]]),
+      sinConfirmar(ticket('B', 'new', [['Supertabla', 2]])),
     ];
     const s = summarizeProducts(tickets);
-    expect(s.rows).toEqual([{ name: 'Trancapecho', quantity: 3 }]);
+    expect(s.rows).toEqual([{ name: 'Supertabla', quantity: 3 }]);
     expect(s.totalUnits).toBe(3);
     expect(s.countedOrders).toBe(1);
   });
 
   it('lo retenido se declara aparte: ni se suma ni se esconde', () => {
     const s = summarizeProducts([
-      sinConfirmar(ticket('A', 'new', [['Trancapecho', 2], ['Api con pastel', 1]])),
-      sinConfirmar(ticket('B', 'new', [['Trancaburguer', 4]])),
+      sinConfirmar(ticket('A', 'new', [['Supertabla', 2], ['Api con pastel', 1]])),
+      sinConfirmar(ticket('B', 'new', [['Picanha', 4]])),
     ]);
     expect(s.rows).toEqual([]);
     expect(s.totalUnits).toBe(0);
@@ -167,7 +167,7 @@ describe('resumen — el total espera a que el pago se confirme', () => {
   });
 
   it('al confirmar el pago, sus productos entran al total de golpe', () => {
-    const esperando = [sinConfirmar(ticket('A', 'new', [['Trancapecho', 3]]))];
+    const esperando = [sinConfirmar(ticket('A', 'new', [['Supertabla', 3]]))];
     expect(summarizeProducts(esperando).totalUnits).toBe(0);
 
     const confirmado = [{ ...esperando[0], awaitingPaymentConfirmation: false }];
@@ -183,7 +183,7 @@ describe('resumen — el total espera a que el pago se confirme', () => {
     // al planchero en la dirección contraria, diciéndole que le queda menos
     // trabajo del que ya tiene en la mano.
     const s = summarizeProducts([
-      sinConfirmar(ticket('A', 'in_progress', [['Trancapecho', 2]])),
+      sinConfirmar(ticket('A', 'in_progress', [['Supertabla', 2]])),
     ]);
     expect(s.totalUnits).toBe(2);
     expect(s.countedOrders).toBe(1);
@@ -194,8 +194,8 @@ describe('resumen — el total espera a que el pago se confirme', () => {
     // La espera solo describe trabajo por llegar. Un `done` ya se cocinó y un
     // `cancelled` no se cocinará: contarlos ahí sería inventar trabajo futuro.
     const s = summarizeProducts([
-      sinConfirmar(ticket('A', 'done', [['Trancapecho', 5]])),
-      sinConfirmar(ticket('B', 'cancelled', [['Trancapecho', 9]])),
+      sinConfirmar(ticket('A', 'done', [['Supertabla', 5]])),
+      sinConfirmar(ticket('B', 'cancelled', [['Supertabla', 9]])),
     ]);
     expect(s.awaitingOrders).toBe(0);
     expect(s.awaitingUnits).toBe(0);
@@ -207,24 +207,24 @@ describe('resumen — el total espera a que el pago se confirme', () => {
     // Un pedido esperando comprobante es un pedido pendiente de verdad, y
     // ocultarlo ahí dejaría a cocina sin saber que tiene algo que revisar.
     const tickets = [
-      sinConfirmar(ticket('A', 'new', [['Trancapecho', 1]])),
-      ticket('B', 'new', [['Trancapecho', 1]]),
+      sinConfirmar(ticket('A', 'new', [['Supertabla', 1]])),
+      ticket('B', 'new', [['Supertabla', 1]]),
     ];
     expect(countersFrom(tickets)).toEqual({ today: 2, pending: 2, inProgress: 0, done: 0 });
   });
 
   it('el grid sigue pintando el ticket: lo que espera es el conteo, no la comanda', () => {
-    const tickets = [sinConfirmar(ticket('A', 'new', [['Trancapecho', 1]]))];
+    const tickets = [sinConfirmar(ticket('A', 'new', [['Supertabla', 1]]))];
     expect(gridTickets(tickets).map((t) => t.orderNumber)).toEqual(['A']);
   });
 });
 
 describe('contadores de la barra superior', () => {
   const tablero = [
-    ticket('A', 'new', [['Trancapecho', 1]]),
-    ticket('B', 'new', [['Trancapecho', 1]]),
-    ticket('C', 'in_progress', [['Trancapecho', 1]]),
-    ticket('D', 'done', [['Trancapecho', 1]]),
+    ticket('A', 'new', [['Supertabla', 1]]),
+    ticket('B', 'new', [['Supertabla', 1]]),
+    ticket('C', 'in_progress', [['Supertabla', 1]]),
+    ticket('D', 'done', [['Supertabla', 1]]),
   ];
 
   it('reparte los tickets entre pendientes, en preparación y listos', () => {
@@ -321,10 +321,10 @@ function ticketCat(
 
 describe('resumen — dividido para empaque y plancha', () => {
   const MIXTO = ticketCat('A', [
-    ['Trancaburguer', 2, 'plato'],
+    ['Picanha', 2, 'plato'],
     ['Soda Peque', 3, 'bebida'],
     ['Porción de papa', 1, 'extra'],
-    ['Lomito', 1, 'plato'],
+    ['Keperi', 1, 'plato'],
   ]);
 
   it('separa comidas, extras y refrescos', () => {
@@ -354,7 +354,7 @@ describe('resumen — dividido para empaque y plancha', () => {
   });
 
   it('un bloque sin nada dentro no se pinta', () => {
-    const soloComida = ticketCat('B', [['Lomito', 2, 'plato']]);
+    const soloComida = ticketCat('B', [['Keperi', 2, 'plato']]);
     const { groups } = summarizeProducts([soloComida]);
     expect(groups).toHaveLength(1);
     expect(groups[0].label).toBe('Comidas');
@@ -364,7 +364,7 @@ describe('resumen — dividido para empaque y plancha', () => {
     // Poner un producto desconocido entre las comidas mandaría a la plancha
     // algo que quizá es un refresco.
     const raro = ticketCat('C', [
-      ['Lomito', 1, 'plato'],
+      ['Keperi', 1, 'plato'],
       ['Producto borrado', 2, null],
     ]);
     const { groups } = summarizeProducts([raro]);
@@ -376,19 +376,19 @@ describe('resumen — dividido para empaque y plancha', () => {
 
   it('dentro de cada bloque manda la cantidad', () => {
     const varios = ticketCat('D', [
-      ['Hamburguesa', 1, 'plato'],
-      ['Trancapecho', 5, 'plato'],
-      ['Lomito', 3, 'plato'],
+      ['Alita', 1, 'plato'],
+      ['Supertabla', 5, 'plato'],
+      ['Keperi', 3, 'plato'],
     ]);
     const comidas = summarizeProducts([varios]).groups[0];
-    expect(comidas.rows.map((r) => r.name)).toEqual(['Trancapecho', 'Lomito', 'Hamburguesa']);
+    expect(comidas.rows.map((r) => r.name)).toEqual(['Supertabla', 'Keperi', 'Alita']);
   });
 
   it('el mismo producto en dos pedidos suma en un solo renglón', () => {
-    const uno = ticketCat('E', [['Lomito', 2, 'plato']]);
-    const dos = ticketCat('F', [['Lomito', 3, 'plato']]);
+    const uno = ticketCat('E', [['Keperi', 2, 'plato']]);
+    const dos = ticketCat('F', [['Keperi', 3, 'plato']]);
     const comidas = summarizeProducts([uno, dos]).groups[0];
-    expect(comidas.rows).toEqual([{ name: 'Lomito', quantity: 5 }]);
+    expect(comidas.rows).toEqual([{ name: 'Keperi', quantity: 5 }]);
   });
 
   it('una categoría que esta pantalla no conoce cae en Otros, no se pierde', () => {
@@ -397,7 +397,7 @@ describe('resumen — dividido para empaque y plancha', () => {
     // que seguir viéndose: si desapareciera del reparto mientras suma en el
     // total, alguien pediría algo que nadie prepara.
     const futuro = ticketCat('G', [
-      ['Lomito', 1, 'plato'],
+      ['Keperi', 1, 'plato'],
       ['Flan', 2, 'postre' as unknown as 'plato'],
     ]);
     const resumen = summarizeProducts([futuro]);

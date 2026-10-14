@@ -28,10 +28,10 @@ export function ReplacingOrderBanner({ orderNumber }: { orderNumber: string }) {
         // tenía antes dejaba ver el fondo con patrón de `page.tsx` a través del
         // aviso, con el texto oscuro encima. El oro sigue marcando el aviso,
         // pero desde el borde, el punto y el título.
-        className="mx-auto max-w-5xl rounded-2xl border border-donzarco-gold/50 bg-donzarco-ink/90 px-4 py-3 shadow-lg shadow-black/25 backdrop-blur-sm"
+        className="mx-auto max-w-5xl rounded-2xl border border-brand-gold/50 bg-brand-ink/90 px-4 py-3 shadow-lg shadow-black/25 backdrop-blur-sm"
       >
-        <p className="flex items-center gap-2 text-sm font-semibold text-donzarco-gold">
-          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-donzarco-gold" aria-hidden />
+        <p className="flex items-center gap-2 text-sm font-semibold text-brand-gold">
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-brand-gold" aria-hidden />
           Estás cambiando tu pedido {shortOrderNumber(orderNumber)}
         </p>
         <p className="mt-1 text-sm leading-relaxed text-white/80">

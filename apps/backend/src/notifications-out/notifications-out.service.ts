@@ -171,7 +171,7 @@ export class NotificationsOutService {
       throw new Error('WhatsApp notification is missing customerId.');
     }
 
-    // La frontera de transporte recibe el número listo para enviar. Sarco no
+    // La frontera de transporte recibe el número listo para enviar. El agente no
     // necesita leer la tabla customers ni mantener un cache customerId -> phone.
     const customer = await this.db
       .selectFrom('customers')

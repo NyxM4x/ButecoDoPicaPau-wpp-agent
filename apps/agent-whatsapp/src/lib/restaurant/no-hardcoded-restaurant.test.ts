@@ -19,27 +19,27 @@ import type { MenuSendReason } from '@/lib/menu/dispatch';
 import { serviceNoticeAt } from '@/lib/menu/service-hours';
 import { formatBs } from '@/lib/orders/calculate';
 import { orderConfirmedByCashText } from '@/lib/orders/notifications/notify-text';
-import { DON_ZARCO_PROFILE, OTHER_PROFILE } from '@/test/profiles';
+import { BASE_PROFILE, OTHER_PROFILE } from '@/test/profiles';
 import { setRestaurantProfile } from './profile';
 
 /**
- * LA PRUEBA DE LA FASE 2: con otro restaurante, nada dice «Zarco».
+ * LA PRUEBA DE LA FASE 2: con otro restaurante, nada dice el de las pruebas.
  *
- * El agente nació para Don Zarco, con su nombre, su horario, su dirección y sus
- * reglas escritos en el código. Aquí se pone un restaurante distinto en todo y
- * se recorre lo que el agente dice: al cliente, al modelo y al personal.
+ * El agente nació para otro local, con su nombre, su horario, su dirección y
+ * sus reglas escritos en el código. Aquí se pone un restaurante distinto en
+ * todo y se recorre lo que el agente dice: al cliente, al modelo y al personal.
  */
 
-/** Todo lo que delataría al restaurante anterior. */
+/** Todo lo que delataría al restaurante de las pruebas (`BASE_PROFILE`). */
 const HUELLAS = [
-  /zarco/i,
-  /trancapecho/i,
-  /Doble Vía|Hipermaxi/i,
+  /buteco|pica-pau/i,
+  /tablas y carnes/i,
+  /Banzer|tercer anillo/i,
   /Bolivia|Santa Cruz/i,
   /\bBs\b/,
   /19:00|04:00/,
   /siete de la tarde/i,
-  /sarco-restaurant|demorestaurantagente/i,
+  /agente-buteco/i,
 ];
 
 function textosDelAgente(): Record<string, string> {
@@ -85,10 +85,10 @@ function textosDelAgente(): Record<string, string> {
  */
 function otroRestaurante(profile = OTHER_PROFILE): void {
   setRestaurantProfile(profile);
-  process.env.APP_BASE_URL = 'https://buteco.example';
+  process.env.APP_BASE_URL = 'https://bardoze.example';
 }
 
-describe('con otro restaurante, nada dice «Zarco»', () => {
+describe('con otro restaurante, nada dice el de las pruebas', () => {
   const urlDeLasPruebas = process.env.APP_BASE_URL;
   afterEach(() => {
     process.env.APP_BASE_URL = urlDeLasPruebas;
@@ -110,7 +110,7 @@ describe('con otro restaurante, nada dice «Zarco»', () => {
     otroRestaurante();
     const textos = textosDelAgente();
 
-    expect(textos['prompt base']).toContain('Eres el asistente de WhatsApp de Buteco do Pica-Pau, un bar de comida brasileña en São Paulo.');
+    expect(textos['prompt base']).toContain('Eres el asistente de WhatsApp de Bar do Zé, un bar de comida brasileña en São Paulo.');
     expect(textos['prompt base']).toContain('Siempre en portugués, con el trato cercano y directo que se usa en Brasil.');
     expect(textos['prompt base']).toContain('Horario de atención: de martes a domingo de 18:00 a 02:00 (lunes cerrado).');
     expect(textos['prompt base']).toContain('Rua das Flores 100, Vila Madalena');
@@ -118,20 +118,22 @@ describe('con otro restaurante, nada dice «Zarco»', () => {
     expect(textos['prompt base']).toContain('Se puede pasar a retirar el pedido por el local');
     expect(textos['prompt base']).not.toContain('No hay recojo');
 
-    expect(textos['saludo del menú']).toContain('Hola, soy Buteco do Pica-Pau 👋 Atendemos de martes a domingo de 18:00 a 02:00 (lunes cerrado).');
-    expect(textos['dónde queda']).toContain('https://maps.example/buteco');
-    expect(textos['enlace del menú']).toBe('https://buteco.example/menu');
+    expect(textos['saludo del menú']).toContain('Hola, soy Bar do Zé 👋 Atendemos de martes a domingo de 18:00 a 02:00 (lunes cerrado).');
+    expect(textos['dónde queda']).toContain('https://maps.example/bar-do-ze');
+    expect(textos['enlace del menú']).toBe('https://bardoze.example/menu');
     expect(textos['un monto']).toBe('R$ 57');
     expect(textos['pedido confirmado en efectivo']).toContain('R$ 72');
-    expect(textos['aviso al personal']).toContain('Atención humana — Buteco do Pica-Pau');
-    expect(textos['herramienta get_menu_items']).toContain('Buteco do Pica-Pau');
+    expect(textos['aviso al personal']).toContain('Atención humana — Bar do Zé');
+    expect(textos['herramienta get_menu_items']).toContain('Bar do Zé');
+    // Lo que el local pidió que se sepa entra al prompt, tal cual.
+    expect(textos['prompt base']).toContain('Las mesas se reservan por WhatsApp; las confirma una persona del bar.');
     // Sin video ni imagen en el perfil, el botón del menú sale sin cabecera.
     expect(textos['mensaje del menú']).not.toContain('"header"');
   });
 
-  it('el mismo recorrido con el perfil de Don Zarco sí encuentra las huellas', () => {
+  it('el mismo recorrido con el perfil de las pruebas sí encuentra las huellas', () => {
     // Si esta prueba fallara, la de arriba no estaría mirando nada.
-    setRestaurantProfile(DON_ZARCO_PROFILE);
+    setRestaurantProfile(BASE_PROFILE);
     const todo = Object.values(textosDelAgente()).join('\n');
     for (const huella of HUELLAS) expect(todo, String(huella)).toMatch(huella);
   });
@@ -159,29 +161,21 @@ function sourceFiles(dir: string): string[] {
 }
 
 describe('el código no nombra a ningún restaurante', () => {
-  it('fuera de las pruebas y los comentarios, no queda «zarco» en src/', () => {
-    const permitidos = [
-      /\.test\.tsx?$/,
-      /\.fixtures\.ts$/,
-      /[\\/]test[\\/]/,
-      // Fotos y descripciones de respaldo por código de producto: solo se usan
-      // si el catálogo trae un producto con ese mismo código.
-      /[\\/]lib[\\/]menu[\\/]catalog\.ts$/,
-      /[\\/]components[\\/]menu[\\/]ProductCard\.tsx$/,
-    ];
+  it('fuera de las pruebas, no queda en src/ ni el restaurante de las pruebas ni la demo anterior', () => {
+    // También en los comentarios: un ejemplo con el nombre de un local es un
+    // dato de ese local, y el siguiente que copie el comentario se lo lleva.
+    const permitidos = [/\.test\.tsx?$/, /\.fixtures\.ts$/, /[\\/]test[\\/]/];
+    const huellas = /zarco|sarco-restaurant|trancapecho|trancaburguer|salchiburguer|salchipapa|lomito|hamburguesa|buteco|pica-?pau/i;
     const hallazgos: string[] = [];
     for (const file of sourceFiles(SRC)) {
       if (permitidos.some((pattern) => pattern.test(file))) continue;
-      const code = readFileSync(file, 'utf8')
-        .replace(/\/\*[\s\S]*?\*\//g, '')
-        .replace(/^\s*\/\/.*$/gm, '')
-        // Los colores del tema se llaman `donzarco-*`: son nombres de clase, no datos.
-        .replace(/donzarco-[a-z-]+/g, '');
-      code.split('\n').forEach((line, index) => {
-        if (/zarco|sarco-restaurant|trancapecho/i.test(line)) {
-          hallazgos.push(`${path.relative(SRC, file)}:${index + 1}: ${line.trim().slice(0, 100)}`);
-        }
-      });
+      readFileSync(file, 'utf8')
+        .split('\n')
+        .forEach((line, index) => {
+          if (huellas.test(line)) {
+            hallazgos.push(`${path.relative(SRC, file)}:${index + 1}: ${line.trim().slice(0, 100)}`);
+          }
+        });
     }
     expect(hallazgos).toEqual([]);
   });

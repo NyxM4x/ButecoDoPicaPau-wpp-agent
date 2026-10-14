@@ -50,7 +50,7 @@ describe('sin petición explícita — el envío sigue siendo sugerencia', () =>
       'mostrame opciones',
       'mandame algo',
       'hola',
-      'tienen hamburguesas?',
+      'tienen alitas?',
       'a qué hora abren',
     ]) {
       expect(isExplicitMenuRequest(texto), texto).toBe(false);
@@ -107,7 +107,7 @@ describe('no es un zoo de palabras clave', () => {
   });
 
   it('el permiso es más estrecho que la intención: solo dos sustantivos', () => {
-    // Ni "productos", ni "opciones", ni "comida", ni "hamburguesas". Cualquiera
+    // Ni "productos", ni "opciones", ni "comida", ni "alitas". Cualquiera
     // de ellos podría querer decir menú, y "podría" no basta para saltarse una
     // política.
     for (const texto of ['ver productos', 'quiero pedir', 'hacer un pedido', 'ordenar']) {

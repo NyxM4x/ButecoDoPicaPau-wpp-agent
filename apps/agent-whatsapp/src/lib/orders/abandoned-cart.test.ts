@@ -39,7 +39,7 @@ describe('el carrito que nunca llegó a cotizarse', () => {
 describe('EL CASO REAL que trajo la regla (09-09-2026)', () => {
   // 12:19  el cliente rearma su pedido → #1 creado, se le pide la ubicación
   //        (nunca la manda)
-  // 18:20  escribe "Hola Zarco menu"   → "Tu pedido #1 está guardado 🙌 Para
+  // 18:20  escribe "Hola Buteco menu"   → "Tu pedido #1 está guardado 🙌 Para
   //                                       seguir nos falta tu ubicación"
   const CREADO = '2026-09-09T16:19:00.000Z'; // 12:19 hora de Bolivia (UTC-4)
 

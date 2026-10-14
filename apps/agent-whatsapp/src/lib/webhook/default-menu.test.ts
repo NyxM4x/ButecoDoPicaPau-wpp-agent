@@ -361,7 +361,7 @@ describe('"sin cebolla" — la preferencia que no rearma el pedido', () => {
   const conPedidoPorPagar = (over: Partial<CustomerStateSnapshot> = {}): CustomerStateSnapshot => ({
     paused: false,
     proofRemindedRecently: false,
-    catalogTerms: ['hamburguesa', 'lomito', 'gaseosa', 'salchipapa', 'trancapecho'],
+    catalogTerms: ['alita', 'keperi', 'gaseosa', 'sopa', 'supertabla'],
     openOrder: {
       orderId: 'order-uuid',
       orderNumber: 'ORD-260903-007',
@@ -871,7 +871,7 @@ describe('las dos puertas, un solo filtro', () => {
 
     const body = batchBody([
       envelope({ wamid: 'wamid.A', text: 'quiero pedir' }),
-      envelope({ wamid: 'wamid.B', text: 'a cuanto esta el trancapecho' }),
+      envelope({ wamid: 'wamid.B', text: 'a cuanto esta la supertabla' }),
     ]);
 
     await deliver(body, {

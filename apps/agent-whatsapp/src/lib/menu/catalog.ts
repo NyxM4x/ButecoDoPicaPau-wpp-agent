@@ -84,31 +84,11 @@ export function categoryLabel(category: MenuCategory): string {
 // ── Copy de vitrina ─────────────────────────────────────────────────────────
 
 /**
- * Descripciones cortas por `code`. Son texto de UI, NO datos de negocio:
- * `menu_items` no tiene columna `description` y el esquema no se modifica en
- * esta fase. Si un producto nuevo no está aquí, la tarjeta simplemente no
- * muestra descripción (y la búsqueda solo lo encuentra por nombre).
+ * Descripciones de vitrina por `code`, para el catálogo propio del agente
+ * (`menu_items`, que no tiene columna de descripción). Vacía: con el POS
+ * conectado, cada producto trae la suya. La de la demo anterior se retiró.
  */
-const PRODUCT_DESCRIPTIONS: Record<string, string> = {
-  trancaburguer: 'Nuestro grande: hamburguesa con milanesa, huevo y salchicha.',
-  trancapecho: 'El clásico cochabambino: carne, huevo, arroz y ensalada.',
-  salchiburguer: 'Hamburguesa con salchicha, huevo y ensalada fresca.',
-  hamburguesa: 'Hamburguesa de carne con ensalada y salsa de la casa.',
-  lomito: 'Lomito jugoso en pan francés con verduras frescas.',
-  salchipapa: 'Papas fritas con salchicha dorada al sartén.',
-  gaseosa_2l: 'Botella de 2 litros para compartir.',
-  gaseosa_personal: 'Botella personal bien helada.',
-  porcion_papas: 'Papas fritas doradas con sal.',
-
-  // Los cuatro vasos comparten copy porque comparten promesa: es lo que el
-  // negocio quiere decir de ellos, y cuatro frases distintas inventadas aquí
-  // dirían cosas que nadie ha prometido. Las sodas van sin descripción: una
-  // Coca-Cola no necesita que se la presenten.
-  vaso_maracuya: 'Refrescante y natural.',
-  vaso_limonada: 'Refrescante y natural.',
-  vaso_lima: 'Refrescante y natural.',
-  vaso_pina: 'Refrescante y natural.',
-};
+const PRODUCT_DESCRIPTIONS: Record<string, string> = {};
 
 /**
  * Descripción de vitrina de un producto, o `null` si no hay copy definido.
@@ -129,10 +109,8 @@ export function productDescription(
 /**
  * Foto de cada producto, mapeada por `code`.
  *
- * Los diez productos del catálogo tienen su foto real en `public/menu/`
- * (WebP). El
- * `emoji` se conserva como fallback: si una foto falla al cargar, `ProductImage`
- * cae al placeholder (gradiente + emoji) vía `onError`.
+ * El `emoji` es el respaldo: si una foto falla al cargar, `ProductImage` cae
+ * al placeholder (gradiente + emoji) vía `onError`.
  *
  * Para un producto nuevo sin foto, dejar `src: null`: se dibuja el placeholder
  * sin pedir ninguna imagen a la red (ver `public/menu/README.md`).
@@ -148,28 +126,11 @@ export interface ProductImage {
   emoji: string;
 }
 
-const PRODUCT_IMAGES: Record<string, ProductImage> = {
-  trancaburguer: { src: '/menu/trancaburguer.webp', file: 'trancaburguer.webp', emoji: '🍔' },
-  trancapecho: { src: '/menu/trancapecho.webp', file: 'trancapecho.webp', emoji: '🥪' },
-  salchiburguer: { src: '/menu/salchiburguer.webp', file: 'salchiburguer.webp', emoji: '🌭' },
-  hamburguesa: { src: '/menu/hamburguesa.webp', file: 'hamburguesa.webp', emoji: '🍔' },
-  lomito: { src: '/menu/lomito.webp', file: 'lomito.webp', emoji: '🥪' },
-  salchipapa: { src: '/menu/salchipapa.webp', file: 'salchipapa.webp', emoji: '🍟' },
-  gaseosa_2l: { src: '/menu/gaseosa-2l.webp', file: 'gaseosa-2l.webp', emoji: '🥤' },
-  gaseosa_personal: { src: '/menu/gaseosa-personal.webp', file: 'gaseosa-personal.webp', emoji: '🥤' },
-  porcion_papas: { src: '/menu/porcion-papas.webp', file: 'porcion-papas.webp', emoji: '🍟' },
-
-  // Bebidas de 0030, con foto real del negocio (02-09-2026). El emoji sigue
-  // siendo distinto por bebida: es el fallback si la foto no carga, y el de
-  // categoría daría 🥤 a las seis — en la vitrina los jugos quedarían
-  // indistinguibles de las sodas, que es lo que el cliente elige de un vistazo.
-  soda_peque: { src: '/menu/soda-peque.webp', file: 'soda-peque.webp', emoji: '🥤' },
-  soda_mini: { src: '/menu/soda-mini.webp', file: 'soda-mini.webp', emoji: '🥤' },
-  vaso_maracuya: { src: '/menu/vaso-maracuya.webp', file: 'vaso-maracuya.webp', emoji: '🧃' },
-  vaso_limonada: { src: '/menu/vaso-limonada.webp', file: 'vaso-limonada.webp', emoji: '🍋' },
-  vaso_lima: { src: '/menu/vaso-lima.webp', file: 'vaso-lima.webp', emoji: '🍋' },
-  vaso_pina: { src: '/menu/vaso-pina.webp', file: 'vaso-pina.webp', emoji: '🍍' },
-};
+/**
+ * Fotos por `code` para el catálogo propio del agente. Vacía: con el POS
+ * conectado la foto es la que se sube allí. La de la demo anterior se retiró.
+ */
+const PRODUCT_IMAGES: Record<string, ProductImage> = {};
 
 const FALLBACK_EMOJI: Record<MenuCategory, string> = {
   plato: '🥪',
@@ -251,29 +212,11 @@ export function filterMenuItems(
  * de siempre. Es un desempate, no una reordenación.
  */
 /**
- * Orden de vitrina de los platos (17-09-2026), de mayor a menor prioridad.
- *
- * ── Por qué aquí y no en `menu_items.sort_order` ────────────────────────────
- *
- * Porque `sort_order` es PRODUCCIÓN: cambiarlo mueve el menú que los clientes
- * están viendo en este momento, y este orden nació dentro de un rediseño que
- * todavía se está probando. Vive aquí mientras el rediseño no se decida.
- *
- * Si el rediseño se adopta, lo correcto es bajar este orden a `sort_order` con
- * una migración y borrar esta lista: dos fuentes de verdad para lo mismo
- * terminan discrepando, y la de la base es la que ven las demás vías (el
- * agente, el panel).
- *
- * Un `code` que no esté aquí no se pierde: va después, con el orden de la base.
+ * Orden de vitrina de los platos por `code`, para el catálogo propio del
+ * agente. Vacío: con el POS conectado manda el orden que se le dio allí. Un
+ * `code` que no esté aquí va con el orden de la base.
  */
-const PLATO_ORDER: readonly string[] = [
-  'trancapecho',
-  'trancaburguer',
-  'lomito',
-  'hamburguesa',
-  'salchiburguer',
-  'salchipapa',
-];
+const PLATO_ORDER: readonly string[] = [];
 
 /** Posición de vitrina de un `code`; los no listados van al final. */
 function ordenDeVitrina(code: string): number {
@@ -284,8 +227,8 @@ function ordenDeVitrina(code: string): number {
 /**
  * Orden de las SECCIONES del menú (17-09-2026).
  *
- * Los extras van entre los platos y las bebidas: la porción de papa acompaña a
- * la comida, así que se ofrece junto a ella y no al final, después de los jugos.
+ * Los extras van entre los platos y las bebidas: acompañan a la comida, así
+ * que se ofrecen junto a ella y no al final, después de los jugos.
  *
  * Como `PLATO_ORDER`, vive aquí y no en `sort_order` porque la base es
  * producción y esto nació en un rediseño. Si se queda, baja a una migración

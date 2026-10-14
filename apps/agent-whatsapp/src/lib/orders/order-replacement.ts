@@ -156,8 +156,8 @@ async function tienePagoVivo(
  * El checkout lo creó como #50 y `replaceSupersededOrder` corrió después, en
  * `after()`, con el cliente ya confirmado: encontró un pago esperando revisión
  * contra el #47 y salió por `payment_in_flight`, que es lo correcto —cancelarlo
- * dejaría ese pago huérfano—. Resultado: dos pedidos. Pagó el #47 con un lomito,
- * el #50 con la salchiburguer se quedó esperando ubicación para siempre, y él
+ * dejaría ese pago huérfano—. Resultado: dos pedidos. Pagó el #47 con un keperí,
+ * el #50 con la costilla se quedó esperando ubicación para siempre, y él
  * siguió mandando comprobantes de un pedido que nunca llegó a cocina.
  *
  * ── Por qué la guarda no bastaba y esto va delante ──────────────────────────

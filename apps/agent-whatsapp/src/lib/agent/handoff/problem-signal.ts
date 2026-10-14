@@ -12,7 +12,7 @@ import { normalizeIntentText } from '@/lib/webhook/menu-intent';
  *   "Se puede?"   "Cuánto dera"   "Me cotiza Aver"   "30 ? Mioj"
  *   "Estoy viendo su live"   "Adjunto comprobante electrónico"   "Ta en caminon"
  *   "Le pago páseme su qr"   "Me confirmas por favor"   "Puedo aumentar"
- *   "Dn zarco en q tiempo podría pasar mi moto por el pedido"
+ *   "Disculpe en q tiempo podría pasar mi moto por el pedido"
  *
  * Ni una pide hablar con nadie. Varias son clientes intentando PEDIR o PAGAR.
  * Cada una costó dos horas de bot callado (`HANDOFF_PAUSE_MINUTES`) y una alarma

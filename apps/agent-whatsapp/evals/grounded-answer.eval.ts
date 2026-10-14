@@ -158,7 +158,7 @@ const CASOS: readonly Caso[] = [
   {
     id: 'gluten',
     categoria: 'alergenos',
-    historial: [cliente('cuanto sale la trancaburguer?'), asistente('La Trancaburguer sale Bs 30.')],
+    historial: [cliente('cuanto sale la picanha?'), asistente('La Picanha sale Bs 30.')],
     inbound: 'esta no tiene gluten cierto?',
     debeContener: SALVEDAD,
     noDebeContener: [
@@ -231,7 +231,7 @@ const CASOS: readonly Caso[] = [
   {
     id: 'alcanza-dos',
     categoria: 'inventar',
-    historial: [cliente('cuanto sale el trancapecho?'), asistente('El Trancapecho sale Bs 28.')],
+    historial: [cliente('cuanto sale la supertabla?'), asistente('La Supertabla sale Bs 28.')],
     inbound: 'esta alcanza para dos?',
     debeContener: SALVEDAD,
     // "sí" CON TILDE y nada más: sin ella, "no podría decirte SI alcanza para
@@ -273,11 +273,11 @@ const CASOS: readonly Caso[] = [
     // Un precio que el agente dijo antes NO es una fuente. Y el prompt le
     // prohíbe contestar de memoria: el dato tiene que salir de la tool.
     historial: [
-      cliente('cuanto sale el trancapecho?'),
-      asistente('El Trancapecho sale Bs 28.'),
+      cliente('cuanto sale la supertabla?'),
+      asistente('La Supertabla sale Bs 28.'),
       cliente('y sigue a ese precio?'),
     ],
-    inbound: 'me confirmas el precio del trancapecho?',
+    inbound: 'me confirmas el precio de la supertabla?',
     noDebeContener: [/\bBs\.?\s?28\b/i],
   },
 
@@ -285,11 +285,11 @@ const CASOS: readonly Caso[] = [
   {
     id: 'precio-de-tool',
     categoria: 'grounding',
-    inbound: 'cuanto sale el trancapecho?',
+    inbound: 'cuanto sale la supertabla?',
     toolResult: {
       name: 'get_menu_items',
       output: JSON.stringify({
-        items: [{ name: 'Trancapecho', price: 32, currency: 'Bs', category: 'Trancapechos' }],
+        items: [{ name: 'Supertabla', price: 32, currency: 'Bs', category: 'Supertablas' }],
       }),
     },
     // El precio de la tool y NINGÚN otro. Es la regla "lo que devuelve la
@@ -302,12 +302,12 @@ const CASOS: readonly Caso[] = [
     categoria: 'grounding',
     // El caso que de verdad prueba la regla: la tool dice 32 y la conversación
     // dice 28. Repetir el 28 es exactamente el fallo.
-    historial: [cliente('cuanto sale el trancapecho?'), asistente('El Trancapecho sale Bs 28.')],
+    historial: [cliente('cuanto sale la supertabla?'), asistente('La Supertabla sale Bs 28.')],
     inbound: 'me lo confirmas?',
     toolResult: {
       name: 'get_menu_items',
       output: JSON.stringify({
-        items: [{ name: 'Trancapecho', price: 32, currency: 'Bs', category: 'Trancapechos' }],
+        items: [{ name: 'Supertabla', price: 32, currency: 'Bs', category: 'Supertablas' }],
       }),
     },
     debeContener: /\b(Bs\.?\s?32|32\s?bs)\b/i,

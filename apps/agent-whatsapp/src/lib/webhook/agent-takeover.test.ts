@@ -1003,7 +1003,7 @@ describe('webhook + agent core — el agente no toca las rutas determinísticas'
 
   it('la intención natural de menú tampoco pasa por el agente', async () => {
     // Frase real del detector (prefijo `quiero pedir`), no una inventada.
-    const raw = inboundBody({ id: 'wamid.IN_MENU', text: { body: 'quiero pedir dos hamburguesas' } });
+    const raw = inboundBody({ id: 'wamid.IN_MENU', text: { body: 'quiero pedir dos alitas' } });
     const { channel: withAgent, calls } = channelWithAgent();
 
     const res = await call(raw, headers(raw), {

@@ -13,7 +13,7 @@ describe('isDeliveryQuoteIntent — reconoce la pregunta por el precio del enví
   it('el mensaje REAL que derivó una conversación entera', () => {
     // 29-08-2026, 01:04. Primer mensaje de la conversación. El agente lo mandó
     // a una persona y dejó al cliente dos horas sin respuesta.
-    expect(isDeliveryQuoteIntent('hola como esta zarco cuanto me saldria delivery aqui')).toBe(
+    expect(isDeliveryQuoteIntent('hola como esta buteco cuanto me saldria delivery aqui')).toBe(
       true,
     );
   });
@@ -43,10 +43,10 @@ describe('isDeliveryQuoteIntent — hacen falta las DOS familias de palabras', (
     // La defensa principal contra el falso positivo. Si `cuanto` bastara, toda
     // pregunta de precio acabaría pidiendo la ubicación en vez de contestarse.
     for (const texto of [
-      'cuanto cuesta el trancapecho?',
-      'cuanto salen la salchipapa y el lomito',
+      'cuanto cuesta la supertabla?',
+      'cuanto salen la sopa y el keperi',
       'cuanto vale la coca de dos litros',
-      'que precio tiene la hamburguesa doble',
+      'que precio tiene la alita doble',
     ]) {
       expect(isDeliveryQuoteIntent(texto), texto).toBe(false);
     }
@@ -113,11 +113,11 @@ describe('isDeliveryQuoteIntent — señalar un lugar junto a un precio', () => 
 
   it('un producto preguntado normalmente sigue sin activarlo', () => {
     // La deixis es lo que separa las dos preguntas: nadie pregunta el precio de
-    // una hamburguesa diciendo "aquí".
+    // una alita diciendo "aquí".
     for (const texto of [
-      'cuanto cuesta el trancapecho?',
+      'cuanto cuesta la supertabla?',
       'que precio tiene la coca de dos litros',
-      'cuanto vale la salchipapa',
+      'cuanto vale la sopa',
     ]) {
       expect(isDeliveryQuoteIntent(texto), texto).toBe(false);
     }

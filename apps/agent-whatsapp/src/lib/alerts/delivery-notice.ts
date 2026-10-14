@@ -42,8 +42,8 @@ export interface DeliveryNoticeItem {
  * Junta en una línea las unidades del mismo producto (14-09-2026).
  *
  * Desde que el aviso incluye los componentes de los combos, un pedido con un
- * Trancapecho suelto y un "2 Trancapechos" traería dos líneas del mismo plato.
- * Quien reparte cuenta bolsas, no promociones: "3x Trancapecho" es lo que tiene
+ * Chicharrón suelto y un "2 Chicharrones" traería dos líneas del mismo plato.
+ * Quien reparte cuenta bolsas, no promociones: "3x Chicharrón" es lo que tiene
  * que verificar, igual que la cocina (`promotions/kitchen-lines`).
  *
  * Conserva el orden de la primera aparición: los sueltos primero, como antes.

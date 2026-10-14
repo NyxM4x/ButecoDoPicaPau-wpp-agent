@@ -130,7 +130,7 @@ export function catalogTermsFromNames(names: readonly string[]): string[] {
  * El texto del cliente, normalizado y con los pegotes de WhatsApp separados.
  *
  * Un número pegado a una palabra es como se escribe una ráfaga con el pulgar:
- * "2com todo", "1sin locoto", "3trancapechos". Sin separarlo, ese mensaje no
+ * "2com todo", "1sin locoto", "3costillas". Sin separarlo, ese mensaje no
  * tiene ni cantidad ni producto que reconocer — la ráfaga entera del pedido #20
  * pasó por delante de los tres detectores sin activar ninguno.
  *
@@ -151,17 +151,17 @@ function normalizeOrderText(text: string): string {
  *
  * ── El producto PARTIDO (05-09-2026) ────────────────────────────────────────
  *
- * "Que sean 3 tranca pecho" no activó nada la noche del pedido #20: la carta
- * dice `Trancapecho` —una palabra— y el cliente escribió dos. Como la
+ * "Que sean 3 super tabla" no activaría nada si la carta dice `Supertabla`
+ * —una palabra— y el cliente escribe dos (así pasó la noche del pedido #20). Como la
  * comparación es por palabra completa, el mensaje no nombraba ningún producto y
  * la puerta del cambio, que exige nombrarlo, lo dejó pasar de largo. Escrito
  * junto sí funcionaba: entre atender a ese cliente y no atenderlo había un
  * espacio.
  *
  * Se arregla por el lado del MENSAJE y no por el del catálogo: se añaden los
- * pares de palabras consecutivas ya pegados —"tranca pecho" aporta
- * `trancapecho`—. Partir en cambio los nombres de la carta obligaría a inventar
- * por dónde se cortan ("tranca|pecho", "hambur|guesa"), que es una decisión que
+ * pares de palabras consecutivas ya pegados —"super tabla" aporta
+ * `supertabla`—. Partir en cambio los nombres de la carta obligaría a inventar
+ * por dónde se cortan ("super|tabla", "copu|azu"), que es una decisión que
  * nadie puede tomar bien para un nombre que todavía no existe.
  *
  * ── El diminutivo ───────────────────────────────────────────────────────────
@@ -253,7 +253,7 @@ export function isKitchenNoteRequest(
 
   // 5. Ni el nombre de nada que se venda. Ver `namesAProduct`: se compara por
   //    PALABRA COMPLETA, porque como subcadena "solomillo" bloquearía por
-  //    `lomito` sin tener nada que ver.
+  //    `keperí` sin tener nada que ver.
   if (namesAProduct(norm, catalogTerms)) return false;
 
   return true;
@@ -325,7 +325,7 @@ export function isOrderChangeRequest(
  * quiere. Una conversación real de esa madrugada lo enseña entero:
  *
  *   01:58  "Puedo aumentar"                    → no nombra producto: nadie contestó
- *   01:59  "Una hamburguesa con papas"         → esto SÍ lo reconocía… pero ya era tarde
+ *   01:59  "Una tablita con limonada"         → esto SÍ lo reconocía… pero ya era tarde
  *
  * Entre las dos frases pasaron 81 segundos, y en ese hueco el turno cayó al
  * modelo —el determinístico no tenía nada que decir— que derivó la conversación

@@ -133,7 +133,7 @@ export interface AgentTurnDeps {
  * original de `data[]`.
  *
  * Existe porque un turno multimodal no se explica solo con su ancla. En
- * `[foto, "qué hamburguesa es esta?"]` el ancla es el texto, pero lo que hay que
+ * `[foto, "qué tabla es esta?"]` el ancla es el texto, pero lo que hay que
  * mirar está en el otro elemento. El historial no sirve para eso: guarda el
  * caption, no los píxeles.
  *
@@ -409,7 +409,7 @@ export async function runAgentTurn(
   //
   // Se mira el burst entero y no solo el ancla, y la diferencia es real: el
   // ancla puede ser un comprobante al que la puerta ya le quitó los bytes
-  // mientras el mismo lote trae un "quiero una hamburguesa" que sí hay que
+  // mientras el mismo lote trae un "quiero una tablita" que sí hay que
   // contestar. Preguntar solo por el ancla dejaría ese texto sin respuesta.
   //
   // Y al revés: si NADA del lote aporta nada —el caso del comprobante suelto—
@@ -691,7 +691,7 @@ export async function runAgentTurn(
         // precisamente lo único que se puede imitar.
         ...buildSelectionContext(history, {
           inboundText,
-          // La ronda de DECIDIR también ve la foto: sin ella, "¿qué hamburguesa
+          // La ronda de DECIDIR también ve la foto: sin ella, "¿qué tabla
           // es esta?" no tiene referente y elegir capacidad sería adivinar.
           inboundParts: inboundMultimodal?.content,
         }),

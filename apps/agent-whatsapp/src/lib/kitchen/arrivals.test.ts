@@ -13,7 +13,7 @@ function ticket(orderNumber: string, stage: KdsStage, minutes = 0): KitchenTicke
     stage,
     deliveryType: 'delivery',
     paysCash: false,
-    lines: [{ name: 'Trancapecho', quantity: 1, modifiers: [], category: 'plato' as const }],
+    lines: [{ name: 'Supertabla', quantity: 1, modifiers: [], category: 'plato' as const }],
     notes: null,
     completedAt: stage === 'done' ? iso(minutes + 10) : null,
     amountDueByQr: 0,

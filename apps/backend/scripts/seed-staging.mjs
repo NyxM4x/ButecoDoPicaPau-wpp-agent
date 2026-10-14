@@ -2,9 +2,9 @@ import pg from 'pg';
 
 const { Client } = pg;
 
-if (process.env.STAGING_SEED_CONFIRM !== 'zarco-staging-only') {
+if (process.env.STAGING_SEED_CONFIRM !== 'buteco-staging-only') {
   console.error(
-    'Refusing to seed. Set STAGING_SEED_CONFIRM=zarco-staging-only only on the isolated staging database.',
+    'Refusing to seed. Set STAGING_SEED_CONFIRM=buteco-staging-only only on the isolated staging database.',
   );
   process.exit(2);
 }

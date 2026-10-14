@@ -24,20 +24,20 @@ const componente = (
 
 const COMBO: PromotionComponent[] = [
   componente({ code: 'soda_peque', name: 'Soda Peque', category: 'bebida', unitPrice: 5, quantity: 2 }),
-  componente({ code: 'lomito', name: 'Lomito Jackpot', category: 'plato', unitPrice: 30, quantity: 2 }),
+  componente({ code: 'keperi', name: 'Keperi Jackpot', category: 'plato', unitPrice: 30, quantity: 2 }),
   componente({ code: 'porcion_papas', name: 'Porción de papa', category: 'extra', unitPrice: 10, quantity: 2 }),
 ];
 
 describe('composición', () => {
   it('se deriva de los componentes reales, en su orden', () => {
     expect(composeSummary(COMBO)).toBe(
-      '2× Soda Peque + 2× Lomito Jackpot + 2× Porción de papa',
+      '2× Soda Peque + 2× Keperi Jackpot + 2× Porción de papa',
     );
   });
 
   it('un combo de un solo producto se lee igual de bien', () => {
-    expect(composeSummary([componente({ code: 'lomito', name: 'Lomito', quantity: 2 })])).toBe(
-      '2× Lomito',
+    expect(composeSummary([componente({ code: 'keperi', name: 'Keperi', quantity: 2 })])).toBe(
+      '2× Keperi',
     );
   });
 
@@ -84,16 +84,16 @@ describe('vigencia', () => {
 
 describe('componente protagonista', () => {
   it('el plato gana a la bebida aunque la bebida vaya primero', () => {
-    // El fallo real: un combo de lomitos ilustrado con una botella.
-    expect(heroComponent(COMBO)?.code).toBe('lomito');
+    // El fallo real: un combo de keperis ilustrado con una botella.
+    expect(heroComponent(COMBO)?.code).toBe('keperi');
   });
 
   it('a igualdad de categoría manda el precio unitario', () => {
     const dos = [
-      componente({ code: 'hamburguesa', unitPrice: 15 }),
-      componente({ code: 'trancaburguer', unitPrice: 30 }),
+      componente({ code: 'alita', unitPrice: 15 }),
+      componente({ code: 'picanha', unitPrice: 30 }),
     ];
-    expect(heroComponent(dos)?.code).toBe('trancaburguer');
+    expect(heroComponent(dos)?.code).toBe('picanha');
   });
 
   it('el extra gana a la bebida', () => {
@@ -127,7 +127,7 @@ describe('imagen', () => {
   it('sin foto propia cae al componente protagonista', () => {
     expect(resolvePromotionImage(null, COMBO)).toEqual({
       kind: 'component',
-      code: 'lomito',
+      code: 'keperi',
       category: 'plato',
     });
   });
@@ -142,7 +142,7 @@ describe('imagen', () => {
 
   describe('URLs admitidas', () => {
     it('acepta rutas propias y https', () => {
-      expect(isAllowedImageUrl('/menu/lomito.webp')).toBe(true);
+      expect(isAllowedImageUrl('/menu/keperi.webp')).toBe(true);
       expect(isAllowedImageUrl('https://cdn.ejemplo.com/a.webp')).toBe(true);
     });
 

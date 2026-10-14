@@ -30,7 +30,7 @@ import { isCashEnabled } from '@/lib/orders/cash-enabled';
  * responder sin ia si":
  *
  *   "buenas" · "noches" · "a cuanto"      →  "¿En qué puedo ayudarte esta noche?"
- *   "esta el trancapecho" · "disculpe"    →  "¿Quieres saber a cuánto están…?"
+ *   "esta el chicharrón" · "disculpe"    →  "¿Quieres saber a cuánto están…?"
  *
  * Ninguna de esas frases estaba en la lista, y las dos respuestas fueron
  * preguntas: dos turnos gastados sin darle al cliente por dónde pedir.
@@ -894,9 +894,9 @@ export function decideDefaultReply(input: DefaultReplyInput): DefaultReplyDecisi
       // detectores no reconocían la frase, el cliente recibía silencio. Tres
       // conversaciones reales pagaron esa dependencia:
       //
-      //   "No le coloquen locoto al trancapecho"  → la lista sabe `coloque` y
+      //   "No le coloquen locoto al chicharrón"  → la lista sabe `coloque` y
       //        `colocar`, no `coloquen`; y aunque la supiera, el filtro del
-      //        catálogo la descarta por nombrar un `trancapecho`.
+      //        catálogo la descarta por nombrar un `chicharrón`.
       //   "Más salsita"                           → `mas` no es marca de
       //        preferencia, y encima cuenta como cantidad, que también descarta.
       //   "Me podría mandar salsa bbq"            → la lista sabe `manda` y

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CentralRestaurantProfile } from '@/lib/central/contract';
-import { DON_ZARCO_PROFILE, OTHER_PROFILE } from '@/test/profiles';
+import { BASE_PROFILE, OTHER_PROFILE } from '@/test/profiles';
 import { hoursInWords, localClock, scheduleSentence, serviceMomentAt, utcOffsetMs } from './hours';
 import {
   cashEnabled,
@@ -29,6 +29,26 @@ const CENTRAL: CentralRestaurantProfile = {
 };
 
 describe('perfil del restaurante: de dónde sale', () => {
+  it('RESTAURANT_FACTS: una frase por línea, sin vacías, viñetas ni comentarios', () => {
+    const profile = profileFromEnv({
+      RESTAURANT_FACTS: [
+        '  Las tablitas traen arroz y plátano.',
+        '',
+        '- La espera es de 30 a 40 minutos.',
+        '# nota interna',
+        '• Reservas por WhatsApp.',
+      ].join('\r\n'),
+    });
+    expect(profile.facts).toEqual([
+      'Las tablitas traen arroz y plátano.',
+      'La espera es de 30 a 40 minutos.',
+      'Reservas por WhatsApp.',
+    ]);
+    expect(profileFromEnv({}).facts).toEqual([]);
+    // No son del contrato del POS: con el POS conectado siguen saliendo del entorno.
+    expect(profileFromCentral(CENTRAL, { RESTAURANT_FACTS: 'Uno.' }).facts).toEqual(['Uno.']);
+  });
+
   it('sin nada configurado hay un perfil neutro, que no nombra a nadie', () => {
     const profile = profileFromEnv({});
     expect(profile.name).toBe('nuestro local');
@@ -93,10 +113,10 @@ describe('perfil del restaurante: de dónde sale', () => {
 
   it('el perfil vigente es el último que se fijó', () => {
     setRestaurantProfile(OTHER_PROFILE);
-    expect(restaurantProfile().name).toBe('Buteco do Pica-Pau');
+    expect(restaurantProfile().name).toBe('Bar do Zé');
     expect(cashEnabled()).toBe(true);
     expect(money(25)).toBe('R$ 25');
-    setRestaurantProfile(DON_ZARCO_PROFILE);
+    setRestaurantProfile(BASE_PROFILE);
     expect(cashEnabled()).toBe(false);
     expect(money(57)).toBe('Bs. 57');
   });
@@ -108,23 +128,24 @@ describe('perfil del restaurante: de dónde sale', () => {
   });
 
   it('reconoce cómo nombra la gente al local, sin artículos ni palabras cortas', () => {
-    expect(nameKeywords(DON_ZARCO_PROFILE)).toEqual(['don zarco', 'zarco']);
-    expect(nameKeywords(OTHER_PROFILE)).toEqual(['buteco do pica pau', 'buteco']);
+    expect(nameKeywords(BASE_PROFILE)).toEqual(['buteco do pica pau', 'buteco']);
+    // Ninguna palabra de cinco letras o más: queda solo el nombre entero.
+    expect(nameKeywords(OTHER_PROFILE)).toEqual(['bar do ze']);
   });
 });
 
 describe('horario del restaurante', () => {
   it('la hora local sale de la zona del perfil', () => {
     const instante = Date.parse('2026-09-02T23:00:00.000Z'); // miércoles 19:00 en Bolivia, 20:00 en São Paulo
-    expect(utcOffsetMs(instante, DON_ZARCO_PROFILE)).toBe(4 * 3_600_000);
-    expect(localClock(instante, DON_ZARCO_PROFILE)).toEqual({ weekday: 3, minutes: 19 * 60 });
+    expect(utcOffsetMs(instante, BASE_PROFILE)).toBe(4 * 3_600_000);
+    expect(localClock(instante, BASE_PROFILE)).toEqual({ weekday: 3, minutes: 19 * 60 });
     expect(localClock(instante, OTHER_PROFILE)).toEqual({ weekday: 3, minutes: 20 * 60 });
   });
 
   it('dice el horario según lo que tenga el perfil', () => {
-    expect(scheduleSentence(DON_ZARCO_PROFILE)).toBe('todos los días de 19:00 a 04:00');
+    expect(scheduleSentence(BASE_PROFILE)).toBe('todos los días de 19:00 a 04:00');
     // El texto que escribió el local es el que repite el asistente.
-    expect(hoursInWords(DON_ZARCO_PROFILE)).toBe('todos los días, de siete de la tarde a cuatro de la madrugada');
+    expect(hoursInWords(BASE_PROFILE)).toBe('todos los días, de siete de la tarde a cuatro de la madrugada');
     // Sin texto propio, se arma del horario semanal, con el día cerrado.
     expect(hoursInWords(OTHER_PROFILE)).toBe('de martes a domingo de 18:00 a 02:00 (lunes cerrado)');
   });

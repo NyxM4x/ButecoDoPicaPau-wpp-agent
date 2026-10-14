@@ -56,7 +56,7 @@ describe('seguridad — el ticket no transporta datos que la cocina no necesita'
   it('el ticket serializado no lleva teléfono, dirección ni desglose de importes', () => {
     const [ticket] = toKitchenTickets(
       [row],
-      [{ order_id: 'uuid-interno', product_name_snapshot: 'Trancapecho', quantity: 2 }],
+      [{ order_id: 'uuid-interno', product_name_snapshot: 'Supertabla', quantity: 2 }],
     );
     const json = JSON.stringify(ticket);
     for (const prohibido of [

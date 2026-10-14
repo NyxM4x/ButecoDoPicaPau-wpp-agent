@@ -138,7 +138,7 @@ export function createAgentChannel(): AgentChannelPort {
 }
 
 /**
- * CATÁLOGO DE ACCIONES de Don Zarco (Fases 6D.2F.5B y 6D.2F.5B.1).
+ * CATÁLOGO DE ACCIONES del agente (Fases 6D.2F.5B y 6D.2F.5B.1).
  *
  * El modelo elige exactamente UNA por turno. Qué acciones existen es decisión
  * del negocio y por eso vive aquí: el core solo sabe que hay una lista, que hay

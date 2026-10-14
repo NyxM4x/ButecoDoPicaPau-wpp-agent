@@ -173,8 +173,7 @@ describe('6B.1R — header sin datos inventados', () => {
     }
     // La marca ya no está escrita aquí: llega del perfil del restaurante.
     expect(s).toContain('{restaurantName}');
-    // (los colores del tema se llaman `donzarco-*`: son clases, no la marca)
-    expect(s.replace(/donzarco-[a-z-]+/g, '')).not.toMatch(/zarco/i);
+    expect(s).not.toMatch(/buteco/i);
   });
 });
 

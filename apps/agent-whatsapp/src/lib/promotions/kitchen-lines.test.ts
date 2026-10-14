@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { promotionsToKitchenLines, type KitchenPromotionRow } from './kitchen-lines';
 
 const COMBO = [
-  { code: 'lomito', name: 'Lomito', unit_price: 30, quantity: 2 },
+  { code: 'keperi', name: 'Keperi', unit_price: 30, quantity: 2 },
   { code: 'soda_peque', name: 'Soda Peque', unit_price: 5, quantity: 2 },
   { code: 'porcion_papas', name: 'Porción de papa', unit_price: 10, quantity: 2 },
 ];
@@ -17,7 +17,7 @@ const fila = (over: Partial<KitchenPromotionRow> = {}): KitchenPromotionRow => (
 describe('los combos llegan a la cocina', () => {
   it('cada componente se convierte en una línea del ticket', () => {
     expect(promotionsToKitchenLines([fila()])).toEqual([
-      { order_id: 'pedido-1', product_name_snapshot: 'Lomito', quantity: 2, product_code: 'lomito' },
+      { order_id: 'pedido-1', product_name_snapshot: 'Keperi', quantity: 2, product_code: 'keperi' },
       { order_id: 'pedido-1', product_name_snapshot: 'Soda Peque', quantity: 2, product_code: 'soda_peque' },
       { order_id: 'pedido-1', product_name_snapshot: 'Porción de papa', quantity: 2, product_code: 'porcion_papas' },
     ]);
@@ -68,7 +68,7 @@ describe('un snapshot corrupto no tumba el tablero', () => {
     const roto = [{ code: 'x', name: '   ', unit_price: 1, quantity: 2 }, COMBO[0]];
     const lineas = promotionsToKitchenLines([fila({ components_snapshot: roto })]);
     expect(lineas).toHaveLength(1);
-    expect(lineas[0].product_name_snapshot).toBe('Lomito');
+    expect(lineas[0].product_name_snapshot).toBe('Keperi');
   });
 
   it('descarta cantidades que no son enteros positivos', () => {

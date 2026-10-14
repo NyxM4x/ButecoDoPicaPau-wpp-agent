@@ -32,7 +32,7 @@ const LAS_29_REALES = [
   'Le pago páseme su qr',
   'Me confirmas por favor',
   'Puedo aumentar',
-  'Dn zarco en q tiempo podría pasar mi moto por el pedido',
+  'Buteco en q tiempo podría pasar mi moto por el pedido',
   'Ta en camino',
   'Allá canceló',
   'Me confirmas',
@@ -60,7 +60,7 @@ describe('lo que SÍ necesita una persona', () => {
 
   it('el pedido llegó mal, o no llegó', () => {
     expect(hasProblemSignal('me llego frio')).toBe(true);
-    expect(hasProblemSignal('la hamburguesa esta cruda')).toBe(true);
+    expect(hasProblemSignal('la alita esta cruda')).toBe(true);
     expect(hasProblemSignal('no me llego el pedido')).toBe(true);
     expect(hasProblemSignal('nunca llego')).toBe(true);
     expect(hasProblemSignal('no es lo que pedi')).toBe(true);

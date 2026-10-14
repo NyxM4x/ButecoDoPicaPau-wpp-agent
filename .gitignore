@@ -17,3 +17,7 @@ Cobros QR - Baneco*.pptx
 # Fotos originales del menú: el menú usa las preparadas en demos/<slug>/images/
 # (scripts/prepare-menu-images.mjs). Ver apps/agent-whatsapp/public/menu/README.md.
 apps/agent-whatsapp/public/menu/Tablita*.png
+# Los originales de la tabla por capas: la maqueta usa los de capas/
+# (scripts/prepare-board-layers.mjs).
+apps/agent-whatsapp/public/menu/tablaPrincipal.png
+apps/agent-whatsapp/public/menu/carnes/

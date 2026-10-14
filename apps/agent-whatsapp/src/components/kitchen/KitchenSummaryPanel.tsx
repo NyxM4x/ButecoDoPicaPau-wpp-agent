@@ -15,7 +15,7 @@ import type { KitchenSummary } from '@/lib/kitchen/summary';
  * Comidas, extras y refrescos, en ese orden: primero lo que va a la plancha,
  * después lo que va a la freidora, y al final lo que solo se saca de la
  * heladera. Antes era una lista sola ordenada por cantidad, y quien empacaba
- * tenía que separar mentalmente las hamburguesas de las gaseosas cada vez.
+ * tenía que separar mentalmente las tablitas de las bebidas cada vez.
  *
  * Los rótulos son los de la cocina y no los de la carta —"Comidas" y
  * "Refrescos", no "Platos" y "Bebidas"— porque esta pantalla no la lee un

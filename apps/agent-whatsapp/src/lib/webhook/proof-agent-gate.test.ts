@@ -463,10 +463,10 @@ describe('4 · captura apagada (capture_disabled)', () => {
   it('el texto sigue funcionando', async () => {
     const a = agenteEspiado();
     await processClaimedEvent(
-      row(lote(textoEnvelope('wamid.T', 'quiero una hamburguesa'), imageNoCaptionEnvelope())),
+      row(lote(textoEnvelope('wamid.T', 'quiero una alita'), imageNoCaptionEnvelope())),
       params({ agentChannel: a.channel, paymentProofIntake: intakeApagado }),
     );
-    expect(a.dumpModelo()).toContain('quiero una hamburguesa');
+    expect(a.dumpModelo()).toContain('quiero una alita');
     esperaCeroVision(a, 'capture_disabled + texto');
   });
 

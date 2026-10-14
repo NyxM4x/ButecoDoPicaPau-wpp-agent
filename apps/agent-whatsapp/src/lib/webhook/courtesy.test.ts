@@ -47,7 +47,7 @@ describe('isCourtesyOnly — lo que NO pide nada', () => {
 describe('isCourtesyOnly — lo que SÍ pide algo', () => {
   it('las tres frases de producción que nadie contestó', () => {
     for (const frase of [
-      'No le coloquen locoto al trancapecho',
+      'No le coloquen locoto a la supertabla',
       'Más salsita',
       'Me podría mandar salsa bbq',
       'Un favor',

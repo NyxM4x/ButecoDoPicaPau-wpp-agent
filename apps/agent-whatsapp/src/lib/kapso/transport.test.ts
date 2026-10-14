@@ -186,12 +186,12 @@ describe('createKapsoTransport.sendMenuCtaUrl (Fase 5.2A)', () => {
     // el primer mensaje que recibe un cliente nuevo, y es la única ocasión de
     // explicárselo — un `send_menu` confirmado no redacta nada después.
     expect(menuCtaWelcomeText()).toBe(
-      'Hola, soy Don Zarco 👋 Atendemos todos los días de 19:00 a 04:00. ' +
+      'Hola, soy Buteco do Pica-Pau 👋 Atendemos todos los días de 19:00 a 04:00. ' +
         'Toca el botón para ver el menú, elegir lo que quieras y mandar tu pedido desde ahí mismo.',
     );
     expect(MENU_CTA_BUTTON_TEXT).toBe('Ver menú');
-    expect(menuUrl()).toBe('https://sarco-restaurant.vercel.app/menu');
-    expect(menuCtaHeader()?.link).toBe('https://demorestaurantagente.vercel.app/tutorialPedido.mp4?v=2');
+    expect(menuUrl()).toBe('https://buteco-agente.vercel.app/menu');
+    expect(menuCtaHeader()?.link).toBe('https://agente-buteco.example/tutorial.mp4?v=2');
   });
 
   it('6D.2E: header de video + el session_token viaja SOLO en la URL (no en body/header)', async () => {
@@ -201,7 +201,7 @@ describe('createKapsoTransport.sendMenuCtaUrl (Fase 5.2A)', () => {
       fetchImpl: fakeFetch(200, { messages: [{ id: 'wamid.CTA_TOK' }] }, captured),
     });
 
-    const menuUrl = 'https://sarco-restaurant.vercel.app/menu?session=TOKEN_SECRETO_123';
+    const menuUrl = 'https://buteco-agente.vercel.app/menu?session=TOKEN_SECRETO_123';
     await client.sendMenuCtaUrl('59170000001', { menuUrl });
 
     const interactive = (captured[0].body as { interactive: Record<string, unknown> }).interactive;
@@ -569,7 +569,7 @@ describe('createKapsoTransport.sendImage (6D.1)', () => {
 
     const res = await client.sendImage(
       '59170000001',
-      'https://sarco-restaurant.vercel.app/payment/qr-2026.jpeg',
+      'https://buteco-agente.vercel.app/payment/qr-2026.jpeg',
       'Pedido ORD-000042: paga con QR',
     );
     expect(res).toEqual({ ok: true, wamid: 'wamid.IMG_1' });
@@ -581,7 +581,7 @@ describe('createKapsoTransport.sendImage (6D.1)', () => {
       to: '59170000001',
       type: 'image',
       image: {
-        link: 'https://sarco-restaurant.vercel.app/payment/qr-2026.jpeg',
+        link: 'https://buteco-agente.vercel.app/payment/qr-2026.jpeg',
         caption: 'Pedido ORD-000042: paga con QR',
       },
     });

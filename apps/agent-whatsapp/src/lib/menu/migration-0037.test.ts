@@ -14,7 +14,7 @@ import { filterMenuItems, groupByCategory } from './catalog';
  *   2. El cliente que tenía esa fila en el carrito de su navegador —guardado
  *      desde antes del borrado— sigue pudiendo abrir el menú.
  *
- * La segunda es la que exige el test. En `58e077b` agotar un trancapecho dejó
+ * La segunda es la que exige el test. En `58e077b` agotar una supertabla dejó
  * sin menú a quien lo tenía guardado: `calculateOrder` lanzaba dentro del render
  * de `useCart` y se llevaba el árbol entero. Borrar una fila es el MISMO
  * escenario visto desde el otro lado —el código guardado deja de existir en la
@@ -88,8 +88,8 @@ const producto = (
 });
 
 const CARTA: MenuItem[] = [
-  producto('trancapecho', 'Trancapecho', 'plato', 25, true, 10),
-  producto('hamburguesa', 'Hamburguesa', 'plato', 20, true, 20),
+  producto('supertabla', 'Supertabla', 'plato', 25, true, 10),
+  producto('alita', 'Alita', 'plato', 20, true, 20),
   producto('soda_peque', 'Soda Peque', 'bebida', 5, true, 70),
   producto('soda_mini', 'Soda Mini', 'bebida', 4, true, 72),
   producto('gaseosa_2l', 'Gaseosa 2 L', 'bebida', 18, false, 74),
@@ -100,15 +100,15 @@ const CARTA: MenuItem[] = [
 const A_LA_VENTA = CARTA.filter((item) => item.is_active);
 
 /** Lo que quedó guardado en el navegador de un cliente de agosto. */
-const CARRITO_VIEJO = '{"gaseosa_pequena":2,"hamburguesa":1}';
+const CARRITO_VIEJO = '{"gaseosa_pequena":2,"alita":1}';
 
 describe('0037 — el cliente que la tenía en el carrito', () => {
   it('el carrito guardado SÍ la conserva: el riesgo es real', () => {
     // `parseStoredCart` solo valida la forma —código no vacío, cantidad entera
     // en rango—, no el catálogo. Así que el código borrado entra igual, y quien
     // tiene que absorberlo es `summarizeCart`. Si esto empezara a devolver
-    // `{ hamburguesa: 1 }`, el resto de este bloque dejaría de probar nada.
-    expect(parseStoredCart(CARRITO_VIEJO)).toEqual({ gaseosa_pequena: 2, hamburguesa: 1 });
+    // `{ alita: 1 }`, el resto de este bloque dejaría de probar nada.
+    expect(parseStoredCart(CARRITO_VIEJO)).toEqual({ gaseosa_pequena: 2, alita: 1 });
   });
 
   it('EL MENÚ CARGA: resumir ese carrito no lanza', () => {
@@ -130,7 +130,7 @@ describe('0037 — el cliente que la tenía en el carrito', () => {
   it('no se cobra, y lo que sí se vende se cobra bien', () => {
     const resumen = summarizeCart(parseStoredCart(CARRITO_VIEJO), A_LA_VENTA);
 
-    expect(resumen.lines.map((l) => l.product_code)).toEqual(['hamburguesa']);
+    expect(resumen.lines.map((l) => l.product_code)).toEqual(['alita']);
     expect(resumen.total).toBe(20);
     // Dos gaseosas a 5 son 10 Bs que no pueden aparecer en ningún sitio.
     expect(resumen.total).not.toBe(30);
@@ -171,7 +171,7 @@ describe('0037 — el menú de los demás clientes', () => {
   });
 
   it('un carrito normal de hoy se cobra como siempre', () => {
-    const resumen = summarizeCart({ trancapecho: 2, soda_peque: 1 }, A_LA_VENTA);
+    const resumen = summarizeCart({ supertabla: 2, soda_peque: 1 }, A_LA_VENTA);
     expect(resumen.total).toBe(55);
     expect(resumen.unavailableCodes).toEqual([]);
   });

@@ -16,7 +16,7 @@ import { normalizeIntentText } from './menu-intent';
  * muchas, y su error caro es tratar un cambio de líneas como una preferencia:
  * cuesta dinero. Por eso allí la duda NO dispara, y por eso necesita saber
  * conjugar "poner" y "mandar" — y por eso la noche del 06-09-2026 tres clientes
- * se quedaron sin respuesta: "no le coloquen locoto al trancapecho" no traía
+ * se quedaron sin respuesta: "no le coloquen locoto al chicharrón" no traía
  * ninguna de las formas que la lista conocía.
  *
  * Aquí no hay nada que anotar, ningún total que recalcular y ningún botón que

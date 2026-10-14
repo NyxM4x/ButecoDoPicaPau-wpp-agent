@@ -439,7 +439,7 @@ export interface SelectionContextOptions {
   /**
    * Partes del entrante actual cuando lleva imagen (Fase 6D.2F.5C.5). Si vienen,
    * SUSTITUYEN al mensaje de texto final: decidir sin ver la foto ante "¿qué
-   * hamburguesa es esta?" sería elegir capacidad a ciegas.
+   * tabla es esta?" sería elegir capacidad a ciegas.
    */
   inboundParts?: string | readonly AgentModelContentPart[];
   /**

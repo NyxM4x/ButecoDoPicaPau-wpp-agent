@@ -53,11 +53,11 @@ export function normalizeIntentText(text: string): string {
  * Se retiraba UNO y se paraba. Con eso, dos mensajes reales de prueba no se
  * reconocían y acababan en el modelo:
  *
- *   "Hola Zarco cómo va quiero pedir"  → quedaba "zarco como va quiero pedir"
+ *   "Hola Esquina cómo va quiero pedir"  → quedaba "esquina como va quiero pedir"
  *   "Hola buenas quería pedir"         → quedaba "buenas queria pedir"
  *
  * Nadie saluda con una sola palabra: se encadena el saludo, el vocativo y la
- * fórmula de cortesía. Por eso entran también `zarco`, `don zarco`, `como va` y
+ * fórmula de cortesía. Por eso entran también el nombre del local, `como va` y
  * `que dice` — el nombre del negocio usado como vocativo es parte del saludo en
  * este chat, no parte de la petición.
  */
@@ -87,7 +87,7 @@ const SALUDOS: readonly string[] = [
  * Un tope, no un bucle abierto: sin él, una lista de saludos suficientemente
  * larga acabaría comiéndose mensajes enteros palabra a palabra, que es
  * exactamente la búsqueda de subcadena que este módulo evita. Cuatro cubre
- * "hola buenas noches don zarco …", que ya es más de lo que escribe nadie.
+ * "hola buenas noches la esquina …", que ya es más de lo que escribe nadie.
  */
 const MAX_SALUDOS_ENCADENADOS = 4;
 
@@ -95,7 +95,7 @@ const MAX_SALUDOS_ENCADENADOS = 4;
 export function sinSaludoInicial(norm: string): string {
   // Del más largo al más corto: "buenas noches" antes que "buenas", o quedaría
   // un "noches" suelto delante de la intención.
-  // El nombre del local cuenta como saludo: "hola zarco", "buenas don zarco".
+  // El nombre del local cuenta como saludo: "hola esquina", "buenas la esquina".
   const ordenados = [...SALUDOS, ...nameKeywords()].sort((a, b) => b.length - a.length);
 
   let actual = norm;
@@ -178,8 +178,8 @@ const NEEDS_MENU =
  * por un verbo de pedir, y sin el numeral entraría.
  *
  * La cantidad va en letra o en dígito porque la gente escribe las dos: "2
- * lomitos" y "un lomito" son el mismo mensaje. `\d{1,2}` y no `\d+`: nadie pide
- * mil hamburguesas por WhatsApp, y un número largo suele ser un teléfono.
+ * keperís" y "un keperí" son el mismo mensaje. `\d{1,2}` y no `\d+`: nadie pide
+ * mil tablitas por WhatsApp, y un número largo suele ser un teléfono.
  */
 const PEDIDO_DICTADO =
   /^(?:quiero|quisiera|queria|necesito|dame|deme|damelo|mandame|mandeme|traeme|traigame|me das|me da|me manda|me manda|me trae|me traes|va a ser|van a ser|seria|serian|sera|seran)\s+(?:un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|media|medio|\d{1,2})\s+([a-z]{3,})/;
@@ -285,7 +285,7 @@ export function isGreetingOnly(text: string | null | undefined): boolean {
  * Orden:
  *   1. "No puedo ver el menú" (negación de ACCESO) → true.
  *   2. Frase exacta o comienzo de frase controlada de intención → true.
- *   3. Pedido dictado con cantidad y producto ("quisiera un lomito") → true.
+ *   3. Pedido dictado con cantidad y producto ("quisiera un keperí") → true.
  *   4. Todo lo demás → false.
  *
  * Las negaciones de INTENCIÓN de pedir ("no quiero pedir", "ya no quiero
@@ -313,7 +313,7 @@ export function isMenuIntent(text: string | null | undefined): boolean {
       (EXACT_PHRASES.has(c) ||
         PREFIX_PHRASES.some((p) => c === p || c.startsWith(`${p} `)) ||
         // 3. El pedido dictado. Va con los demás candidatos —con y sin saludo—
-        //    porque "hola quisiera un trancapecho" es la forma normal de
+        //    porque "hola quisiera un chicharrón" es la forma normal de
         //    escribirlo, no la excepción.
         esPedidoDictado(c)),
   );

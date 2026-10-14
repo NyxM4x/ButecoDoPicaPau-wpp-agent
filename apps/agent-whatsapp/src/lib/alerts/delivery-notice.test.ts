@@ -21,7 +21,7 @@ const BASE: DeliveryNoticeInput = {
   customerName: 'GRAD',
   customerPhone: '59175681881',
   items: [
-    { name: 'Trancaburguer', quantity: 2 },
+    { name: 'Picanha', quantity: 2 },
     { name: 'Gaseosa 2 L', quantity: 1 },
   ],
   deliveryAmount: 16,
@@ -81,13 +81,13 @@ describe('aviso al grupo de reparto', () => {
 
   it('detalla cantidades y cuenta el total de productos', () => {
     const text = buildDeliveryNotice(BASE);
-    expect(text).toContain('2x Trancaburguer');
+    expect(text).toContain('2x Picanha');
     expect(text).toContain('1x Gaseosa 2 L');
     expect(text).toContain('3 productos');
   });
 
   it('singulariza "producto" cuando solo hay uno', () => {
-    const text = buildDeliveryNotice({ ...BASE, items: [{ name: 'Lomito', quantity: 1 }] });
+    const text = buildDeliveryNotice({ ...BASE, items: [{ name: 'Keperi', quantity: 1 }] });
     expect(text).toContain('Pedido (1 producto)');
     expect(text).not.toContain('1 productos');
   });
@@ -395,20 +395,20 @@ describe('productos de combos en el aviso', () => {
   it('junta el mismo plato suelto y del combo en una sola línea', () => {
     expect(
       mergeNoticeItems([
-        { name: 'Trancapecho', quantity: 1 },
+        { name: 'Supertabla', quantity: 1 },
         { name: 'Soda Peque', quantity: 2 },
-        { name: 'Trancapecho', quantity: 4 },
+        { name: 'Supertabla', quantity: 4 },
       ]),
     ).toEqual([
-      { name: 'Trancapecho', quantity: 5 },
+      { name: 'Supertabla', quantity: 5 },
       { name: 'Soda Peque', quantity: 2 },
     ]);
   });
 
   it('no altera la lista que recibe', () => {
     const entrada = [
-      { name: 'Trancapecho', quantity: 1 },
-      { name: 'Trancapecho', quantity: 2 },
+      { name: 'Supertabla', quantity: 1 },
+      { name: 'Supertabla', quantity: 2 },
     ];
     mergeNoticeItems(entrada);
     expect(entrada[0].quantity).toBe(1);
@@ -417,9 +417,9 @@ describe('productos de combos en el aviso', () => {
   it('un pedido que es solo combo ya no sale con 0 productos', () => {
     const texto = buildDeliveryNotice({
       ...BASE,
-      items: mergeNoticeItems([{ name: 'Trancapecho', quantity: 4 }]),
+      items: mergeNoticeItems([{ name: 'Supertabla', quantity: 4 }]),
     });
     expect(texto).toContain('Pedido (4 productos):');
-    expect(texto).toContain('4x Trancapecho');
+    expect(texto).toContain('4x Supertabla');
   });
 });

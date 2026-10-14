@@ -337,7 +337,7 @@ export function createKitchenRepository(source: KitchenDataSource): KitchenRepos
       //
       // Solo sobre `start`, y a propósito. Las demás acciones operan sobre un
       // pedido que YA se empezó: frenar un `complete` porque el pago se
-      // discute después dejaría la hamburguesa hecha y el ticket sin poder
+      // discute después dejaría la costilla hecha y el ticket sin poder
       // cerrarse, y hacerla desaparecer no la devuelve al refrigerador.
       //
       // La puerta va DESPUÉS de validar la transición para que un `start`

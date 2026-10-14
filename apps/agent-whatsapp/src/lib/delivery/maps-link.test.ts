@@ -152,7 +152,7 @@ describe('isGoogleMapsUrl — la allowlist', () => {
     'file:///etc/passwd',
     'ftp://google.com/maps',
     // Un dominio de Google que no es Maps.
-    'https://www.google.com/search?q=hamburguesas',
+    'https://www.google.com/search?q=alitas',
   ])('rechaza %s', (url) => {
     expect(isGoogleMapsUrl(url)).toBe(false);
   });
@@ -176,7 +176,7 @@ describe('findMapsLink — el link dentro del mensaje', () => {
   });
 
   it('un mensaje sin links es un mensaje sin links', () => {
-    expect(findMapsLink('hola quiero pedir dos hamburguesas')).toBeNull();
+    expect(findMapsLink('hola quiero pedir dos alitas')).toBeNull();
     expect(findMapsLink('')).toBeNull();
     expect(findMapsLink(null)).toBeNull();
   });
@@ -206,9 +206,9 @@ describe('parsePlainCoords — coordenadas escritas, sin red', () => {
   });
 
   it('un pedido con números NO son coordenadas', () => {
-    // El falso positivo caro: si esto se activara, quien pide dos hamburguesas
+    // El falso positivo caro: si esto se activara, quien pide dos alitas
     // recibiría una tarifa de envío. Por eso se exigen decimales en los dos.
-    expect(parsePlainCoords('pedime 2, 3 hamburguesas')).toBeNull();
+    expect(parsePlainCoords('pedime 2, 3 alitas')).toBeNull();
     expect(parsePlainCoords('son 25 bs, 30 con envío')).toBeNull();
   });
 

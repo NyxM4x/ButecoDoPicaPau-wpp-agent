@@ -158,7 +158,7 @@ export function CheckoutPanel({
               className={`mt-1.5 w-full rounded-xl border px-4 py-3 text-base text-zinc-900 outline-none disabled:bg-zinc-50 disabled:text-zinc-500 ${
                 errors.customer_name
                   ? 'border-red-400 focus:border-red-500'
-                  : 'border-zinc-200 focus:border-donzarco-red-dark'
+                  : 'border-zinc-200 focus:border-brand-red-dark'
               }`}
             />
             {errors.customer_name ? (
@@ -303,7 +303,7 @@ export function CheckoutPanel({
               className={`mt-1.5 w-full resize-none rounded-xl border px-4 py-3 text-base text-zinc-900 outline-none disabled:bg-zinc-50 disabled:text-zinc-500 ${
                 errors.notes
                   ? 'border-red-400 focus:border-red-500'
-                  : 'border-zinc-200 focus:border-donzarco-red-dark'
+                  : 'border-zinc-200 focus:border-brand-red-dark'
               }`}
             />
             {errors.notes ? (
@@ -325,7 +325,7 @@ export function CheckoutPanel({
                   className="flex items-baseline justify-between gap-3 text-sm"
                 >
                   <span className="min-w-0 truncate text-zinc-600">
-                    <span className="mr-1 rounded bg-donzarco-gold/25 px-1 text-[10px] font-bold uppercase text-donzarco-ink">
+                    <span className="mr-1 rounded bg-brand-gold/25 px-1 text-[10px] font-bold uppercase text-brand-ink">
                       Promo
                     </span>
                     {line.quantity} × {line.name}
@@ -398,7 +398,7 @@ export function CheckoutPanel({
               type="button"
               disabled
               aria-busy
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-donzarco-red-dark px-5 py-4 text-base font-semibold text-white opacity-60"
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-brand-red-dark px-5 py-4 text-base font-semibold text-white opacity-60"
             >
               <Spinner />
               Enviando pedido…
@@ -416,7 +416,7 @@ export function CheckoutPanel({
             <button
               type="button"
               onClick={onRetry}
-              className="mt-3 w-full rounded-full bg-donzarco-red-dark px-5 py-4 text-base font-semibold text-white transition-colors hover:bg-donzarco-red-hover active:bg-donzarco-red-active"
+              className="mt-3 w-full rounded-full bg-brand-red-dark px-5 py-4 text-base font-semibold text-white transition-colors hover:bg-brand-red-hover active:bg-brand-red-active"
             >
               Reintentar pedido
             </button>
@@ -426,7 +426,7 @@ export function CheckoutPanel({
             <button
               type="button"
               onClick={onBackToCart}
-              className="mt-3 w-full rounded-full bg-donzarco-red-dark px-5 py-4 text-base font-semibold text-white transition-colors hover:bg-donzarco-red-hover active:bg-donzarco-red-active"
+              className="mt-3 w-full rounded-full bg-brand-red-dark px-5 py-4 text-base font-semibold text-white transition-colors hover:bg-brand-red-hover active:bg-brand-red-active"
             >
               Revisar carrito
             </button>
@@ -434,7 +434,7 @@ export function CheckoutPanel({
             <button
               type="button"
               onClick={onSubmit}
-              className="mt-3 w-full rounded-full bg-donzarco-red-dark px-5 py-4 text-base font-semibold text-white transition-colors hover:bg-donzarco-red-hover active:bg-donzarco-red-active"
+              className="mt-3 w-full rounded-full bg-brand-red-dark px-5 py-4 text-base font-semibold text-white transition-colors hover:bg-brand-red-hover active:bg-brand-red-active"
             >
               Confirmar pedido
             </button>
@@ -487,7 +487,7 @@ function DeliveryOption({
       disabled={disabled}
       className={`flex flex-col items-center gap-0.5 rounded-xl border px-3 py-3 transition-colors disabled:opacity-50 ${
         active
-          ? 'border-donzarco-red-dark bg-donzarco-red-dark text-white'
+          ? 'border-brand-red-dark bg-brand-red-dark text-white'
           : 'border-zinc-200 bg-white text-zinc-700'
       }`}
     >
@@ -528,7 +528,7 @@ function PaymentOption({
       disabled={disabled}
       className={`flex flex-col items-center gap-0.5 rounded-xl border px-3 py-3 transition-colors disabled:opacity-50 ${
         active
-          ? 'border-donzarco-red-dark bg-donzarco-red-dark text-white'
+          ? 'border-brand-red-dark bg-brand-red-dark text-white'
           : 'border-zinc-200 bg-white text-zinc-700'
       }`}
     >

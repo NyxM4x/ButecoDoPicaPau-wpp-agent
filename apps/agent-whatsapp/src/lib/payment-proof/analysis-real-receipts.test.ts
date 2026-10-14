@@ -142,7 +142,7 @@ describe('comprobantes reales — el que fue a otra cuenta', () => {
   /**
    * BNB, transferencia interbancaria entre dos cuentas propias. El comprobante
    * es auténtico, con su bancarización y todo; lo único que no es, es un pago a
-   * Don Zarco: el dinero fue al Banco de Crédito, no a la cuenta del QR.
+   * Buteco do Pica-Pau: el dinero fue al Banco de Crédito, no a la cuenta del QR.
    *
    * Por eso vale como caso: la alerta NO depende de que el comprobante sea
    * falso, sino de a dónde fue el dinero. Un comprobante verdadero de OTRA
@@ -220,7 +220,7 @@ describe('comprobantes reales — el de ayer reenviado hoy', () => {
  */
 describe('comprobantes reales — la noche del 02→03-09-2026', () => {
   /** La cuenta del QR del negocio, tal como debe quedar configurada. */
-  const QR_ZARCO = parseExpectedAccount({
+  const QR_BUTECO = parseExpectedAccount({
     bank: 'Banco de Crédito de Bolivia',
     bankAliases: 'BCP|YAPE|BANCO DE CREDITO|BANCO DE CREDITO DE BOLIVIA',
     accountNumber: '78486705',
@@ -229,7 +229,7 @@ describe('comprobantes reales — la noche del 02→03-09-2026', () => {
   })!;
 
   const contexto = (paidAtLocal: string): ProofJudgeContext => ({
-    expected: QR_ZARCO,
+    expected: QR_BUTECO,
     // El comprobante llega por WhatsApp a los pocos minutos de pagarlo.
     receivedAtMs: Date.parse(`${paidAtLocal}:00.000Z`) + 4 * 60 * 60 * 1000 + 3 * 60_000,
     referenceReused: false,

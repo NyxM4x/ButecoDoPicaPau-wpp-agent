@@ -1,24 +1,10 @@
 -- ============================================================================
--- Don Zarco Orders — Seed del menú
--- Aplicar DESPUÉS de la migración 0001_init.sql.
--- Idempotente: on conflict (code) no duplica ni pisa manualmente.
--- Precios en Bs. (BOB), según la carta oficial de "Don Zarco".
+-- Seed del agente — vacío a propósito.
 --
--- Este seed refleja la carta VIGENTE. Para una base ya existente con el
--- catálogo anterior (La Fija), la transición la hace 0017_don_zarco_menu.sql.
+-- El catálogo es el del POS (`GET /products`): con el POS conectado, la tabla
+-- `menu_items` del agente no se lee. La carta de la demo con la que nació el
+-- agente se retiró (ver 0040_retira_carta_de_la_demo.sql).
+--
+-- Para probar el modo sin POS con productos, cárgalos aquí con
+-- `insert into menu_items (code, name, category, price, sort_order) values …`.
 -- ============================================================================
-
-insert into menu_items (code, name, category, price, sort_order) values
-  -- Platos
-  ('trancaburguer',    'Trancaburguer',     'plato',  30,  10),
-  ('trancapecho',      'Trancapecho',       'plato',  18,  20),
-  ('salchiburguer',    'Salchiburguer',     'plato',  18,  30),
-  ('hamburguesa',      'Hamburguesa',       'plato',  15,  40),
-  ('lomito',           'Lomito',            'plato',  18,  50),
-  ('salchipapa',       'Salchipapa',        'plato',  18,  60),
-  -- Bebidas
-  ('gaseosa_2l',       'Gaseosa 2 L',       'bebida', 18,  70),
-  ('gaseosa_personal', 'Gaseosa personal',  'bebida',  8,  80),
-  -- Extras
-  ('porcion_papas',    'Porción de papa',   'extra',   7, 100)
-on conflict (code) do nothing;

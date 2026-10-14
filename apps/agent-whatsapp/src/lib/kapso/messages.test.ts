@@ -178,7 +178,7 @@ describe('buildImagePayload (6D.1)', () => {
   });
 
   it('PAYMENT_QR_URL es la URL pública https del QR fijo', () => {
-    expect(paymentQrUrl()).toBe('https://sarco-restaurant.vercel.app/payment/qr-2026.jpeg');
+    expect(paymentQrUrl()).toBe('https://buteco-agente.vercel.app/payment/qr-2026.jpeg');
   });
 });
 
@@ -301,7 +301,7 @@ describe('el cuerpo del botón según POR QUÉ se manda el menú', () => {
  */
 describe('la pregunta con el pedido delante', () => {
   const LINEAS = [
-    { name: 'Trancapecho', quantity: 1, subtotal: 18 },
+    { name: 'Supertabla', quantity: 1, subtotal: 18 },
     { name: 'Gaseosa 2 L', quantity: 2, subtotal: 20 },
   ];
 
@@ -313,7 +313,7 @@ describe('la pregunta con el pedido delante', () => {
       totalAmount: 48,
       isCash: true,
     });
-    expect(text).toContain('1x Trancapecho');
+    expect(text).toContain('1x Supertabla');
     expect(text).toContain('2x Gaseosa 2 L');
     expect(text).toContain('Bs. 18');
   });
@@ -538,7 +538,7 @@ describe('proofReminderText — la cifra del QR, no el total', () => {
 describe('el pago es solo por QR (27-09-2026)', () => {
   it('el motivo habla de los pagos, no de los clientes', () => {
     expect(CASH_POLICY_TEXT).toMatch(/^Por ahora los pedidos se pagan solo por QR/);
-    // Sin un motivo inventado: el de Don Zarco ("problemas con los pagos en
+    // Sin un motivo inventado: el de Buteco do Pica-Pau ("problemas con los pagos en
     // efectivo") no es el de cualquier restaurante.
     expect(CASH_POLICY_TEXT).not.toMatch(/problemas/);
     expect(CASH_POLICY_TEXT).not.toMatch(/clientes/i);

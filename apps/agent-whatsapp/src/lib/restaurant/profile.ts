@@ -3,7 +3,7 @@
  *
  * Todo lo que el agente dice o decide sobre el local —cómo se llama, dónde
  * está, cuándo atiende, en qué moneda cobra, si hay retiro o efectivo— sale de
- * aquí. Antes eran constantes de Don Zarco repartidas por el código.
+ * aquí. Antes eran constantes de la demo repartidas por el código.
  *
  * ── De dónde sale ────────────────────────────────────────────────────────────
  *
@@ -57,6 +57,13 @@ export interface RestaurantProfile {
    * `RESTAURANT_RESERVATIONS_ENABLED`. Apagado si no se dice nada.
    */
   reservationsEnabled: boolean;
+  /**
+   * Lo que el local quiere que el asistente sepa y pueda decir: qué trae cada
+   * plato, cómo se reserva, los combos de cumpleaños, cuánto tarda la cocina…
+   * Una frase por elemento. No viene del POS: `RESTAURANT_FACTS`, una por línea.
+   * Ver `agent/business/facts`.
+   */
+  facts: string[];
 }
 
 type Env = Record<string, string | undefined>;
@@ -83,6 +90,14 @@ function weeklyFromEnv(env: Env): Array<DayHours | null> {
       .filter((day) => day >= 0 && day <= 6),
   );
   return Array.from({ length: 7 }, (_, day) => (closed.has(day) ? null : { opens, closes }));
+}
+
+/** `RESTAURANT_FACTS`: una frase por línea; las vacías y los `#` de comentario no cuentan. */
+function factsFrom(value: string | undefined): string[] {
+  return (value ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim().replace(/^[-·•*]\s*/, ''))
+    .filter((line) => line !== '' && !line.startsWith('#'));
 }
 
 function paymentMethodsFrom(value: unknown): PosPaymentMethod[] {
@@ -126,6 +141,7 @@ export function profileFromEnv(env: Env = process.env): RestaurantProfile {
     menuImageUrl: text(env.MENU_IMAGE_URL),
     logoUrl: text(env.RESTAURANT_LOGO_URL),
     reservationsEnabled: flag(env.RESTAURANT_RESERVATIONS_ENABLED, false),
+    facts: factsFrom(env.RESTAURANT_FACTS),
   };
 }
 
@@ -172,6 +188,7 @@ export function profileFromCentral(central: CentralRestaurantProfile, env: Env =
     menuImageUrl: text(central.menuMedia?.imageUrl) ?? base.menuImageUrl,
     logoUrl: base.logoUrl,
     reservationsEnabled: base.reservationsEnabled,
+    facts: base.facts,
   };
 }
 
@@ -227,7 +244,7 @@ export function money(amount: number, profile: RestaurantProfile = restaurantPro
 }
 
 /**
- * Las palabras con las que un cliente nombra al local ("zarco", "don zarco").
+ * Las palabras con las que un cliente nombra al local ("la esquina" y "esquina", si se llama «La Esquina»).
  * Sirven para reconocer un saludo que solo dice el nombre.
  */
 export function nameKeywords(profile: RestaurantProfile = restaurantProfile()): string[] {

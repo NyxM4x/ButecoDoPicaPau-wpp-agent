@@ -229,7 +229,7 @@ export function PromotionsManager({
             value={form.name}
             maxLength={80}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
-            placeholder="2 lomitos goleadores"
+            placeholder="Combo para dos"
             className="mt-1 w-full rounded-lg border border-black/10 px-3 py-2 text-sm text-zinc-900 dark:border-white/15 dark:bg-zinc-950 dark:text-zinc-100"
           />
         </label>
@@ -344,7 +344,7 @@ export function PromotionsManager({
           </div>
           <div>
             <dt className="text-xs text-zinc-500">Ahorro</dt>
-            <dd className="tabular-nums font-semibold text-donzarco-red">{bs(ahorro)}</dd>
+            <dd className="tabular-nums font-semibold text-brand-red">{bs(ahorro)}</dd>
           </div>
         </dl>
 
@@ -393,7 +393,7 @@ export function PromotionsManager({
             type="button"
             onClick={guardar}
             disabled={guardando}
-            className="rounded-lg bg-donzarco-red-dark px-4 py-2 text-sm font-medium text-white hover:bg-donzarco-red-hover disabled:opacity-50"
+            className="rounded-lg bg-brand-red-dark px-4 py-2 text-sm font-medium text-white hover:bg-brand-red-hover disabled:opacity-50"
           >
             {guardando ? 'Guardando…' : 'Guardar'}
           </button>
@@ -450,7 +450,7 @@ export function PromotionsManager({
                 <p className="mt-2 text-sm tabular-nums">
                   <span className="text-zinc-400 line-through">{bs(evaluada.normalPrice)}</span>{' '}
                   <span className="font-semibold">{bs(evaluada.promoPrice)}</span>{' '}
-                  <span className="text-donzarco-red">Ahorra {bs(evaluada.savings)}</span>
+                  <span className="text-brand-red">Ahorra {bs(evaluada.savings)}</span>
                 </p>
 
                 {vence !== null && <p className="mt-1 text-xs text-zinc-500">{vence}</p>}
@@ -479,7 +479,7 @@ export function PromotionsManager({
                       type="button"
                       onClick={() => cambiarEstado(p, true)}
                       disabled={guardando}
-                      className="rounded-lg bg-donzarco-red-dark px-3 py-1.5 text-sm font-medium text-white hover:bg-donzarco-red-hover disabled:opacity-50"
+                      className="rounded-lg bg-brand-red-dark px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-red-hover disabled:opacity-50"
                     >
                       Activar
                     </button>

@@ -1716,7 +1716,7 @@ describe('run — answer_directly: hablar deja de ser el hueco por el que se cae
 function seedHistorialContaminado(): void {
   let t = 0;
   const ts = () => `2026-08-15T1${t++}:00:00.000Z`;
-  for (const pregunta of ['q tienen?', 'y de tomar?', 'que hamburguesas hay', 'opciones?']) {
+  for (const pregunta of ['q tienen?', 'y de tomar?', 'que alitas hay', 'opciones?']) {
     store.history.push({
       actor: 'customer',
       role: 'user',
@@ -1862,7 +1862,7 @@ const SEMANTICA_MENU: readonly { inbound: string; accion: string }[] = [
   // BROAD BROWSE → send_menu. Incluye, literal, el mensaje que falló.
   { inbound: 'qué opciones tienen?', accion: 'send_menu' },
   { inbound: 'Que opciones tiene ?', accion: 'send_menu' },
-  { inbound: 'qué hamburguesas tienen?', accion: 'send_menu' },
+  { inbound: 'qué alitas tienen?', accion: 'send_menu' },
   { inbound: 'quiero ver qué tienen', accion: 'send_menu' },
   { inbound: 'qué hay para comer?', accion: 'send_menu' },
   // L · slang, faltas y sin tildes. La misma intención, escrita como se escribe.
@@ -2393,7 +2393,7 @@ describe('run — turno multimodal (5C.5)', () => {
     const model = fakeModel({ ok: true, text: 'ok', model: 'gpt-fake' });
 
     await runAgentTurn(
-      inboundImagen({ content: 'Que hamburguesa es esta?' }),
+      inboundImagen({ content: 'Que alita es esta?' }),
       deps({ model: model.model, send: fakeSend().send, media: resolverOk().port }),
     );
 
@@ -2403,7 +2403,7 @@ describe('run — turno multimodal (5C.5)', () => {
     expect(usuario).toHaveLength(1);
     expect(usuario[0].content).toEqual([
       { type: 'input_image', image_url: 'data:image/jpeg;base64,AAAA', detail: 'auto' },
-      { type: 'input_text', text: 'Que hamburguesa es esta?' },
+      { type: 'input_text', text: 'Que alita es esta?' },
     ]);
   });
 
@@ -2428,7 +2428,7 @@ describe('run — turno multimodal (5C.5)', () => {
       {
         actor: 'customer',
         role: 'user',
-        content: 'Que hamburguesa es esta?',
+        content: 'Que alita es esta?',
         contentType: 'image',
         messageTimestamp: '2026-08-15T12:00:00.000Z',
       },
@@ -2436,12 +2436,12 @@ describe('run — turno multimodal (5C.5)', () => {
     const model = fakeModel({ ok: true, text: 'ok', model: 'gpt-fake' });
 
     await runAgentTurn(
-      inboundImagen({ content: 'Que hamburguesa es esta?' }),
+      inboundImagen({ content: 'Que alita es esta?' }),
       deps({ model: model.model, send: fakeSend().send, media: resolverOk().port }),
     );
 
     const sueltos = chatItems(model.calls[0]).filter(
-      (m) => texto(m.content) === 'Que hamburguesa es esta?',
+      (m) => texto(m.content) === 'Que alita es esta?',
     );
     expect(sueltos).toEqual([]);
   });
@@ -2594,7 +2594,7 @@ describe('run — la imagen llega a las DOS rondas (§1)', () => {
     const model = scriptedModel([selects('answer_directly'), FINAL('es la doble')]);
 
     await runAgentTurn(
-      inboundImagen({ content: 'Que hamburguesa es esta?' }),
+      inboundImagen({ content: 'Que alita es esta?' }),
       deps({
         model: model.model,
         send: fakeSend().send,
@@ -2605,7 +2605,7 @@ describe('run — la imagen llega a las DOS rondas (§1)', () => {
 
     for (const [ronda, inputs] of model.calls.entries()) {
       expect(partesImagen(inputs), `ronda ${ronda}`).toHaveLength(1);
-      expect(partesTexto(inputs), `ronda ${ronda}`).toEqual(['Que hamburguesa es esta?']);
+      expect(partesTexto(inputs), `ronda ${ronda}`).toEqual(['Que alita es esta?']);
       // Y siguen siendo UN mensaje, no dos.
       const multimodales = chatItems(inputs).filter((m) => typeof m.content !== 'string');
       expect(multimodales, `ronda ${ronda}`).toHaveLength(1);
@@ -2621,7 +2621,7 @@ describe('run — la imagen llega a las DOS rondas (§1)', () => {
     const model = scriptedModel([selects('get_menu_items'), FINAL('esa es La Fija, 35 Bs')]);
 
     await runAgentTurn(
-      inboundImagen({ content: 'Que hamburguesa es esta?' }),
+      inboundImagen({ content: 'Que alita es esta?' }),
       deps({
         model: model.model,
         send: fakeSend().send,
@@ -2634,7 +2634,7 @@ describe('run — la imagen llega a las DOS rondas (§1)', () => {
     // 1. la imagen
     expect(partesImagen(redactar)).toEqual([{ image_url: 'data:image/jpeg;base64,AAAA' }]);
     // 2. el caption
-    expect(partesTexto(redactar)).toEqual(['Que hamburguesa es esta?']);
+    expect(partesTexto(redactar)).toEqual(['Que alita es esta?']);
     // 3. el resultado AUTORITATIVO de la herramienta
     expect(salidasDeTool(redactar).join(' ')).toContain('La Fija');
     // 4. y el prompt de sistema, que es el contexto permitido
@@ -3003,7 +3003,7 @@ describe('run — observabilidad multimodal (§6)', () => {
   it('NADA sensible en los logs: ni data URL, ni base64, ni URL, ni caption', async () => {
     store.seedConversation();
     const model = fakeModel({ ok: true, text: 'ok', model: 'gpt-fake' });
-    const foto = inboundImagen({ content: 'Que hamburguesa es esta?' });
+    const foto = inboundImagen({ content: 'Que alita es esta?' });
 
     const lineas = await conLogs(async () => {
       await runAgentTurn(
@@ -3018,7 +3018,7 @@ describe('run — observabilidad multimodal (§6)', () => {
     expect(todo).not.toContain('base64');
     expect(todo).not.toContain('kapso.example');
     expect(todo).not.toContain('/media/tok');
-    expect(todo).not.toContain('Que hamburguesa es esta?');
+    expect(todo).not.toContain('Que alita es esta?');
     // Lo que SÍ debe estar: forma y desenlace.
     expect(todo).toContain('agent_image_resolved');
     expect(todo).toContain('transient_kapso');

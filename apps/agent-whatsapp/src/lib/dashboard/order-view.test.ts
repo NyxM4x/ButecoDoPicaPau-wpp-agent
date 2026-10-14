@@ -50,13 +50,13 @@ describe('order-view — sanitización', () => {
 
   it('el detalle expone contacto operativo pero nunca id/wamid/claim_token', () => {
     const detail = toOrderDetail(raw(), [
-      { product_name_snapshot: 'Hamburguesa', unit_price_snapshot: 25, quantity: 2, subtotal: 50 },
+      { product_name_snapshot: 'Alita', unit_price_snapshot: 25, quantity: 2, subtotal: 50 },
     ]);
     const dump = JSON.stringify(detail);
     for (const t of TECHNICAL) expect(dump).not.toContain(t);
     expect(detail).not.toHaveProperty('id');
     expect(detail.contactPhone).toBe('59170000000'); // permitido en detalle
-    expect(detail.items[0]).toEqual({ name: 'Hamburguesa', quantity: 2, unitPrice: 25, subtotal: 50 });
+    expect(detail.items[0]).toEqual({ name: 'Alita', quantity: 2, unitPrice: 25, subtotal: 50 });
   });
 
   it('la dirección solo aparece en pedidos de delivery', () => {

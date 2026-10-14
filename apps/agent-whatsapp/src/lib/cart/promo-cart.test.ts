@@ -5,7 +5,7 @@ import { summarizePromoCart, unifiedTotals } from './promo-cart';
 
 const COMBO: Promotion = {
   id: 'promo-1',
-  name: '2 lomitos goleadores',
+  name: '2 keperis goleadores',
   description: null,
   // 2×30 + 2×5 + 2×10 = 90 normal, 60 promo.
   promoPrice: 60,
@@ -17,7 +17,7 @@ const COMBO: Promotion = {
   updatedAt: '2026-09-02T00:00:00.000Z',
   components: [
     {
-      menuItemId: 'i1', code: 'lomito', name: 'Lomito', category: 'plato',
+      menuItemId: 'i1', code: 'keperi', name: 'Keperi', category: 'plato',
       unitPrice: 30, quantity: 2, isActive: true,
     },
     {

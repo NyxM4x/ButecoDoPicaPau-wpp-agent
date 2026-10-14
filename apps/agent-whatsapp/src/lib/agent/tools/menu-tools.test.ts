@@ -46,7 +46,7 @@ function ctx(inboundText: string, sourceMessageId = CTX.sourceMessageId): AgentT
 }
 
 const ITEMS: MenuItemForModel[] = [
-  { name: 'La Fija', price: 35, category: 'Hamburguesas', description: 'Hamburguesa simple.' },
+  { name: 'La Fija', price: 35, category: 'Alitas', description: 'Alita simple.' },
   { name: 'Gaseosa 2L', price: 15, category: 'Bebidas' },
 ];
 
@@ -90,7 +90,7 @@ describe('get_menu_items — datos reales y mínimos', () => {
 
     const result = (await tool.execute!(CTX)).result as { items: MenuItemForModel[]; note: string };
 
-    expect(result.items[0].description).toBe('Hamburguesa simple.');
+    expect(result.items[0].description).toBe('Alita simple.');
     for (const item of result.items) {
       // Ningún atributo dietético se fabrica por el camino.
       expect(Object.keys(item).sort()).toEqual(
@@ -135,7 +135,7 @@ describe('get_menu_items — datos reales y mínimos', () => {
     // La descripción viaja al modelo en CADA turno, igual que el prompt. La
     // versión anterior ponía "qué extras hay" como ejemplo de pregunta
     // concreta — una CATEGORÍA presentada como dato puntual — y el modelo
-    // generalizó a "qué hamburguesas hay". El ejemplo enseñaba lo contrario de
+    // generalizó a "qué tablas hay". El ejemplo enseñaba lo contrario de
     // lo que la regla pretendía.
     const tool = createGetMenuItemsTool({ listForModel: async () => ITEMS });
     const { description } = tool.definition;
@@ -144,7 +144,7 @@ describe('get_menu_items — datos reales y mínimos', () => {
     expect(description).toMatch(/QUE EL CLIENTE HAYA NOMBRADO/);
     expect(description).toMatch(/no conviertas una pregunta amplia en puntual/);
     expect(description).toMatch(/NO la uses para responder qué hay/);
-    expect(description).toMatch(/categoría entera \(hamburguesas, bebidas, extras\)/);
+    expect(description).toMatch(/categoría entera \(tablas, bebidas, extras\)/);
     expect(description).toMatch(/eso se \s*responde con send_menu/);
     // Y ya no queda ningún ejemplo de categoría del lado equivocado.
     expect(description).not.toMatch(/qué extras hay\b(?!\?")/);
@@ -268,7 +268,7 @@ describe('send_menu — delega, nunca reimplementa', () => {
     expect(description).toMatch(/mejor que reescribir el catálogo/);
     // Las formulaciones de categoría, nombradas una por una: son las que en
     // Production se fueron por el camino equivocado.
-    for (const pregunta of ['qué hamburguesas hay?', 'qué bebidas tienen?', 'qué extras hay?']) {
+    for (const pregunta of ['qué tablas hay?', 'qué bebidas tienen?', 'qué extras hay?']) {
       expect(description, pregunta).toContain(pregunta);
     }
   });
@@ -730,9 +730,9 @@ describe('send_menu — al que ya tiene pedido se le reabre el suyo', () => {
  * convierta en "no hay ninguna".
  */
 describe('get_menu_items — promociones', () => {
-  const DOS_TRANCAPECHOS: Promotion = {
-    id: 'promo-trancapecho',
-    name: '2 Trancapechos',
+  const DOS_SUPERTABLAS: Promotion = {
+    id: 'promo-supertabla',
+    name: '2 Supertablas',
     description: null,
     promoPrice: 25,
     imageUrl: null,
@@ -744,9 +744,9 @@ describe('get_menu_items — promociones', () => {
     updatedAt: '2026-09-14T18:00:00.000Z',
     components: [
       {
-        menuItemId: 'id-trancapecho',
-        code: 'trancapecho',
-        name: 'Trancapecho',
+        menuItemId: 'id-supertabla',
+        code: 'supertabla',
+        name: 'Supertabla',
         category: 'plato',
         unitPrice: 18,
         quantity: 2,
@@ -758,12 +758,12 @@ describe('get_menu_items — promociones', () => {
   const NOCHE = Date.parse('2026-09-15T00:00:00.000Z');
 
   it('proyecta nombre, precio, precio normal, composición y hasta cuándo', () => {
-    expect(promotionsForModel([DOS_TRANCAPECHOS], NOCHE)).toEqual([
+    expect(promotionsForModel([DOS_SUPERTABLAS], NOCHE)).toEqual([
       {
-        name: '2 Trancapechos',
+        name: '2 Supertablas',
         price: 25,
         normalPrice: 36,
-        includes: '2× Trancapecho',
+        includes: '2× Supertabla',
         until: 'Termina mañana 00:00',
       },
     ]);
@@ -771,19 +771,19 @@ describe('get_menu_items — promociones', () => {
 
   it('una promoción que ya no se puede comprar no llega al modelo', () => {
     const medianoche = Date.parse('2026-09-15T04:00:00.000Z');
-    expect(promotionsForModel([DOS_TRANCAPECHOS], medianoche)).toEqual([]);
-    expect(promotionsForModel([{ ...DOS_TRANCAPECHOS, isActive: false }], NOCHE)).toEqual([]);
+    expect(promotionsForModel([DOS_SUPERTABLAS], medianoche)).toEqual([]);
+    expect(promotionsForModel([{ ...DOS_SUPERTABLAS, isActive: false }], NOCHE)).toEqual([]);
   });
 
   it('sin fecha de fin no inventa un "hasta"', () => {
-    const [promo] = promotionsForModel([{ ...DOS_TRANCAPECHOS, endsAt: null }], NOCHE);
+    const [promo] = promotionsForModel([{ ...DOS_SUPERTABLAS, endsAt: null }], NOCHE);
     expect(Object.keys(promo).sort()).toEqual(['includes', 'name', 'normalPrice', 'price']);
   });
 
   it('la tool las entrega junto a los productos, con la nota que explica el vacío', async () => {
     const tool = createGetMenuItemsTool({
       listForModel: async () => ITEMS,
-      listPromotionsForModel: async () => promotionsForModel([DOS_TRANCAPECHOS], NOCHE),
+      listPromotionsForModel: async () => promotionsForModel([DOS_SUPERTABLAS], NOCHE),
     });
 
     const result = (await tool.execute!(CTX)).result as {

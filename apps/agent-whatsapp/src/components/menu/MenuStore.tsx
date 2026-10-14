@@ -101,7 +101,7 @@ export function MenuStore({
   /**
    * Qué se ofrece en el checkout cuando el catálogo viene del backend central.
    *
-   * Con esto presente NO aplica la "noche de promoción" de Don Zarco (sin
+   * Con esto presente NO aplica la "noche de promoción" (sin
    * efectivo, sin recojo, bebidas arriba): esa regla era de un negocio, y con
    * el backend central cada local decide lo suyo en Configuración del POS.
    * Ausente = todo como siempre.
@@ -238,8 +238,8 @@ export function MenuStore({
    * Lo que se puede VER: el catálogo menos lo que esta noche va solo en combo.
    *
    * El suelto se esconde en vez de pintarse "Agotado": no está agotado, está
-   * dentro de la tarjeta de arriba, y un Trancapecho en gris debajo del combo de
-   * Trancapechos haría pensar que el combo tampoco se puede pedir.
+   * dentro de la tarjeta de arriba, y un Chicharrón en gris debajo del combo de
+   * Chicharrones haría pensar que el combo tampoco se puede pedir.
    */
   const visibles = useMemo(() => {
     const ocultos = new Set(soloEnCombo === '' ? [] : soloEnCombo.split(','));
@@ -259,7 +259,7 @@ export function MenuStore({
    * `listActive`), pero eso es un error DESPUÉS de que el cliente lo dio por
    * pedido. La lista de aquí es la que evita llegar hasta ahí.
    *
-   * Sale de `visibles` y no de `items`: el Trancapecho que quedó en el carrito
+   * Sale de `visibles` y no de `items`: el Chicharrón que quedó en el carrito
    * antes de la promoción tampoco puede cobrarse suelto esta noche.
    */
   const aLaVenta = useMemo(() => visibles.filter((item) => item.is_active), [visibles]);

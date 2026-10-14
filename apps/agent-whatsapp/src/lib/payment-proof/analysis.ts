@@ -31,7 +31,7 @@
  * ── Qué se contrasta: el destino, y el monto ────────────────────────────────
  *
  * El DESTINO del dinero —cuenta, titular y banco— describe el mismo hecho:
- * "esto entró donde cobra Don Zarco". Ninguno de los tres depende de cómo se
+ * "esto entró donde cobra el local". Ninguno de los tres depende de cómo se
  * comportó el cliente.
  *
  * El MONTO sí se contrasta, y contra DOS cifras, porque en delivery hay dos

@@ -10,6 +10,8 @@ import { AGENT_MAX_OUTPUT_TOKENS, baseSystemPrompt } from '@/lib/agent/business/
 import { createAnswerDirectlyAction } from '@/lib/agent/tools/answer-directly';
 import { createGetMenuItemsTool, createSendMenuTool } from '@/lib/agent/tools/menu-tools';
 import { createRequestHumanAction, REQUEST_HUMAN } from '@/lib/agent/tools/request-human';
+import type { RestaurantProfile } from '@/lib/restaurant/profile';
+import { BASE_PROFILE } from '@/test/profiles';
 
 /**
  * EVAL DE SELECCIÓN DE ACCIÓN contra el modelo REAL (Fase 6D.2F.5B.1).
@@ -76,7 +78,8 @@ type Categoria =
   | 'referencia'
   | 'contaminado'
   | 'derivacion'
-  | 'no-derivacion';
+  | 'no-derivacion'
+  | 'local';
 
 interface Caso {
   id: string;
@@ -85,7 +88,25 @@ interface Caso {
   historial?: ContextMessage[];
   inbound: string;
   esperado: Accion;
+  /** Otro perfil para este caso; sin él, el de las pruebas. */
+  perfil?: RestaurantProfile;
 }
+
+/**
+ * El local con lo que pidió que el asistente sepa (`RESTAURANT_FACTS`). Es la
+ * propuesta para Buteco de `docs/flujos-buteco.md`: preguntas que se contestan
+ * hablando, con esos datos, sin derivar y sin mandar el menú.
+ */
+const CON_DATOS_DEL_LOCAL: RestaurantProfile = {
+  ...BASE_PROFILE,
+  facts: [
+    'Las tablitas para 1 y 2 personas traen arroz, plátano, salsa de ajo y ají; la carne se elige.',
+    'Las tablas para compartir traen arroz, plátano, salsa de ajo y limón, y de 2 a 7 carnes a elección según la tabla.',
+    'La comida se prepara al momento: la espera es de 30 a 40 minutos.',
+    'Las mesas se reservan por WhatsApp al 695 95015: el cliente dice día, hora, cuántos son y a nombre de quién, y una persona del local la confirma.',
+    'Hay combos de cumpleaños con la reserva: con la Super Tabla L o XL incluyen video, fotos, banda, vela lluvia de oro y vino para los invitados. El festejado presenta su carnet.',
+  ],
+};
 
 // ── Helpers de historial ────────────────────────────────────────────────────
 
@@ -133,7 +154,7 @@ const menuEnviado = (): ContextMessage => ({
  */
 const HISTORIAL_TRAS_SILENCIO: ContextMessage[] = (() => {
   const antes = [
-    cliente('quiero un trancapecho y una coca de dos litros'),
+    cliente('quiero una supertabla y una coca de dos litros'),
     menuEnviado(),
     cliente('no puedo con eso, mandamelo asi nomas'),
   ];
@@ -155,13 +176,13 @@ const CASOS: readonly Caso[] = [
   { id: 'broad-04', categoria: 'broad', inbound: 'Quiero ver qué tienen', esperado: 'send_menu' },
   { id: 'broad-05', categoria: 'broad', inbound: 'Pasame lo que tienen', esperado: 'send_menu' },
   { id: 'broad-06', categoria: 'broad', inbound: 'Quiero mirar el menú', esperado: 'send_menu' },
-  { id: 'broad-07', categoria: 'broad', inbound: 'Qué hamburguesas manejan?', esperado: 'send_menu' },
+  { id: 'broad-07', categoria: 'broad', inbound: 'Qué alitas manejan?', esperado: 'send_menu' },
   { id: 'broad-08', categoria: 'broad', inbound: 'Que hay?', esperado: 'send_menu' },
   {
     id: 'broad-09',
     categoria: 'broad',
     // "y qué más" pide un antecedente: sin él la frase no significa nada.
-    historial: [cliente('qué hamburguesas hay?'), menuEnviado()],
+    historial: [cliente('qué alitas hay?'), menuEnviado()],
     inbound: 'y que más tienen?',
     esperado: 'send_menu',
   },
@@ -179,14 +200,14 @@ const CASOS: readonly Caso[] = [
   {
     id: 'factual-04',
     categoria: 'factual',
-    inbound: 'Existe la Lomito Jackpot?',
+    inbound: 'Existe la Keperi Jackpot?',
     esperado: 'get_menu_items',
   },
   {
     id: 'factual-05',
     categoria: 'factual',
     // La elipsis que sostiene la regla del antecedente.
-    historial: [cliente('qué hamburguesas hay?'), asistente('Tenemos la Doble o Nada.')],
+    historial: [cliente('qué alitas hay?'), asistente('Tenemos la Doble o Nada.')],
     inbound: 'Y esa cuánto cuesta?',
     esperado: 'get_menu_items',
   },
@@ -279,7 +300,7 @@ const CASOS: readonly Caso[] = [
     categoria: 'no-derivacion',
     // La ráfaga con la que saluda media Bolivia. Son cuatro mensajes, no cuatro
     // problemas.
-    historial: [cliente('hola'), cliente('zarco'), cliente('como esta')],
+    historial: [cliente('hola'), cliente('buteco'), cliente('como esta')],
     inbound: 'quiero ordenar',
     esperado: 'send_menu',
   },
@@ -296,12 +317,12 @@ const CASOS: readonly Caso[] = [
     // Dictar el pedido, y repetirlo. Es insistencia, sí, pero la respuesta
     // sigue siendo el menú: derivar aquí es lo que dejaba al cliente mudo.
     historial: [
-      cliente('mandame un trancapecho'),
+      cliente('mandame una supertabla'),
       menuEnviado(),
       cliente('y una coca de dos litros'),
       menuEnviado(),
     ],
-    inbound: 'mandame eso porfa, un trancapecho y una coca',
+    inbound: 'mandame eso porfa, una supertabla y una coca',
     esperado: 'send_menu',
   },
   {
@@ -325,10 +346,27 @@ const CASOS: readonly Caso[] = [
     inbound: 'hola',
     esperado: 'answer_directly',
   },
+  // ── Preguntas por el LOCAL, con lo que el local pidió que se sepa ────────
+  //
+  // Se contestan hablando: no son un producto (get_menu_items), no piden ver
+  // la carta (send_menu) y no son una queja (request_human). Reservar en
+  // particular NO se deriva: el asistente explica cómo se reserva.
+  { id: 'local-01', categoria: 'local', perfil: CON_DATOS_DEL_LOCAL, inbound: 'como hago para reservar una mesa?', esperado: 'answer_directly' },
+  {
+    id: 'local-02',
+    categoria: 'local',
+    perfil: CON_DATOS_DEL_LOCAL,
+    inbound: 'quiero reservar para el sabado a las 8, somos 10, a nombre de Ana',
+    esperado: 'answer_directly',
+  },
+  { id: 'local-03', categoria: 'local', perfil: CON_DATOS_DEL_LOCAL, inbound: 'que trae la tablita?', esperado: 'answer_directly' },
+  { id: 'local-04', categoria: 'local', perfil: CON_DATOS_DEL_LOCAL, inbound: 'cuanto tarda la comida?', esperado: 'answer_directly' },
+  { id: 'local-05', categoria: 'local', perfil: CON_DATOS_DEL_LOCAL, inbound: 'tienen algo para cumpleaños?', esperado: 'answer_directly' },
+  { id: 'local-06', categoria: 'local', perfil: CON_DATOS_DEL_LOCAL, inbound: 'en las tablas grandes se pueden elegir las carnes?', esperado: 'answer_directly' },
   // ── Las preguntas por el COSTE DEL ENVÍO ya no están aquí ────────────────
   //
   // Estuvieron, y el modelo las falló: `request_human` 3 de 3 ante "hola como
-  // esta zarco cuanto me saldria delivery aqui", con DOS redacciones distintas
+  // esta buteco cuanto me saldria delivery aqui", con DOS redacciones distintas
   // del prompt y de las descripciones. La segunda tanda de ajustes lo dejó peor
   // que la primera.
   //
@@ -454,7 +492,7 @@ async function seleccionar(caso: Caso): Promise<Resultado> {
   const openai = createOpenAiModel({ apiKey, model, fetchImpl: contandoTokens });
 
   const messages: AgentModelInput[] = [
-    { role: 'system', content: baseSystemPrompt() },
+    { role: 'system', content: baseSystemPrompt(caso.perfil) },
     ...buildSelectionContext(caso.historial ?? [], { inboundText: caso.inbound }),
   ];
 

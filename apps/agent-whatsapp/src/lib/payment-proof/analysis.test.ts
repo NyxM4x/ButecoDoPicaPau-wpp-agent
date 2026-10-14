@@ -5,7 +5,7 @@ import type { ExpectedAccount } from './expected-account';
 const CUENTA: ExpectedAccount = {
   bankNames: ['Banco Unión', 'BUN'],
   accountNumbers: ['1234567890'],
-  holderNames: ['DON ZARCO', 'DON ZARCO SRL'],
+  holderNames: ['BUTECO', 'BUTECO SRL'],
 };
 
 /** Llegó a las 20:30 hora de Bolivia. */
@@ -19,7 +19,7 @@ function bueno(over: Partial<ProofFacts> = {}): ProofFacts {
     bank: 'Banco Unión',
     destinationBank: 'Banco Unión',
     destinationAccount: '1234567890',
-    destinationHolder: 'DON ZARCO SRL',
+    destinationHolder: 'BUTECO SRL',
     amount: 48,
     currency: 'BOB',
     transactionRef: '987654321',

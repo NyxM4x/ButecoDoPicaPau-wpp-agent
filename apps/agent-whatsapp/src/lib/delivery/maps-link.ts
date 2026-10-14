@@ -245,7 +245,7 @@ export function extractCoordsFromMapsUrl(raw: string): ExtractedCoords | null {
  * par pelado.
  *
  * Exige DECIMALES en los dos números a propósito. Sin esa exigencia, "pedime 2,
- * 3 hamburguesas" sería un par de coordenadas perfectamente válido frente al
+ * 3 tablitas" sería un par de coordenadas perfectamente válido frente al
  * ecuador, y el cliente recibiría una tarifa de envío en vez de su pedido.
  */
 export function parsePlainCoords(text: string | null | undefined): Coords | null {

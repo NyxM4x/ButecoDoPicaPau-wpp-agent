@@ -13,16 +13,16 @@ import {
 /**
  * "SIN CEBOLLA" NO ES REARMAR EL PEDIDO (04-09-2026).
  *
- * La carta real de Don Zarco, para que los tests midan contra lo que se vende
+ * La carta real de Buteco do Pica-Pau, para que los tests midan contra lo que se vende
  * de verdad y no contra una lista inventada.
  */
 const CARTA = catalogTermsFromNames([
-  'Trancaburguer',
-  'Trancapecho',
-  'Salchiburguer',
-  'Hamburguesa',
-  'Lomito',
-  'Salchipapa',
+  'Picanha',
+  'Supertabla',
+  'Chuleta',
+  'Alita',
+  'Keperi',
+  'Sopa',
   'Gaseosa 2 L',
   'Gaseosa personal',
   'Soda Peque',
@@ -57,9 +57,9 @@ describe('lo que NO se anota — el lado caro del error', () => {
     // menos o el cliente no recibe lo que pidió.
     expect(esNota('mándame 2 sodas más')).toBe(false);
     expect(esNota('agregame una gaseosa')).toBe(false);
-    expect(esNota('con dos hamburguesas mas')).toBe(false);
-    expect(esNota('sin la salchipapa mejor')).toBe(false);
-    expect(esNota('aumenteme un lomito')).toBe(false);
+    expect(esNota('con dos alitas mas')).toBe(false);
+    expect(esNota('sin la sopa mejor')).toBe(false);
+    expect(esNota('aumenteme un keperi')).toBe(false);
   });
 
   it('cualquier número lo descarta: puede ser cantidad o dinero', () => {
@@ -101,7 +101,7 @@ describe('el catálogo manda sobre la lista de palabras', () => {
   it('lo que se vende bloquea, aunque suene a ingrediente', () => {
     // El día que "Cebolla frita" entre a la carta, "sin cebolla" deja de ser una
     // nota sin que nadie tenga que tocar este módulo.
-    const conCebolla = catalogTermsFromNames([...['Cebolla frita'], 'Hamburguesa']);
+    const conCebolla = catalogTermsFromNames([...['Cebolla frita'], 'Alita']);
     expect(isKitchenNoteRequest('sin cebolla', conCebolla)).toBe(false);
   });
 
@@ -110,7 +110,7 @@ describe('el catálogo manda sobre la lista de palabras', () => {
   });
 
   it('una palabra que solo CONTIENE un producto no bloquea', () => {
-    // `lomito` está dentro de `solomillo`, y aun así no habla de un lomito.
+    // `keperi` está dentro de `solomillo`, y aun así no habla de un keperi.
     expect(esNota('sin solomillo')).toBe(true);
   });
 
@@ -142,16 +142,16 @@ describe('isOrderChangeRequest — cuándo SÍ hay que rearmar', () => {
   it('pedir más de algo que se vende', () => {
     expect(esCambio('mándame 2 sodas más')).toBe(true);
     expect(esCambio('agregame una gaseosa')).toBe(true);
-    expect(esCambio('me faltó el lomito')).toBe(true);
-    expect(esCambio('no puse la salchipapa')).toBe(true);
-    expect(esCambio('quitame la hamburguesa')).toBe(true);
+    expect(esCambio('me faltó el keperi')).toBe(true);
+    expect(esCambio('no puse la sopa')).toBe(true);
+    expect(esCambio('quitame la alita')).toBe(true);
   });
 
   it('una pregunta que nombra un producto NO es un cambio', () => {
     // Nombra la gaseosa y no pide nada: contestarle con "cambiá tu pedido"
     // sería responder a otra cosa.
     expect(esCambio('cuanto era la gaseosa?')).toBe(false);
-    expect(esCambio('la hamburguesa es grande?')).toBe(false);
+    expect(esCambio('la alita es grande?')).toBe(false);
   });
 
   it('pedir algo que no se vende no rearma nada: eso es una nota', () => {
@@ -174,7 +174,7 @@ describe('isOrderChangeRequest — cuándo SÍ hay que rearmar', () => {
 
 describe('isOrderChangeAnnouncement — pide cambiar antes de decir qué', () => {
   it('la frase que abrió el caso del 04-09-2026', () => {
-    // 81 segundos antes de "Una hamburguesa con papas", que sí se reconocía.
+    // 81 segundos antes de "Una alita con papas", que sí se reconocía.
     // En ese hueco el turno se lo quedó el modelo y derivó la conversación.
     expect(isOrderChangeAnnouncement('Puedo aumentar')).toBe(true);
   });
@@ -249,7 +249,7 @@ describe('isOrderChangeAnnouncement — pide cambiar antes de decir qué', () =>
 /**
  * EL PEDIDO #20 (05-09-2026).
  *
- * El cliente armó 2 trancapechos en el menú, pagó el importe de 3 y lo avisó
+ * El cliente armó 2 supertablas en el menú, pagó el importe de 3 y lo avisó
  * por chat. Ninguno de los tres detectores se activó, la cocina recibió una
  * comanda de 2 con un pago de 3, y tuvo que entrar una persona a resolverlo.
  *
@@ -257,12 +257,11 @@ describe('isOrderChangeAnnouncement — pide cambiar antes de decir qué', () =>
  */
 describe('el pedido #20: lo que se escribió y nadie leyó', () => {
   it('reconoce el producto PARTIDO en dos palabras', () => {
-    // La carta dice "Trancapecho"; el cliente escribió "tranca pecho". Entre
+    // La carta dice "Supertabla"; el cliente escribió "super tabla". Entre
     // atenderlo y no atenderlo había exactamente un espacio.
-    expect(isOrderChangeRequest('Que sean 3 tranca pecho', CARTA)).toBe(true);
-    expect(isOrderChangeRequest('quiero 2 tranca burguer mas', CARTA)).toBe(true);
+    expect(isOrderChangeRequest('Que sean 3 super tabla', CARTA)).toBe(true);
     // Y lo de siempre sigue igual de bien.
-    expect(isOrderChangeRequest('que sean 3 trancapechos', CARTA)).toBe(true);
+    expect(isOrderChangeRequest('que sean 3 supertablas', CARTA)).toBe(true);
   });
 
   it('juntar dos palabras no inventa productos que nadie nombró', () => {
@@ -364,7 +363,7 @@ describe('la cantidad corregida a secas', () => {
   it('la ráfaga con el número pegado al texto se separa antes de leerla', () => {
     // "2com todo" es como se teclea con el pulgar. Sin separarlo no hay ni
     // cantidad ni producto que reconocer.
-    expect(isOrderChangeRequest('quiero 2trancapechos', CARTA)).toBe(true);
+    expect(isOrderChangeRequest('quiero 2supertablas', CARTA)).toBe(true);
     expect(isKitchenNoteRequest('1sin locoto', CARTA)).toBe(false);
   });
 });

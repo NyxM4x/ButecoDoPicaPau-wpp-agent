@@ -50,7 +50,7 @@ export interface KitchenSummary {
    * Lo mismo, repartido en Comidas / Extras / Refrescos.
    *
    * Es lo que pinta el panel del planchero: quien empaca necesita ver de un
-   * golpe cuántas hamburguesas van al fuego sin tener que separarlas
+   * golpe cuántas costillas van al fuego sin tener que separarlas
    * mentalmente de los refrescos que solo hay que sacar de la heladera.
    *
    * Solo aparecen los bloques con algo dentro: un rótulo "Refrescos" sobre una
@@ -81,7 +81,7 @@ export interface KitchenSummary {
  * Quien mira la barra derecha es el planchero, y lo que lee ahí es cuánto poner
  * a la plancha AHORA. Desde que cocina revisa los comprobantes, un pedido puede
  * llegar al tablero con un pago que después se rechaza —comprobantes retocados
- * son cosa corriente aquí—, y hasta ese momento sus hamburguesas inflaban el
+ * son cosa corriente aquí—, y hasta ese momento sus costillas inflaban el
  * total. El planchero cocinaba de más, y lo de más se tira.
  *
  * El ticket se sigue viendo entero, con su comprobante y sus botones: lo que
@@ -115,7 +115,7 @@ export function isFirmWork(ticket: KitchenTicket): boolean {
  * también cuando acierta.
  *
  * Los modificadores no separan filas a proposito: el resumen responde "cuantas
- * hamburguesas van a la plancha", no como va cada una.
+ * costillas van a la parrilla", no como va cada una.
  *
  * Orden: cantidad descendente y, a igual cantidad, alfabetico.
  */

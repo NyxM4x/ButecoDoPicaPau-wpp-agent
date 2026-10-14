@@ -30,7 +30,7 @@ import { NO_ARGUMENTS, type AgentTool } from './registry';
  *
  * ── Por qué vive aquí y no en el Business Adapter ───────────────────────────
  *
- * "No hace falta ninguna acción" no es un concepto de Don Zarco: cualquier
+ * "No hace falta ninguna acción" no es un concepto de este negocio: cualquier
  * catálogo de acciones necesita poder decirlo. Lo específico del negocio son
  * `send_menu` y `get_menu_items`, y esos sí viven en `menu-tools.ts`.
  */
@@ -45,7 +45,7 @@ export const ANSWER_DIRECTLY = 'answer_directly';
  * ── Por qué la exclusión de precios dice "PRODUCTO del menú" ────────────────
  *
  * Porque decía solo "un precio", y el 29-08-2026 eso derivó una conversación en
- * su primer mensaje. Ante "hola como esta zarco cuanto me saldria delivery
+ * su primer mensaje. Ante "hola como esta cuanto me saldria delivery
  * aqui", el modelo se quedó sin puerta: no pedía el menú, el envío no es un
  * producto que `get_menu_items` pueda buscar, y esta acción se autoexcluía por
  * la palabra "precio". La única casilla libre era `request_human` — y el

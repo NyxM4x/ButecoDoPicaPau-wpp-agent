@@ -81,11 +81,11 @@ describe('ticket — orden y contenido', () => {
   });
 
   it('agrupa los ítems por pedido y los adjunta al ticket correcto', () => {
-    const items = [item('a', 'Trancapecho', 2), item('b', 'Gaseosa 2 L', 1), item('a', 'Api', 3)];
+    const items = [item('a', 'Supertabla', 2), item('b', 'Gaseosa 2 L', 1), item('a', 'Api', 3)];
     expect(groupItemsByOrder(items).a).toEqual([
       // `category: null` porque el helper de este test no la trae: una línea
       // sin categoría resuelta cae en "Otros" del resumen, nunca en Comidas.
-      { name: 'Trancapecho', quantity: 2, modifiers: [], category: null },
+      { name: 'Supertabla', quantity: 2, modifiers: [], category: null },
       { name: 'Api', quantity: 3, modifiers: [], category: null },
     ]);
 
@@ -99,7 +99,7 @@ describe('ticket — orden y contenido', () => {
   });
 
   it('los modificadores llegan vacíos pero el campo existe, listo para pintarlos', () => {
-    const [ticket] = toKitchenTickets([row('a', 'confirmed')], [item('a', 'Trancapecho', 1)]);
+    const [ticket] = toKitchenTickets([row('a', 'confirmed')], [item('a', 'Supertabla', 1)]);
     expect(ticket.lines[0].modifiers).toEqual([]);
   });
 });
@@ -204,7 +204,7 @@ describe('el pedido entra a cocina con el COMPROBANTE, no con el QR', () => {
 
   it('ya empezado, se queda aunque el pago se rechace después', () => {
     // La regla frena la ENTRADA, no saca de la pantalla lo que ya está en la
-    // plancha: hacerlo desaparecer no devuelve la hamburguesa al refrigerador.
+    // plancha: hacerlo desaparecer no devuelve la alita al refrigerador.
     for (const status of ['preparing', 'ready'] as const) {
       const tickets = toKitchenTickets([pedido({ status })], [], {}, true);
       expect(tickets, status).toHaveLength(1);
@@ -736,7 +736,7 @@ describe('ticket — un pago rechazado saca la comanda del tablero (03-09-2026)'
 
   it('pero NO se saca lo que ya está en la plancha', () => {
     // Mismo criterio que el filtro de entrada: hacer desaparecer de la pantalla
-    // una hamburguesa que ya se está haciendo no la devuelve al refrigerador,
+    // una alita que ya se está haciendo no la devuelve al refrigerador,
     // solo deja a quien cocina sin saber qué estaba haciendo.
     const tickets = tablero('preparing', haceMinutos(1));
     expect(tickets).toHaveLength(1);

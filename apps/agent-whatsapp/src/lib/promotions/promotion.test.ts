@@ -32,14 +32,14 @@ const componente = (
 
 /** 2×30 + 2×5 + 2×10 = 90. El ejemplo del negocio. */
 const COMBO: PromotionComponent[] = [
-  componente({ code: 'lomito', name: 'Lomito', unitPrice: 30, quantity: 2 }),
+  componente({ code: 'keperi', name: 'Keperi', unitPrice: 30, quantity: 2 }),
   componente({ code: 'soda_peque', name: 'Soda Peque', category: 'bebida', unitPrice: 5, quantity: 2 }),
   componente({ code: 'porcion_papas', name: 'Porción de papa', category: 'extra', unitPrice: 10, quantity: 2 }),
 ];
 
 const PROMO: Promotion = {
   id: 'promo-1',
-  name: '2 lomitos goleadores',
+  name: '2 keperis goleadores',
   description: null,
   promoPrice: 60,
   imageUrl: null,
@@ -126,12 +126,12 @@ describe('estado del combo', () => {
   });
 
   it('menos de dos unidades todavía no es un combo', () => {
-    const suelto = [componente({ code: 'lomito', quantity: 1 })];
+    const suelto = [componente({ code: 'keperi', quantity: 1 })];
     expect(evaluatePromotion({ ...PROMO, components: suelto }, AHORA).status).toBe('incomplete');
   });
 
   it('dos unidades del MISMO producto sí son un combo', () => {
-    const dobles = [componente({ code: 'lomito', unitPrice: 30, quantity: 2 })];
+    const dobles = [componente({ code: 'keperi', unitPrice: 30, quantity: 2 })];
     const p = evaluatePromotion({ ...PROMO, components: dobles, promoPrice: 50 }, AHORA);
     expect(p.status).toBe('available');
     expect(p.normalPrice).toBe(60);
@@ -139,7 +139,7 @@ describe('estado del combo', () => {
   });
 
   it('si el precio de un producto sube hasta comerse el descuento, queda sin ahorro', () => {
-    const caro = COMBO.map((c) => (c.code === 'lomito' ? { ...c, unitPrice: 12 } : c));
+    const caro = COMBO.map((c) => (c.code === 'keperi' ? { ...c, unitPrice: 12 } : c));
     // 2×12 + 2×5 + 2×10 = 54, por debajo de los 60 del combo.
     const p = evaluatePromotion({ ...PROMO, components: caro }, AHORA);
     expect(p.status).toBe('no_savings');
@@ -178,7 +178,7 @@ const menuItem = (id: string, price: number, activo = true): MenuItem => ({
   updated_at: '2026-09-01T00:00:00.000Z',
 });
 
-const CATALOGO: MenuItem[] = [menuItem('lomito', 30), menuItem('soda', 5), menuItem('retirado', 8, false)];
+const CATALOGO: MenuItem[] = [menuItem('keperi', 30), menuItem('soda', 5), menuItem('retirado', 8, false)];
 
 const borrador = (over: Partial<PromotionDraft> = {}): PromotionDraft => ({
   name: 'Combo',
@@ -186,7 +186,7 @@ const borrador = (over: Partial<PromotionDraft> = {}): PromotionDraft => ({
   promoPrice: 50,
   startsAt: null,
   endsAt: null,
-  components: [{ menuItemId: 'lomito', quantity: 2 }],
+  components: [{ menuItemId: 'keperi', quantity: 2 }],
   ...over,
 });
 
@@ -228,14 +228,14 @@ describe('validación del borrador', () => {
   });
 
   it('exige al menos dos unidades', () => {
-    const uno = borrador({ components: [{ menuItemId: 'lomito', quantity: 1 }], promoPrice: 20 });
+    const uno = borrador({ components: [{ menuItemId: 'keperi', quantity: 1 }], promoPrice: 20 });
     expect(validatePromotionDraft(uno, CATALOGO)).toContain('components_required');
   });
 
   it('acepta dos productos distintos de uno en uno', () => {
     const mixto = borrador({
       components: [
-        { menuItemId: 'lomito', quantity: 1 },
+        { menuItemId: 'keperi', quantity: 1 },
         { menuItemId: 'soda', quantity: 1 },
       ],
       promoPrice: 30,
@@ -244,13 +244,13 @@ describe('validación del borrador', () => {
   });
 
   it('rechaza cantidades no enteras', () => {
-    const roto = borrador({ components: [{ menuItemId: 'lomito', quantity: 2.5 }] });
+    const roto = borrador({ components: [{ menuItemId: 'keperi', quantity: 2.5 }] });
     expect(validatePromotionDraft(roto, CATALOGO)).toContain('quantity_not_integer');
   });
 
   it('rechaza cantidades fuera de rango', () => {
     for (const quantity of [0, -1, 21]) {
-      const roto = borrador({ components: [{ menuItemId: 'lomito', quantity }] });
+      const roto = borrador({ components: [{ menuItemId: 'keperi', quantity }] });
       expect(validatePromotionDraft(roto, CATALOGO), String(quantity)).toContain(
         'quantity_out_of_range',
       );
@@ -260,8 +260,8 @@ describe('validación del borrador', () => {
   it('rechaza el mismo producto dos veces', () => {
     const dup = borrador({
       components: [
-        { menuItemId: 'lomito', quantity: 1 },
-        { menuItemId: 'lomito', quantity: 1 },
+        { menuItemId: 'keperi', quantity: 1 },
+        { menuItemId: 'keperi', quantity: 1 },
       ],
     });
     expect(validatePromotionDraft(dup, CATALOGO)).toContain('duplicate_component');

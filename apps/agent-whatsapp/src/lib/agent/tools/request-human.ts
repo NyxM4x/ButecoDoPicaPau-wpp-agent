@@ -14,7 +14,7 @@
  * salió mal en la primera prueba real: con una ventana de decisión que no dice
  * cuánto tiempo pasó entre mensajes, un "hola" nuevo se lee como la
  * continuación de una conversación trabada de hace horas, y la gente escribe
- * "hola" / "zarco" / "quiero ordenar" en mensajes sueltos.
+ * "hola" / "buenas" / "quiero ordenar" en mensajes sueltos.
  *
  * El reparto es el que corresponde a cada uno: lo que hay que LEER —enfado,
  * queja, "quiero hablar con alguien"— lo juzga el modelo; lo que se puede
@@ -23,7 +23,7 @@
  * ── Ni la acción a la que se cae lo que no encaja en otra ───────────────────
  *
  * El 29-08-2026 esta acción derivó una conversación en su PRIMER mensaje: "hola
- * como esta zarco cuanto me saldria delivery aqui". No hubo queja, ni historial,
+ * como esta cuanto me saldria delivery aqui". No hubo queja, ni historial,
  * ni nada que leer — el modelo simplemente se quedó sin puerta, porque
  * `answer_directly` se excluía a sí misma ante cualquier "precio" y el envío no
  * es un producto que `get_menu_items` pueda buscar.

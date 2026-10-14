@@ -5,10 +5,10 @@ import { menuCtaBodyText } from '@/lib/kapso/messages';
 describe('classifyMenuCtaContext — de qué venía hablando el cliente', () => {
   it('preguntar un precio', () => {
     for (const texto of [
-      'cuanto cuesta el trancapecho',
-      'que precio tienen las hamburguesas',
-      'cuanto salen los lomitos',
-      'a cuanto la salchipapa',
+      'cuanto cuesta la supertabla',
+      'que precio tienen las alitas',
+      'cuanto salen los keperis',
+      'a cuanto la sopa',
     ]) {
       expect(classifyMenuCtaContext(texto), texto).toBe('price');
     }
@@ -32,10 +32,10 @@ describe('classifyMenuCtaContext — de qué venía hablando el cliente', () => 
     // El cliente que todavía pide como se pedía antes. Es el que más necesita
     // que el botón le explique por qué ahora le conviene armarlo él.
     for (const texto of [
-      '2 lomitos quería',
-      'quiero 3 trancapechos',
-      'mandame 2 hamburguesas y una coca',
-      'Si Envíeme 2 lomitos',
+      '2 keperis quería',
+      'quiero 3 supertablas',
+      'mandame 2 alitas y una coca',
+      'Si Envíeme 2 keperis',
     ]) {
       expect(classifyMenuCtaContext(texto), texto).toBe('dictated');
     }
@@ -46,9 +46,9 @@ describe('classifyMenuCtaContext — de qué venía hablando el cliente', () => 
     // "pedir" y nombró la cosa. Es el mismo dictado, escrito como se escribe.
     for (const texto of [
       'quisiera un trança pecho',
-      'quiero una hamburguesa',
-      'dame dos lomitos por favor',
-      'hola buenas quisiera una salchipapa',
+      'quiero una alita',
+      'dame dos keperis por favor',
+      'hola buenas quisiera una sopa',
     ]) {
       expect(classifyMenuCtaContext(texto), texto).toBe('dictated');
     }
@@ -69,9 +69,9 @@ describe('classifyMenuCtaContext — de qué venía hablando el cliente', () => 
   });
 
   it('sin cantidad no es un pedido dictado', () => {
-    // "Quiero lomito" es una intención de pedir cualquiera y ya la cubre el
+    // "Quiero keperi" es una intención de pedir cualquiera y ya la cubre el
     // texto normal. Lo que hace inequívoco al dictado es la cantidad.
-    expect(classifyMenuCtaContext('quiero lomito')).toBeNull();
+    expect(classifyMenuCtaContext('quiero keperi')).toBeNull();
   });
 
   it('una cantidad seguida de algo que no es un producto tampoco lo es', () => {
@@ -185,7 +185,7 @@ describe('el que pregunta por el efectivo antes de entrar', () => {
   });
 
   it('no se lo quita a quien pregunta otra cosa', () => {
-    expect(classifyMenuCtaContext('cuanto sale el trancapecho')).toBe('price');
+    expect(classifyMenuCtaContext('cuanto sale la supertabla')).toBe('price');
     expect(classifyMenuCtaContext('cuanto sale el envio a mi casa')).toBe('delivery');
     expect(classifyMenuCtaContext('buenas noches')).toBe('greeting');
   });
